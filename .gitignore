@@ -1,0 +1,24 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# .NET build output
+**/bin/
+**/obj/
+TestResults/
+artifacts/
+publish/
+
+# Portable runtime data
+settings.json
+Diagnostics/
+*.log
+
+# Release packages
+*.zip
+
+# Operating system files
+Thumbs.db
+Desktop.ini
+.DS_Store
