@@ -38,7 +38,9 @@ public enum CombatOutcomeKind
     DefensiveRiposte,
     DefensiveAbsorb,
     DefensiveSpellAbsorb,
-    DefensiveSpellResist
+    DefensiveSpellResist,
+    StunApplied,
+    StunDiminished
 }
 
 public sealed record CombatOutcomeEvent(

@@ -1,0 +1,182 @@
+<UserControl x:Class="EQLDamageMeter.Controls.SpellRuleEditor"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:models="clr-namespace:EQLDamageMeter.Models">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1.65*" />
+            <ColumnDefinition Width="14" />
+            <ColumnDefinition Width="0.95*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Style="{DynamicResource GlassCard}" Padding="16,12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="48" /><RowDefinition Height="54" /><RowDefinition Height="34" />
+                    <RowDefinition Height="*" /><RowDefinition Height="26" />
+                </Grid.RowDefinitions>
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="&#x25F4;" FontSize="24" Foreground="#FF9B62" Margin="0,0,10,0" />
+                        <StackPanel>
+                            <TextBlock Text="{Binding HeaderTitle}" Style="{DynamicResource SectionLabel}" FontSize="15" />
+                            <TextBlock Text="Track confirmed spell effects separately on every target" Foreground="#66879D" FontSize="10" />
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Button Content="{Binding OverlayLabel}" Padding="12,7" Margin="0,0,8,0" Click="Overlay_Click" />
+                        <Button Content="{Binding AddLabel}" Padding="13,7" Background="#684CC0" BorderBrush="#A98BFF" Click="Add_Click" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid Grid.Row="1" Margin="0,5,0,8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBox Style="{DynamicResource BuffInput}" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search configured spells" />
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <RadioButton Content="All" GroupName="RuleFilter" IsChecked="True" Style="{DynamicResource BuffFilter}" Checked="All_Checked" />
+                        <RadioButton Content="Enabled" GroupName="RuleFilter" Style="{DynamicResource BuffFilter}" Checked="Enabled_Checked" />
+                        <RadioButton Content="Disabled" GroupName="RuleFilter" Style="{DynamicResource BuffFilter}" Checked="Disabled_Checked" />
+                    </StackPanel>
+                </Grid>
+
+                <Border Grid.Row="2" Background="#9A0B263A" BorderBrush="#355B73" BorderThickness="1" CornerRadius="8,8,0,0">
+                    <Grid Margin="10,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="64" /><ColumnDefinition Width="*" /><ColumnDefinition Width="88" />
+                            <ColumnDefinition Width="82" /><ColumnDefinition Width="86" /><ColumnDefinition Width="52" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="TRACK" Style="{DynamicResource MetricLabel}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="SPELL NAME" Style="{DynamicResource MetricLabel}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="DURATION" Style="{DynamicResource MetricLabel}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="3" Text="CAST" Style="{DynamicResource MetricLabel}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="4" Text="STATUS" Style="{DynamicResource MetricLabel}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="5" Text="DELETE" Style="{DynamicResource MetricLabel}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+
+                <ListBox Grid.Row="3" ItemsSource="{Binding RulesView}" SelectedItem="{Binding SelectedRule}"
+                         Background="#61071F31" BorderBrush="#355B73" BorderThickness="1,0,1,1"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Padding" Value="0" />
+                            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
+                                <Border x:Name="Row" Background="#360B2638" BorderBrush="#2C4D62" BorderThickness="0,0,0,1" Padding="10,6"><ContentPresenter /></Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsSelected" Value="True"><Setter TargetName="Row" Property="Background" Value="#8A17354D" /><Setter TargetName="Row" Property="BorderBrush" Value="#8F72E8" /></Trigger>
+                                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="#6916384D" /></Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate></Setter.Value></Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Height="40">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="64" /><ColumnDefinition Width="*" /><ColumnDefinition Width="88" />
+                                    <ColumnDefinition Width="82" /><ColumnDefinition Width="86" /><ColumnDefinition Width="52" />
+                                </Grid.ColumnDefinitions>
+                                <ToggleButton Style="{DynamicResource BuffToggle}" IsChecked="{Binding IsEnabled, Mode=TwoWay}" VerticalAlignment="Center" Click="RuleToggle_Click" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Image Source="{Binding Icon}" Width="18" Height="18" Margin="0,0,7,0"
+                                               RenderOptions.BitmapScalingMode="NearestNeighbor" SnapsToDevicePixels="True">
+                                            <Image.Style>
+                                                <Style TargetType="Image">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Image.Style>
+                                        </Image>
+                                        <TextBlock Text="{Binding SpellName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding TargetSummary}" FontSize="9" Foreground="#66879D" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="{Binding DurationText}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="3" Text="{Binding CastTimeText, StringFormat={}{0} sec}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="#A9C3D3" />
+                                <TextBlock Grid.Column="4" Text="{Binding StatusText}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10" Foreground="#39E0CC" />
+                                <Button Grid.Column="5" Content="&#xE74D;" FontFamily="Segoe MDL2 Assets" Width="31" Height="29" Padding="0"
+                                        HorizontalAlignment="Right" Tag="{Binding}" Click="Delete_Click" ToolTip="Delete tracked spell" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock Grid.Row="4" Text="Timers begin only after the target landing message is confirmed in the log."
+                           Foreground="#66879D" FontSize="10" VerticalAlignment="Bottom" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Column="2" Style="{DynamicResource GlassCard}" Padding="16,12">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="44" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="{Binding DetailsTitle}" Style="{DynamicResource SectionLabel}" FontSize="15" />
+                        <Rectangle Height="2" Width="105" Fill="#7658E2" HorizontalAlignment="Left" Margin="0,7,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="1" Margin="0,8,0,0">
+                        <TextBlock Text="Spell Name" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Width="34" Height="34" CornerRadius="6" Background="#152F43"
+                                    BorderBrush="#416A83" BorderThickness="1" Margin="0,0,8,0"
+                                    VerticalAlignment="Center">
+                                <Image Source="{Binding SelectedRule.Icon}" Width="28" Height="28"
+                                       RenderOptions.BitmapScalingMode="NearestNeighbor" SnapsToDevicePixels="True" />
+                            </Border>
+                            <TextBox Grid.Column="1" Style="{DynamicResource BuffInput}"
+                                     Text="{Binding SelectedRule.SpellName, UpdateSourceTrigger=PropertyChanged}"
+                                     Tag="{Binding SelectedRule}" LostFocus="SpellName_LostFocus" />
+                        </Grid>
+                        <TextBlock Text="{Binding SelectedRule.SpellValidationText}" Foreground="#FF8B91" FontSize="10" Margin="0,4,0,0" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Grid Grid.Row="2" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <StackPanel><TextBlock Text="Duration (m:ss)" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" /><TextBox Style="{DynamicResource BuffInput}" Text="{Binding SelectedRule.DurationText, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                        <StackPanel Grid.Column="2"><TextBlock Text="Cast Time (seconds)" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" /><TextBox Style="{DynamicResource BuffInput}" Text="{Binding SelectedRule.CastTimeText, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                    </Grid>
+                    <Grid Grid.Row="3" Margin="0,12,0,0">
+                        <Grid.Style><Style TargetType="Grid"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding IsControl}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></Grid.Style>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <StackPanel><TextBlock Text="Control Type" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" /><ComboBox Style="{DynamicResource BuffCombo}" ItemsSource="{Binding ControlTypes}" SelectedItem="{Binding SelectedRule.ControlType, Mode=TwoWay}" /></StackPanel>
+                    </Grid>
+                    <Grid Grid.Row="4" Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel><TextBlock Text="Track this spell" FontWeight="SemiBold" /><TextBlock Text="Track confirmed applications on enemy targets" Foreground="#66879D" FontSize="10" /></StackPanel>
+                        <ToggleButton Grid.Column="1" Style="{DynamicResource BuffToggle}" IsChecked="{Binding SelectedRule.IsEnabled, Mode=TwoWay}" Click="RuleToggle_Click" />
+                    </Grid>
+                    <Grid Grid.Row="5" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel><TextBlock Text="Show in Overlay" FontWeight="SemiBold" /><TextBlock Text="Display active target timers in its separate overlay" Foreground="#66879D" FontSize="10" /></StackPanel>
+                        <ToggleButton Grid.Column="1" Style="{DynamicResource BuffToggle}" IsChecked="{Binding SelectedRule.ShowInOverlay, Mode=TwoWay}" Click="RuleToggle_Click" />
+                    </Grid>
+                    <Grid Grid.Row="6" Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <StackPanel><TextBlock Text="Alert Type" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" /><ComboBox Style="{DynamicResource BuffCombo}" ItemsSource="{Binding AlertModes}" SelectedItem="{Binding SelectedRule.AlertMode, Mode=TwoWay}" /></StackPanel>
+                        <StackPanel Grid.Column="2"><TextBlock Text="Sound" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" /><ComboBox Style="{DynamicResource BuffCombo}" ItemsSource="{Binding SoundChoices}" SelectedItem="{Binding SelectedRule.Sound, Mode=TwoWay}" /></StackPanel>
+                    </Grid>
+                    <StackPanel Grid.Row="7" Margin="0,14,0,0">
+                        <TextBlock Text="Voice Text" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" />
+                        <TextBox Style="{DynamicResource BuffInput}" Text="{Binding SelectedRule.VoiceText, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <Grid Grid.Row="8" Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="8" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Button Content="Test Alert" Click="TestAlert_Click" />
+                        <Button Grid.Column="2" Content="Save Spell" Background="#684CC0" BorderBrush="#A98BFF" Click="Save_Click" />
+                    </Grid>
+                </Grid>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

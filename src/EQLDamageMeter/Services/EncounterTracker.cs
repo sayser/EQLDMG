@@ -40,6 +40,8 @@ public sealed class CombatantAggregate(string name)
     public int Absorbed { get; set; }
     public int SpellAbsorbs { get; set; }
     public int IncomingSpellResists { get; set; }
+    public int StunsLanded { get; set; }
+    public int StunsTaken { get; set; }
     public long Healing { get; set; }
     public long PotentialHealing { get; set; }
     public int DirectHeals { get; set; }
@@ -56,7 +58,8 @@ public sealed record EncounterSnapshot(DateTime StartedAt, DateTime EndedAt,
 
 public sealed class EncounterTracker(string localPlayerName)
 {
-    private sealed record RollingDamageEvent(DateTime Timestamp, string Source, string? OwnerName, int Amount);
+    private readonly record struct RollingDamageEvent(
+        DateTime Timestamp, string Source, string? OwnerName, int Amount);
 
     private readonly Dictionary<string, CombatantAggregate> _combatants = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<CombatantAggregate> _retiredCombatants = [];
@@ -111,10 +114,16 @@ public sealed class EncounterTracker(string localPlayerName)
             Reset();
         }
 
+        // A charm break turns a controlled pet on the group before the log reports the
+        // break, so a known contributor damaging another known contributor is hostile
+        // damage taken, never group output.
+        var friendlyFire = sourceIsKnownMember && targetIsKnownMember &&
+                           !damage.Source.Equals(damage.Target, StringComparison.OrdinalIgnoreCase);
+
         // A non-player source damaging the local player is always incoming damage.
         // This remains true when another living NPC shares a controlled pet's name.
         if (!isLocal && (damage.Target.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase) ||
-                         targetIsKnownMember && !sourceIsKnownMember))
+                         targetIsKnownMember && !sourceIsKnownMember || friendlyFire))
         {
             if (!damage.Source.Equals(LogLineParser.UnattributedNonMeleeSource,
                     StringComparison.OrdinalIgnoreCase) &&
@@ -155,6 +164,23 @@ public sealed class EncounterTracker(string localPlayerName)
     public void ProcessOutcome(CombatOutcomeEvent outcome, GroupStateTracker group)
     {
         FinalizeCompletedEncounterAt(outcome.Timestamp);
+        if (outcome.Kind is CombatOutcomeKind.StunApplied or CombatOutcomeKind.StunDiminished)
+        {
+            AddStunOutcome(outcome, group);
+            return;
+        }
+
+        // A blocked spell reads the same whether a stranger was buffing the player or an
+        // enemy was attacking, so it may only annotate a source already fighting the
+        // group. Otherwise a zone full of buffers would inflate mitigation, mark
+        // bystanders hostile, and open empty encounters.
+        if (outcome.Kind == CombatOutcomeKind.DefensiveSpellAbsorb &&
+            outcome.Ability.Equals(LogLineParser.ProtectedSpellAbility, StringComparison.Ordinal) &&
+            !_hostileSources.Contains(outcome.Source))
+        {
+            return;
+        }
+
         var sourceIsEligible = outcome.Source.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase) ||
                                group.IsConfirmedMemberOrPet(outcome.Source);
         var targetsLocalPlayer = outcome.Target?.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase) == true &&
@@ -174,7 +200,15 @@ public sealed class EncounterTracker(string localPlayerName)
             return;
         }
 
-        var startsNewOffensiveEncounter = sourceIsEligible && outcome.Target is not null &&
+        // Mirrors Process: a known contributor swinging at another known contributor is
+        // a broken charm attacking the group, so it must not open an encounter against
+        // a friendly name or count as group output.
+        var friendlyFire = sourceIsEligible && outcome.Target is not null &&
+                           !outcome.Source.Equals(outcome.Target, StringComparison.OrdinalIgnoreCase) &&
+                           (outcome.Target.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase) ||
+                            group.IsConfirmedMemberOrPet(outcome.Target));
+
+        var startsNewOffensiveEncounter = sourceIsEligible && !friendlyFire && outcome.Target is not null &&
                                           (!StartedAt.HasValue || IsFinalized ||
                                            (LastDamageAt.HasValue && outcome.Timestamp - LastDamageAt.Value > EncounterTimeout));
         if (startsNewOffensiveEncounter && outcome.Target is not null)
@@ -190,7 +224,7 @@ public sealed class EncounterTracker(string localPlayerName)
         var defenderIsEligible = outcome.Target is not null &&
                                   (outcome.Target.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase) ||
                                    group.IsConfirmedMemberOrPet(outcome.Target));
-        if (defenderIsEligible && !sourceIsEligible && outcome.Target is not null)
+        if (defenderIsEligible && (!sourceIsEligible || friendlyFire) && outcome.Target is not null)
         {
             if (IsFinalized || (LastDamageAt.HasValue && outcome.Timestamp - LastDamageAt.Value > EncounterTimeout))
             {
@@ -206,7 +240,13 @@ public sealed class EncounterTracker(string localPlayerName)
         }
 
         var targetIsEligible = outcome.Target is null || _hostileTargets.Contains(outcome.Target);
-        if (StartedAt.HasValue && !IsFinalized && sourceIsEligible && targetIsEligible)
+        // A targetless outcome such as a fizzle cannot extend a fight, and an encounter
+        // awaiting its inactivity sweep is still open here, so without the same timeout
+        // the other branches apply it would land on a fight that already stopped.
+        var withinEncounter = !LastDamageAt.HasValue ||
+                              outcome.Timestamp - LastDamageAt.Value <= EncounterTimeout;
+        if (StartedAt.HasValue && !IsFinalized && withinEncounter && sourceIsEligible && !friendlyFire &&
+            targetIsEligible)
         {
             if (outcome.Target is not null)
             {
@@ -432,6 +472,7 @@ public sealed class EncounterTracker(string localPlayerName)
 
     private void ReplayPendingFor(string target, GroupStateTracker group)
     {
+        if (_pending.Count == 0) return;
         foreach (var pending in _pending.Where(item =>
                      item.Target.Equals(target, StringComparison.OrdinalIgnoreCase) &&
                      !_hostileSources.Contains(item.Source) &&
@@ -494,6 +535,7 @@ public sealed class EncounterTracker(string localPlayerName)
 
     private void ReplayPendingOutcomes(DamageEvent confirmingDamage, GroupStateTracker group)
     {
+        if (_pendingOutcomes.Count == 0) return;
         foreach (var outcome in _pendingOutcomes.Where(item =>
                      confirmingDamage.Timestamp - item.Timestamp <= EncounterTimeout &&
                      item.Timestamp <= confirmingDamage.Timestamp &&
@@ -529,6 +571,42 @@ public sealed class EncounterTracker(string localPlayerName)
                 combatant.SpellResists++;
                 break;
         }
+    }
+
+    private void AddStunOutcome(CombatOutcomeEvent outcome, GroupStateTracker group)
+    {
+        // A stun line carries no attacker, so it can annotate a fight that is already
+        // running but must never open one or revive a finished one.
+        if (!StartedAt.HasValue || IsFinalized) return;
+        if (LastDamageAt.HasValue && outcome.Timestamp - LastDamageAt.Value > EncounterTimeout) return;
+
+        // A stun shortened by diminishing returns still landed, and melee stuns are
+        // reported by the game only when they are shortened.
+        if (outcome.Kind == CombatOutcomeKind.StunDiminished)
+        {
+            GetOrCreateCombatant(outcome.Source, null).StunsLanded++;
+            return;
+        }
+
+        if (outcome.Target is not { } target) return;
+        var targetIsFriendly = target.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase) ||
+                               group.IsConfirmedMemberOrPet(target);
+
+        if (targetIsFriendly)
+        {
+            group.TryGetPetOwner(target, out var stunnedOwner);
+            GetOrCreateCombatant(target, stunnedOwner).StunsTaken++;
+            return;
+        }
+
+        if (!_hostileTargets.Contains(target) ||
+            !group.TryGetRecentEligibleCaster(outcome.Timestamp, out var caster) || caster is null)
+        {
+            return;
+        }
+
+        group.TryGetPetOwner(caster, out var casterOwner);
+        GetOrCreateCombatant(caster, casterOwner).StunsLanded++;
     }
 
     private void AddIncomingDamage(DamageEvent damage, GroupStateTracker group)
@@ -662,6 +740,8 @@ public sealed class EncounterTracker(string localPlayerName)
             Absorbed = source.Absorbed,
             SpellAbsorbs = source.SpellAbsorbs,
             IncomingSpellResists = source.IncomingSpellResists,
+            StunsLanded = source.StunsLanded,
+            StunsTaken = source.StunsTaken,
             Healing = source.Healing,
             PotentialHealing = source.PotentialHealing,
             DirectHeals = source.DirectHeals,

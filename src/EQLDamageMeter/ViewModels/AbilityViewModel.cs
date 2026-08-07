@@ -10,6 +10,7 @@ public sealed class AbilityViewModel
     public double Dps { get; init; }
     public double Share { get; init; }
     public required Brush Color { get; init; }
+    public ImageSource? Icon { get; init; }
     public bool IsPetSummary { get; init; }
     public AbilityViewModel[] Children { get; init; } = [];
     public string DamageText => Damage.ToString("N0", CultureInfo.CurrentCulture);

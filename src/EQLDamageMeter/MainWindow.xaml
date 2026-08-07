@@ -57,6 +57,130 @@
             <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="Bold" />
         </Style>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibility" />
+        <Style x:Key="ModuleNavigationButton" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="#9CB9CA" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="MinWidth" Value="128" />
+            <Setter Property="Margin" Value="2,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Chrome" Background="#6A0A2032" BorderBrush="#42677F" BorderThickness="1"
+                                CornerRadius="8" Padding="14,0">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#A3153A50" />
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#57A99F" />
+                                <Setter Property="Foreground" Value="#E5F7FF" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#B65D48B8" />
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#A98BFF" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="BuffInput" TargetType="TextBox">
+            <Setter Property="Foreground" Value="#EDF7FF" />
+            <Setter Property="Background" Value="#A0092235" />
+            <Setter Property="BorderBrush" Value="#42677F" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="CaretBrush" Value="#9A78FF" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <DataTemplate x:Key="BuffComboItemTemplate">
+            <TextBlock Text="{Binding}" Foreground="#102A3D" FontWeight="SemiBold" />
+        </DataTemplate>
+        <Style x:Key="BuffCombo" TargetType="ComboBox">
+            <Setter Property="Foreground" Value="#102A3D" />
+            <Setter Property="Background" Value="#EAF7FC" />
+            <Setter Property="BorderBrush" Value="#42677F" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="ItemTemplate" Value="{StaticResource BuffComboItemTemplate}" />
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ComboBoxItem">
+                        <Setter Property="Foreground" Value="#102A3D" />
+                        <Setter Property="Background" Value="#F4FBFE" />
+                        <Setter Property="Padding" Value="8,5" />
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#BFEAF3" />
+                                <Setter Property="Foreground" Value="#071B2A" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="#87D3E4" />
+                                <Setter Property="Foreground" Value="#061522" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ToolTip">
+            <Setter Property="Foreground" Value="#102A3D" />
+            <Setter Property="Background" Value="#EFF9FC" />
+            <Setter Property="BorderBrush" Value="#4E7A91" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="7,4" />
+        </Style>
+        <Style x:Key="BuffToggle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="42" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Grid>
+                            <Border x:Name="Track" Background="#34495A" BorderBrush="#537086" BorderThickness="1" CornerRadius="11" />
+                            <Ellipse x:Name="Knob" Width="16" Height="16" Margin="3" HorizontalAlignment="Left" Fill="#E8F5FC" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="#714FCD" />
+                                <Setter TargetName="Track" Property="BorderBrush" Value="#A98BFF" />
+                                <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Track" Property="Opacity" Value="0.86" /></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="BuffFilter" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="#9CB9CA" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="MinWidth" Value="72" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Chrome" Background="#65091F31" BorderBrush="#3E627A" BorderThickness="1" Padding="12,0">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#A65D48B8" />
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#A98BFF" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="DamageBarStyle" TargetType="ProgressBar">
             <Setter Property="Height" Value="54" />
             <Setter Property="Background" Value="#071723" />
@@ -163,7 +287,7 @@
 
         <Grid Margin="20">
             <Grid.RowDefinitions>
-                <RowDefinition Height="116" />
+                <RowDefinition Height="158" />
                 <RowDefinition Height="14" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="14" />
@@ -177,6 +301,11 @@
                     CornerRadius="22" Padding="12">
                 <Border.Effect><DropShadowEffect BlurRadius="26" ShadowDepth="0" Opacity="0.35" Color="#001018" /></Border.Effect>
                 <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="82" />
+                        <RowDefinition Height="8" />
+                        <RowDefinition Height="Auto" MinHeight="38" />
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="270" />
                         <ColumnDefinition Width="230" />
@@ -233,10 +362,7 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="1.12*" /><ColumnDefinition Width="1" />
                                 <ColumnDefinition Width="*" /><ColumnDefinition Width="1" />
-                                <ColumnDefinition Width="*" /><ColumnDefinition Width="1" />
-                                <ColumnDefinition Width="1.08*" /><ColumnDefinition Width="1" />
-                                <ColumnDefinition Width="1.08*" /><ColumnDefinition Width="1" />
-                                <ColumnDefinition Width="1.08*" />
+                                <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
 
                             <Grid Margin="10,0">
@@ -262,50 +388,25 @@
                                 <TextBlock Text="◷" FontSize="34" FontWeight="Light" Foreground="#C8E6F5" VerticalAlignment="Center" />
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Duration" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding EncounterTime}" Style="{StaticResource MetricValue}" Foreground="#F2FAFF" /></StackPanel>
                             </Grid>
-                            <Border Grid.Column="5" Background="#315268" Margin="0,9" />
-
-                            <Grid Grid.Column="6" Margin="10,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="47" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <Viewbox Width="34" Height="34" HorizontalAlignment="Left" VerticalAlignment="Center">
-                                    <Canvas Width="36" Height="36">
-                                        <Path Data="M5,29 L5,7 M5,29 L31,29" Stroke="#9A78FF" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                        <Polyline Points="8,25 14,18 19,21 29,9" Stroke="#9A78FF" StrokeThickness="2.5" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                        <Ellipse Canvas.Left="6.5" Canvas.Top="23.5" Width="3" Height="3" Fill="#C8B8FF" />
-                                        <Ellipse Canvas.Left="12.5" Canvas.Top="16.5" Width="3" Height="3" Fill="#C8B8FF" />
-                                        <Ellipse Canvas.Left="17.5" Canvas.Top="19.5" Width="3" Height="3" Fill="#C8B8FF" />
-                                        <Ellipse Canvas.Left="27.5" Canvas.Top="7.5" Width="3" Height="3" Fill="#C8B8FF" />
-                                    </Canvas>
-                                </Viewbox>
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Encounter DPS" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding EncounterDps}" Style="{StaticResource MetricValue}" Foreground="#9B70FF" /></StackPanel>
-                            </Grid>
-                            <Border Grid.Column="7" Background="#315268" Margin="0,9" />
-
-                            <Grid Grid.Column="8" Margin="10,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="47" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <Viewbox Width="34" Height="34" HorizontalAlignment="Left" VerticalAlignment="Center">
-                                    <Canvas Width="36" Height="36">
-                                        <Path Data="M5,27 A13,13 0 0 1 31,27" Stroke="#29D3C2" StrokeThickness="2.25" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                        <Path Data="M9,22 L7,21 M14,16 L13,14 M22,16 L23,14 M27,22 L29,21" Stroke="#76E8DC" StrokeThickness="1.75" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                        <Line X1="18" Y1="27" X2="26" Y2="17" Stroke="#29D3C2" StrokeThickness="2.75" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                        <Ellipse Canvas.Left="15.5" Canvas.Top="24.5" Width="5" Height="5" Fill="#76E8DC" />
-                                    </Canvas>
-                                </Viewbox>
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Current DPS" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding CurrentDps}" Style="{StaticResource MetricValue}" Foreground="#29D3C2" /></StackPanel>
-                            </Grid>
-                            <Border Grid.Column="9" Background="#315268" Margin="0,9" />
-
-                            <Grid Grid.Column="10" Margin="10,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="47" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <TextBlock Text="&#x2694;" FontSize="31" Foreground="#D8EDFA" VerticalAlignment="Center" />
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Total Damage" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding CharacterDamage}" Style="{StaticResource MetricValue}" Foreground="#F2FAFF" /></StackPanel>
-                            </Grid>
                         </Grid>
+                    </Border>
+
+                    <Border Grid.Row="2" Grid.ColumnSpan="4" Background="#62071C2D" BorderBrush="#355B73"
+                            BorderThickness="1" CornerRadius="10" HorizontalAlignment="Center" Padding="6,5">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="DpsParserButton" Content="DPS Parser" GroupName="PrimaryModule"
+                                         IsChecked="True" Style="{StaticResource ModuleNavigationButton}" />
+                            <RadioButton x:Name="SpellTrackerButton" Content="Spell Tracker" GroupName="PrimaryModule"
+                                         Style="{StaticResource ModuleNavigationButton}" />
+                            <RadioButton Content="Loot Tracker" GroupName="PrimaryModule"
+                                         Style="{StaticResource ModuleNavigationButton}" />
+                        </StackPanel>
                     </Border>
                 </Grid>
             </Border>
 
             <!-- Main workspace -->
-            <Grid Grid.Row="2">
+            <Grid Grid.Row="2" Visibility="{Binding IsChecked, ElementName=DpsParserButton, Converter={StaticResource BooleanToVisibility}}">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="1.7*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="0.9*" /></Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0" Style="{StaticResource GlassCard}">
@@ -422,13 +523,14 @@
                         <Grid Grid.Row="2" Margin="15,0,15,8" Visibility="{Binding OffenseVisibility}">
                             <Grid.RowDefinitions><RowDefinition Height="54" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                             <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                 <Border Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="HITS" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.Hits}" FontSize="16" FontWeight="Bold" /></StackPanel></Border>
                                 <Border Grid.Column="2" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="MISSED" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.Misses}" FontSize="16" FontWeight="Bold" Foreground="#FFBD57" /></StackPanel></Border>
                                 <Border Grid.Column="4" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="CRIT %" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.CriticalRateText}" FontSize="16" FontWeight="Bold" Foreground="#FFBD57" /></StackPanel></Border>
                                 <Border Grid.Column="6" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="SPELL CRIT %" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.SpellCriticalRateText}" FontSize="16" FontWeight="Bold" Foreground="#2FD8C7" /></StackPanel></Border>
                                 <Border Grid.Column="8" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="RESISTED" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.SpellResists}" FontSize="16" FontWeight="Bold" Foreground="#FF6C91" /></StackPanel></Border>
                                 <Border Grid.Column="10" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="FIZZLED" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.SpellFizzles}" FontSize="16" FontWeight="Bold" Foreground="#A985FF" /></StackPanel></Border>
+                                <Border Grid.Column="12" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="STUNS" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.StunsLanded}" FontSize="16" FontWeight="Bold" Foreground="#7FC6FF" /></StackPanel></Border>
                             </Grid>
                             <Grid Grid.Row="1" Margin="0,4,0,0">
                                 <controls:DonutChart Width="184" Height="145" ItemsSource="{Binding SelectedAbilities}"
@@ -457,11 +559,12 @@
                         <Grid Grid.Row="2" Grid.RowSpan="2" Margin="15,4,15,8" Visibility="{Binding DefenseVisibility}">
                             <Grid.RowDefinitions><RowDefinition Height="54" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="1" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                             <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                 <Border Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="DAMAGE TAKEN" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.DamageTakenText}" FontSize="16" FontWeight="Bold" /></StackPanel></Border>
                                 <Border Grid.Column="2" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="AVOIDANCE" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.AvoidanceRateText}" FontSize="16" FontWeight="Bold" Foreground="#2FD8C7" /></StackPanel></Border>
                                 <Border Grid.Column="4" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="RESISTS" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.IncomingSpellResists}" FontSize="16" FontWeight="Bold" Foreground="#A985FF" /></StackPanel></Border>
                                 <Border Grid.Column="6" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="ABSORBED" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.Absorbed}" FontSize="16" FontWeight="Bold" /></StackPanel></Border>
+                                <Border Grid.Column="8" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="STUNNED" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.StunsTaken}" FontSize="16" FontWeight="Bold" Foreground="#FF6C91" /></StackPanel></Border>
                             </Grid>
                             <TextBlock Grid.Row="1" Text="MITIGATION OUTCOMES" Style="{StaticResource MetricLabel}" HorizontalAlignment="Center" Margin="0,5,0,0" />
                             <Grid Grid.Row="2" Margin="0,3,0,6">
@@ -485,7 +588,35 @@
                                 <ListBox Grid.Column="1" ItemsSource="{Binding SelectedIncomingAbilities}" Background="Transparent" BorderThickness="0" Padding="4"
                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
                                     <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Focusable" Value="False" /><Setter Property="Padding" Value="0" /><Setter Property="Background" Value="Transparent" /><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
-                                    <ListBox.ItemTemplate><DataTemplate><Grid Margin="8,3"><Grid.ColumnDefinitions><ColumnDefinition Width="18" /><ColumnDefinition Width="*" /><ColumnDefinition Width="70" /><ColumnDefinition Width="58" /></Grid.ColumnDefinitions><Ellipse Fill="{Binding Color}" Width="8" Height="8" HorizontalAlignment="Left" /><TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="2" Text="{Binding DamageText}" HorizontalAlignment="Right" TextAlignment="Right" /><TextBlock Grid.Column="3" Text="{Binding ShareText}" HorizontalAlignment="Right" TextAlignment="Right" Foreground="#96B7CA" /></Grid></DataTemplate></ListBox.ItemTemplate>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="8,3">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="70" /><ColumnDefinition Width="58" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                    <Image Source="{Binding Icon}" Width="14" Height="14" Margin="0,0,5,0"
+                                                           RenderOptions.BitmapScalingMode="NearestNeighbor" SnapsToDevicePixels="True">
+                                                        <Image.Style>
+                                                            <Style TargetType="Image">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Image.Style>
+                                                    </Image>
+                                                    <Ellipse Fill="{Binding Color}" Width="8" Height="8" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Column="2" Text="{Binding DamageText}" HorizontalAlignment="Right" TextAlignment="Right" />
+                                                <TextBlock Grid.Column="3" Text="{Binding ShareText}" HorizontalAlignment="Right" TextAlignment="Right" Foreground="#96B7CA" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
                                 </ListBox>
                                 <TextBlock Grid.Column="1" Text="No incoming damage recorded" Foreground="#7899AD" FontSize="11"
                                            HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -515,7 +646,24 @@
                                                     <TextBlock Text="▶" Width="14" Foreground="#A98BFF" VerticalAlignment="Center">
                                                         <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding IsPetSummary}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger><DataTrigger Binding="{Binding DataContext.IsPetDamageExpanded, RelativeSource={RelativeSource AncestorType=Window}}" Value="True"><Setter Property="Text" Value="▼" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
                                                     </TextBlock>
-                                                    <Border Width="16" Height="16" CornerRadius="4" Background="#152F43" BorderBrush="{Binding Color}" BorderThickness="1" Margin="0,0,7,0"><Ellipse Fill="{Binding Color}" Width="6" Height="6" /></Border>
+                                                    <Image Source="{Binding Icon}" Width="16" Height="16" Margin="0,0,6,0"
+                                                           RenderOptions.BitmapScalingMode="NearestNeighbor" SnapsToDevicePixels="True">
+                                                        <Image.Style>
+                                                            <Style TargetType="Image">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Image.Style>
+                                                    </Image>
+                                                    <Border Width="12" Height="12" CornerRadius="3" Background="#152F43"
+                                                            BorderBrush="{Binding Color}" BorderThickness="1" Margin="0,0,7,0"
+                                                            VerticalAlignment="Center">
+                                                        <Ellipse Fill="{Binding Color}" Width="5" Height="5" />
+                                                    </Border>
                                                     <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis">
                                                         <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Foreground" Value="#E8F4FF" /><Style.Triggers><DataTrigger Binding="{Binding IsPetSummary}" Value="True"><Setter Property="FontWeight" Value="Bold" /><Setter Property="Foreground" Value="#D8CCFF" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
                                                     </TextBlock>
@@ -546,7 +694,40 @@
                                             </Grid>
                                             <ItemsControl ItemsSource="{Binding Children}" Margin="22,0,0,2">
                                                 <ItemsControl.Style><Style TargetType="ItemsControl"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding DataContext.IsPetDamageExpanded, RelativeSource={RelativeSource AncestorType=Window}}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></ItemsControl.Style>
-                                                <ItemsControl.ItemTemplate><DataTemplate><Grid Height="23" Margin="5,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="76" /><ColumnDefinition Width="60" /><ColumnDefinition Width="100" /></Grid.ColumnDefinitions><StackPanel Orientation="Horizontal" VerticalAlignment="Center"><Border Width="12" Height="12" CornerRadius="3" Background="#152F43" BorderBrush="{Binding Color}" BorderThickness="1" Margin="0,0,7,0"><Ellipse Fill="{Binding Color}" Width="4" Height="4" /></Border><TextBlock Text="{Binding Name}" Foreground="#B9D1DE" TextTrimming="CharacterEllipsis" /></StackPanel><TextBlock Grid.Column="1" Text="{Binding DamageText}" HorizontalAlignment="Right" VerticalAlignment="Center" /><TextBlock Grid.Column="2" Text="{Binding DpsText}" HorizontalAlignment="Right" VerticalAlignment="Center" /><TextBlock Grid.Column="3" Text="{Binding ShareText}" HorizontalAlignment="Left" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="#8FAFC1" /></Grid></DataTemplate></ItemsControl.ItemTemplate>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid Height="23" Margin="5,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" /><ColumnDefinition Width="76" />
+                                                                <ColumnDefinition Width="60" /><ColumnDefinition Width="100" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <Image Source="{Binding Icon}" Width="12" Height="12" Margin="0,0,6,0"
+                                                                       RenderOptions.BitmapScalingMode="NearestNeighbor" SnapsToDevicePixels="True">
+                                                                    <Image.Style>
+                                                                        <Style TargetType="Image">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Image.Style>
+                                                                </Image>
+                                                                <Border Width="10" Height="10" CornerRadius="2" Background="#152F43"
+                                                                        BorderBrush="{Binding Color}" BorderThickness="1" Margin="0,0,7,0"
+                                                                        VerticalAlignment="Center">
+                                                                    <Ellipse Fill="{Binding Color}" Width="4" Height="4" />
+                                                                </Border>
+                                                                <TextBlock Text="{Binding Name}" Foreground="#B9D1DE" TextTrimming="CharacterEllipsis" />
+                                                            </StackPanel>
+                                                            <TextBlock Grid.Column="1" Text="{Binding DamageText}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                                            <TextBlock Grid.Column="2" Text="{Binding DpsText}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                                            <TextBlock Grid.Column="3" Text="{Binding ShareText}" HorizontalAlignment="Left" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="#8FAFC1" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
                                             </ItemsControl>
                                         </StackPanel>
                                     </DataTemplate>
@@ -557,8 +738,336 @@
                 </Border>
             </Grid>
 
+            <!-- Spell tracker workspace -->
+            <Grid Grid.Row="2" Grid.RowSpan="3"
+                  Visibility="{Binding IsChecked, ElementName=SpellTrackerButton, Converter={StaticResource BooleanToVisibility}}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="46" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.65*" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="0.95*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Row="0" Grid.ColumnSpan="3" Orientation="Horizontal"
+                            HorizontalAlignment="Center" Margin="0,0,0,8">
+                    <Border Background="#62071C2D" BorderBrush="#355B73"
+                            BorderThickness="1" CornerRadius="10" Padding="6,5">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="BuffsSpellTab" Content="BUFFS" GroupName="SpellTrackerSection"
+                                         IsChecked="True" Style="{StaticResource ModuleNavigationButton}" />
+                            <RadioButton x:Name="DotsSpellTab" Content="DoTs &amp; Debuffs" GroupName="SpellTrackerSection"
+                                         Style="{StaticResource ModuleNavigationButton}" MinWidth="158" />
+                            <RadioButton x:Name="ControlSpellTab" Content="CONTROL" GroupName="SpellTrackerSection"
+                                         Style="{StaticResource ModuleNavigationButton}" />
+                        </StackPanel>
+                    </Border>
+                    <CheckBox Content="Use Modern Spell Icons" Margin="16,0,0,0"
+                              VerticalAlignment="Center" Foreground="#C8E0EE" FontSize="12" FontWeight="SemiBold"
+                              IsChecked="{Binding UseModernSpellIcons}"
+                              ToolTip="When checked, EQDM uses the modern in-game spell icons. Uncheck for classic icon art." />
+                </StackPanel>
+
+                <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource GlassCard}" Padding="16,12"
+                        Visibility="{Binding IsChecked, ElementName=BuffsSpellTab, Converter={StaticResource BooleanToVisibility}}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="48" />
+                            <RowDefinition Height="54" />
+                            <RowDefinition Height="34" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="26" />
+                        </Grid.RowDefinitions>
+
+                        <Grid>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="◴" FontSize="24" Foreground="#A98BFF" Margin="0,0,10,0" />
+                                <StackPanel>
+                                    <TextBlock Text="BUFF TRACKER" Style="{StaticResource SectionLabel}" FontSize="15" />
+                                    <TextBlock Text="Configure spell timers and expiration alerts" Foreground="#66879D" FontSize="10" />
+                                </StackPanel>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Button Content="Buff Overlay" Padding="12,7" Margin="0,0,8,0" Click="ToggleBuffOverlay_Click" />
+                                <Button Content="＋ Add Buff" Padding="13,7" Background="#684CC0" BorderBrush="#A98BFF"
+                                        Click="AddBuffRule_Click" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Grid.Row="1" Margin="0,5,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Style="{StaticResource BuffInput}" Text="{Binding BuffSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Search configured buffs" />
+                            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                <RadioButton Content="All" GroupName="BuffFilter" IsChecked="True" Style="{StaticResource BuffFilter}"
+                                             Checked="ShowAllBuffs_Checked" />
+                                <RadioButton Content="Enabled" GroupName="BuffFilter" Style="{StaticResource BuffFilter}"
+                                             Checked="ShowEnabledBuffs_Checked" />
+                                <RadioButton Content="Disabled" GroupName="BuffFilter" Style="{StaticResource BuffFilter}"
+                                             Checked="ShowDisabledBuffs_Checked" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Border Grid.Row="2" Background="#9A0B263A" BorderBrush="#355B73" BorderThickness="1" CornerRadius="8,8,0,0">
+                            <Grid Margin="10,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="64" /><ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="88" /><ColumnDefinition Width="82" />
+                                    <ColumnDefinition Width="120" /><ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="52" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="TRACK" Style="{StaticResource MetricLabel}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="SPELL NAME" Style="{StaticResource MetricLabel}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="DURATION" Style="{StaticResource MetricLabel}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                <TextBlock Grid.Column="3" Text="CAST" Style="{StaticResource MetricLabel}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                <TextBlock Grid.Column="4" Text="ALERT" Style="{StaticResource MetricLabel}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                <TextBlock Grid.Column="5" Text="STATUS" Style="{StaticResource MetricLabel}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                <TextBlock Grid.Column="6" Text="DELETE" Style="{StaticResource MetricLabel}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                            </Grid>
+                        </Border>
+
+                        <ListBox Grid.Row="3" ItemsSource="{Binding BuffRulesView}" SelectedItem="{Binding SelectedBuffRule}"
+                                 Background="#61071F31" BorderBrush="#355B73" BorderThickness="1,0,1,1"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border x:Name="BuffRow" Background="#360B2638" BorderBrush="#2C4D62" BorderThickness="0,0,0,1" Padding="10,6">
+                                                    <ContentPresenter />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="BuffRow" Property="Background" Value="#8A17354D" />
+                                                        <Setter TargetName="BuffRow" Property="BorderBrush" Value="#8F72E8" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="BuffRow" Property="Background" Value="#6916384D" /></Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Height="40">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="64" /><ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="88" /><ColumnDefinition Width="82" />
+                                            <ColumnDefinition Width="120" /><ColumnDefinition Width="86" />
+                                            <ColumnDefinition Width="52" />
+                                        </Grid.ColumnDefinitions>
+                                        <ToggleButton Style="{StaticResource BuffToggle}" IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                                                      VerticalAlignment="Center" Click="BuffRuleToggle_Click" />
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Image Source="{Binding Icon}" Width="18" Height="18" Margin="0,0,7,0"
+                                                       RenderOptions.BitmapScalingMode="NearestNeighbor"
+                                                       SnapsToDevicePixels="True">
+                                                    <Image.Style>
+                                                        <Style TargetType="Image">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Image.Style>
+                                                </Image>
+                                                <TextBlock Text="{Binding SpellName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding TargetSummary}" FontSize="9" Foreground="#66879D" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" Text="{Binding DurationText}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="3" Text="{Binding CastTimeText, StringFormat={}{0} sec}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="#A9C3D3" />
+                                        <TextBlock Grid.Column="4" Text="{Binding AlertSummary}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="#B9A7FF" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="5" Text="{Binding StatusText}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#7899AD" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsActive}" Value="True"><Setter Property="Foreground" Value="#39E0CC" /></DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsExpiringSoon}" Value="True"><Setter Property="Foreground" Value="#FFBD57" /></DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <StackPanel Grid.Column="6" Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <Button Content="&#xE74D;" FontFamily="Segoe MDL2 Assets" Width="31" Height="29" Padding="0"
+                                                    Tag="{Binding}" Click="DeleteBuffRule_Click" ToolTip="Delete tracked buff" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <TextBlock Grid.Row="4" Text="Add as many spell timers as you need. Recasting a tracked spell resets its timer."
+                                   Foreground="#66879D" FontSize="10" VerticalAlignment="Bottom" />
+                    </Grid>
+                </Border>
+
+                <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource GlassCard}" Padding="16,12"
+                        Visibility="{Binding IsChecked, ElementName=BuffsSpellTab, Converter={StaticResource BooleanToVisibility}}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="44" /><RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel>
+                                <TextBlock Text="BUFF DETAILS" Style="{StaticResource SectionLabel}" FontSize="15" />
+                                <Rectangle Height="2" Width="92" Fill="#7658E2" HorizontalAlignment="Left" Margin="0,7,0,0" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1" Margin="0,8,0,0">
+                                <TextBlock Text="Spell Name" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="34" Height="34" CornerRadius="6" Background="#152F43"
+                                            BorderBrush="#416A83" BorderThickness="1" Margin="0,0,8,0"
+                                            VerticalAlignment="Center">
+                                        <Image Source="{Binding SelectedBuffRule.Icon}" Width="28" Height="28"
+                                               RenderOptions.BitmapScalingMode="NearestNeighbor"
+                                               SnapsToDevicePixels="True" />
+                                    </Border>
+                                    <TextBox Grid.Column="1" Style="{StaticResource BuffInput}"
+                                             Text="{Binding SelectedBuffRule.SpellName, UpdateSourceTrigger=PropertyChanged}"
+                                             Tag="{Binding SelectedBuffRule}"
+                                             LostFocus="BuffSpellName_LostFocus"
+                                             ToolTip="Spell names are checked against the installed EverQuest Legends spell data" />
+                                </Grid>
+                                <TextBlock Text="{Binding SelectedBuffRule.SpellValidationText}" Foreground="#FF8B91"
+                                           FontSize="10" Margin="0,4,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <Grid Grid.Row="2" Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Duration (m:ss)" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
+                                    <TextBox Style="{StaticResource BuffInput}" Text="{Binding SelectedBuffRule.DurationText, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="Cast Time (seconds)" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
+                                    <TextBox Style="{StaticResource BuffInput}" Text="{Binding SelectedBuffRule.CastTimeText, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid Grid.Row="3" Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Track this buff" FontWeight="SemiBold" />
+                                    <TextBlock Text="Start or reset the timer when the spell is cast" Foreground="#66879D" FontSize="10" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource BuffToggle}"
+                                              IsChecked="{Binding SelectedBuffRule.IsEnabled, Mode=TwoWay}"
+                                              Click="BuffRuleToggle_Click" />
+                            </Grid>
+
+                            <Grid Grid.Row="4" Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Show in Buff Overlay" FontWeight="SemiBold" />
+                                    <TextBlock Text="Display the timer in the separate overlay window" Foreground="#66879D" FontSize="10" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource BuffToggle}"
+                                              IsChecked="{Binding SelectedBuffRule.ShowInOverlay, Mode=TwoWay}"
+                                              Click="BuffRuleToggle_Click" />
+                            </Grid>
+
+                            <Grid Grid.Row="5" Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="20" /><ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Track Targets" FontWeight="SemiBold" />
+                                    <TextBlock Text="Choose self, other players, or both" Foreground="#66879D" FontSize="10" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="Self" VerticalAlignment="Center" Margin="0,0,7,0" Foreground="#39E0CC" FontWeight="SemiBold" />
+                                    <ToggleButton Style="{StaticResource BuffToggle}"
+                                                  IsChecked="{Binding SelectedBuffRule.TrackSelf, Mode=TwoWay}"
+                                                  Click="BuffRuleToggle_Click" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="Others" VerticalAlignment="Center" Margin="0,0,7,0" Foreground="#72B8FF" FontWeight="SemiBold" />
+                                    <ToggleButton Style="{StaticResource BuffToggle}"
+                                                  IsChecked="{Binding SelectedBuffRule.TrackOthers, Mode=TwoWay}"
+                                                  Click="BuffRuleToggle_Click" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid Grid.Row="6" Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Alert Type" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
+                                    <ComboBox Style="{StaticResource BuffCombo}" ItemsSource="{Binding BuffAlertModes}"
+                                              SelectedItem="{Binding SelectedBuffRule.AlertMode, Mode=TwoWay}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="Sound" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
+                                    <ComboBox Style="{StaticResource BuffCombo}" ItemsSource="{Binding BuffSoundChoices}"
+                                              SelectedItem="{Binding SelectedBuffRule.Sound, Mode=TwoWay}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <StackPanel Grid.Row="7" Margin="0,14,0,0">
+                                <TextBlock Text="Voice Text" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
+                                <TextBox Style="{StaticResource BuffInput}" Text="{Binding SelectedBuffRule.VoiceText, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="Text spoken by the installed Windows voice when this buff expires" />
+                            </StackPanel>
+
+                            <Border Grid.Row="8" Style="{StaticResource InnerCard}" Margin="0,14,0,0" Padding="10,8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="LIVE STATUS" Style="{StaticResource MetricLabel}" />
+                                        <TextBlock Text="{Binding SelectedBuffRule.StatusText}" FontWeight="SemiBold" Foreground="#2FD8C7" Margin="0,3,0,0" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedBuffRule.RemainingText}" FontSize="22" FontWeight="SemiBold"
+                                               Foreground="#A98BFF" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+
+                            <Grid Grid.Row="9" Margin="0,16,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="8" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Button Content="Test Alert" Click="TestBuffAlert_Click" />
+                                <Button Grid.Column="2" Content="Save Buff" Background="#684CC0" BorderBrush="#A98BFF" Click="SaveBuffRules_Click" />
+                            </Grid>
+                        </Grid>
+                    </ScrollViewer>
+                </Border>
+
+                <controls:SpellRuleEditor Grid.Row="1" Grid.ColumnSpan="3" DataContext="{Binding DotSpellTracker}"
+                        OverlayRequested="DotOverlay_Requested"
+                        Visibility="{Binding IsChecked, ElementName=DotsSpellTab, Converter={StaticResource BooleanToVisibility}}" />
+
+                <controls:SpellRuleEditor Grid.Row="1" Grid.ColumnSpan="3" DataContext="{Binding ControlSpellTracker}"
+                        OverlayRequested="ControlOverlay_Requested"
+                        Visibility="{Binding IsChecked, ElementName=ControlSpellTab, Converter={StaticResource BooleanToVisibility}}" />
+            </Grid>
+
             <!-- Horizontal encounter history -->
-            <Border Grid.Row="4" Style="{StaticResource GlassCard}" Padding="14,10,14,6">
+            <Border Grid.Row="4" Style="{StaticResource GlassCard}" Padding="14,10,14,6"
+                    Visibility="{Binding IsChecked, ElementName=DpsParserButton, Converter={StaticResource BooleanToVisibility}}">
                 <Grid>
                     <Grid.RowDefinitions><RowDefinition Height="26" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                     <Grid>

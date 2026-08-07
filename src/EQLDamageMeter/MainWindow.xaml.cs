@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using EQLDamageMeter.ViewModels;
 using Microsoft.Win32;
 
@@ -8,6 +9,9 @@ public partial class MainWindow : Window, IAsyncDisposable
 {
     private readonly MainViewModel _viewModel = new();
     private OverlayWindow? _overlay;
+    private BuffOverlayWindow? _buffOverlay;
+    private SpellEffectOverlayWindow? _dotOverlay;
+    private SpellEffectOverlayWindow? _controlOverlay;
 
     public MainWindow()
     {
@@ -54,6 +58,77 @@ public partial class MainWindow : Window, IAsyncDisposable
         _overlay.Show();
     }
 
+    private void ToggleBuffOverlay_Click(object sender, RoutedEventArgs e)
+    {
+        if (_buffOverlay is { IsVisible: true })
+        {
+            _buffOverlay.Close();
+            return;
+        }
+
+        _buffOverlay = new BuffOverlayWindow { DataContext = _viewModel, Owner = this };
+        _buffOverlay.Closed += (_, _) => _buffOverlay = null;
+        _buffOverlay.Show();
+    }
+
+    private void DotOverlay_Requested(object sender, RoutedEventArgs e) =>
+        ToggleSpellOverlay(ref _dotOverlay, _viewModel.DotSpellTracker);
+
+    private void ControlOverlay_Requested(object sender, RoutedEventArgs e) =>
+        ToggleSpellOverlay(ref _controlOverlay, _viewModel.ControlSpellTracker);
+
+    private void ToggleSpellOverlay(ref SpellEffectOverlayWindow? overlay, object dataContext)
+    {
+        if (overlay is { IsVisible: true })
+        {
+            overlay.Close();
+            return;
+        }
+        var window = new SpellEffectOverlayWindow { DataContext = dataContext, Owner = this };
+        overlay = window;
+        window.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_dotOverlay, window)) _dotOverlay = null;
+            if (ReferenceEquals(_controlOverlay, window)) _controlOverlay = null;
+        };
+        window.Show();
+    }
+
+    private void AddBuffRule_Click(object sender, RoutedEventArgs e) => _viewModel.AddBuffRule();
+
+    private async void DeleteBuffRule_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: BuffRuleViewModel rule }) return;
+        var result = MessageBox.Show(this, $"Delete the tracking rule for {rule.SpellName}?",
+            "Delete buff", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (result != MessageBoxResult.Yes) return;
+        ShowBuffError(await _viewModel.DeleteBuffRuleAsync(rule));
+    }
+
+    private async void BuffRuleToggle_Click(object sender, RoutedEventArgs e) =>
+        ShowBuffError(await _viewModel.SaveBuffRulesAsync());
+
+    private async void SaveBuffRules_Click(object sender, RoutedEventArgs e) =>
+        ShowBuffError(await _viewModel.SaveBuffRulesAsync());
+
+    private void TestBuffAlert_Click(object sender, RoutedEventArgs e) =>
+        ShowBuffError(_viewModel.TestSelectedBuffAlert());
+
+    private void BuffSpellName_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox { Tag: BuffRuleViewModel rule }) _viewModel.ValidateBuffSpell(rule);
+    }
+
+    private void ShowAllBuffs_Checked(object sender, RoutedEventArgs e) => _viewModel.SetBuffFilter("All");
+    private void ShowEnabledBuffs_Checked(object sender, RoutedEventArgs e) => _viewModel.SetBuffFilter("Enabled");
+    private void ShowDisabledBuffs_Checked(object sender, RoutedEventArgs e) => _viewModel.SetBuffFilter("Disabled");
+
+    private void ShowBuffError(string? error)
+    {
+        if (error is not null)
+            MessageBox.Show(this, error, "Spell Tracker", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
     private void ShowOffense_Click(object sender, RoutedEventArgs e) => _viewModel.ShowOffense();
 
     private void ShowDefense_Click(object sender, RoutedEventArgs e) => _viewModel.ShowDefense();
@@ -63,6 +138,9 @@ public partial class MainWindow : Window, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _overlay?.Close();
+        _buffOverlay?.Close();
+        _dotOverlay?.Close();
+        _controlOverlay?.Close();
         await _viewModel.DisposeAsync();
         GC.SuppressFinalize(this);
     }

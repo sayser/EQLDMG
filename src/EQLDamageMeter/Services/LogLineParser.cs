@@ -59,8 +59,11 @@ public sealed class LogLineParser(string localPlayerName)
         @"^(?<source>.+?) healed (?<target>.+?)(?: (?<hot>over time))? for (?<amount>\d+)(?: \((?<potential>\d+)\))? hit points\." + Flags,
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    // "frenzy" is the one attack whose verb carries a preposition ("tries to frenzy
+    // on a kobold"), so it must be matched before the single-word verb alternative
+    // or the preposition is captured as part of the defender's name.
     private static readonly Regex MissedAttack = new(
-        @"^(?<source>.+?) (?:try|tries) to (?<ability>\S+) (?<target>.+?), but (?<result>.+?)!(?<flags>(?: \([^)]+\))*)$",
+        @"^(?<source>.+?) (?:try|tries) to (?<ability>frenzies on|frenzy on|\S+) (?<target>.+?), but (?<result>.+?)!(?<flags>(?: \([^)]+\))*)$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly Regex LocalFizzle = new(
@@ -87,9 +90,26 @@ public sealed class LogLineParser(string localPlayerName)
         @"^(?<target>.+?)(?:'|`|\u2019)s magical skin absorbs the damage of (?:(?<self>YOUR)|(?<source>.+?)(?:'|`|\u2019)s) (?<ability>thorns|flames|frost)\.$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    // Stun lines name the effect but never the caster, so the source is left empty
+    // for the encounter tracker to infer from the cast that preceded it.
+    private static readonly Regex Stunned = new(
+        @"^(?<target>.+?) (?:is|are) stunned(?: by (?<ability>.+?))?[.!]$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex StunDiminished = new(
+        @"^Your target has been stunned too recently for your stun to have full effect\.$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     private static readonly Regex ProtectedFromSpell = new(
         @"^(?<source>.+?) (?:try|tries) to cast a spell on (?<target>.+?), but (?<targetAgain>.+?) (?:is|are) protected\.$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// Ability name given to a "tries to cast a spell on ..., but ... is protected"
+    /// outcome. The game emits that line for blocked beneficial spells as well as
+    /// hostile ones, so consumers must qualify it before treating it as mitigation.
+    /// </summary>
+    public const string ProtectedSpellAbility = "Protected Spell";
 
     public string LocalPlayerName { get; } = localPlayerName;
 
@@ -97,9 +117,11 @@ public sealed class LogLineParser(string localPlayerName)
     {
         parsed = null;
         if (!TryParseEnvelope(line, out var timestamp, out var message)) return false;
+        // A single message is never more than one kind of event, so each classifier
+        // is skipped once an earlier one has claimed the line.
         var damage = ParseDamage(timestamp, message);
-        var healing = ParseHealing(timestamp, message);
-        var outcome = ParseOutcome(timestamp, message);
+        var healing = damage is null ? ParseHealing(timestamp, message) : null;
+        var outcome = damage is null && healing is null ? ParseOutcome(timestamp, message) : null;
         parsed = new ParsedLogLine(timestamp, message, damage, healing, outcome);
         return true;
     }
@@ -119,6 +141,7 @@ public sealed class LogLineParser(string localPlayerName)
 
     private HealingEvent? ParseHealing(DateTime timestamp, string message)
     {
+        if (!message.Contains(" healed ", StringComparison.OrdinalIgnoreCase)) return null;
         var match = Healing.Match(message);
         var ability = match.Success ? match.Groups["ability"].Value : "Unspecified Healing";
         if (!match.Success)
@@ -146,14 +169,40 @@ public sealed class LogLineParser(string localPlayerName)
     private CombatOutcomeEvent? ParseOutcome(DateTime timestamp, string message)
     {
         Match match;
-        if ((match = ProtectedFromSpell.Match(message)).Success)
+        var hasFailureClause = message.Contains(", but ", StringComparison.OrdinalIgnoreCase);
+        var hasStun = message.Contains("stun", StringComparison.OrdinalIgnoreCase);
+        if (!hasFailureClause && !hasStun &&
+            !message.Contains("fizzles!", StringComparison.OrdinalIgnoreCase) &&
+            !message.Contains("resist", StringComparison.OrdinalIgnoreCase) &&
+            !message.Contains("absorbs ", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        if (hasStun)
+        {
+            if (StunDiminished.IsMatch(message))
+            {
+                return new CombatOutcomeEvent(timestamp, LocalPlayerName, null, "Stun",
+                    CombatOutcomeKind.StunDiminished);
+            }
+
+            if ((match = Stunned.Match(message)).Success)
+            {
+                var stunAbility = match.Groups["ability"].Success ? match.Groups["ability"].Value : "Stun";
+                return new CombatOutcomeEvent(timestamp, string.Empty,
+                    NormalizeTarget(match.Groups["target"].Value), stunAbility, CombatOutcomeKind.StunApplied);
+            }
+        }
+
+        if (hasFailureClause && (match = ProtectedFromSpell.Match(message)).Success)
         {
             return new CombatOutcomeEvent(timestamp, NormalizeSource(match.Groups["source"].Value),
-                NormalizeTarget(match.Groups["target"].Value), "Protected Spell",
+                NormalizeTarget(match.Groups["target"].Value), ProtectedSpellAbility,
                 CombatOutcomeKind.DefensiveSpellAbsorb);
         }
 
-        if ((match = MissedAttack.Match(message)).Success)
+        if (hasFailureClause && (match = MissedAttack.Match(message)).Success)
         {
             var source = NormalizeSource(match.Groups["source"].Value);
             var target = NormalizeTarget(match.Groups["target"].Value);
@@ -216,25 +265,42 @@ public sealed class LogLineParser(string localPlayerName)
 
     private DamageEvent? ParseDamage(DateTime timestamp, string message)
     {
+        // Every damage form quantifies an amount, and the two families are told apart
+        // by "... has taken N ..." versus "... for N ...". Splitting on those literals
+        // keeps chat and system chatter away from nine backtracking patterns, and the
+        // patterns within each family run most-frequent-first.
+        if (!ContainsDigit(message)) return null;
+
         Match match;
+        if (message.Contains(" taken ", StringComparison.OrdinalIgnoreCase))
+        {
+            if ((match = DamageOverTimeByYou.Match(message)).Success)
+            {
+                return Create(timestamp, match, LocalPlayerName, DamageCategory.DamageOverTime);
+            }
+
+            if ((match = DamageOverTimeByActor.Match(message)).Success)
+            {
+                return Create(timestamp, match, match.Groups["source"].Value, DamageCategory.DamageOverTime);
+            }
+
+            if ((match = UnattributedDamageOverTime.Match(message)).Success)
+            {
+                return Create(timestamp, match, UnattributedDamageOverTimeSource, DamageCategory.DamageOverTime);
+            }
+        }
+
+        if (!message.Contains(" for ", StringComparison.OrdinalIgnoreCase)) return null;
+
+        if ((match = Direct.Match(message)).Success)
+        {
+            return Create(timestamp, match, match.Groups["source"].Value, DamageCategory.Melee,
+                NormalizeMeleeAbility(match.Groups["ability"].Value));
+        }
+
         if ((match = NamedSpell.Match(message)).Success)
         {
             return Create(timestamp, match, match.Groups["source"].Value, DamageCategory.Spell);
-        }
-
-        if ((match = DamageOverTimeByYou.Match(message)).Success)
-        {
-            return Create(timestamp, match, LocalPlayerName, DamageCategory.DamageOverTime);
-        }
-
-        if ((match = DamageOverTimeByActor.Match(message)).Success)
-        {
-            return Create(timestamp, match, match.Groups["source"].Value, DamageCategory.DamageOverTime);
-        }
-
-        if ((match = UnattributedDamageOverTime.Match(message)).Success)
-        {
-            return Create(timestamp, match, UnattributedDamageOverTimeSource, DamageCategory.DamageOverTime);
         }
 
         if ((match = Thorns.Match(message)).Success)
@@ -260,12 +326,6 @@ public sealed class LogLineParser(string localPlayerName)
             return Create(timestamp, match, UnattributedNonMeleeSource, DamageCategory.Spell, "Non-melee");
         }
 
-        if ((match = Direct.Match(message)).Success)
-        {
-            return Create(timestamp, match, match.Groups["source"].Value, DamageCategory.Melee,
-                NormalizeMeleeAbility(match.Groups["ability"].Value));
-        }
-
         return null;
     }
 
@@ -288,6 +348,16 @@ public sealed class LogLineParser(string localPlayerName)
 
     private string NormalizeTarget(string target) =>
         target.Equals("You", StringComparison.OrdinalIgnoreCase) ? LocalPlayerName : target;
+
+    private static bool ContainsDigit(string value)
+    {
+        foreach (var character in value)
+        {
+            if (character is >= '0' and <= '9') return true;
+        }
+
+        return false;
+    }
 
     private static bool IsCritical(Match match) =>
         match.Groups["flags"].Value.Contains("Critical", StringComparison.OrdinalIgnoreCase);

@@ -15,6 +15,11 @@ settings.json
 Diagnostics/
 *.log
 
+# Local diagnostic / replay dumps
+live*.txt
+*_out.txt
+audit*.txt
+
 # Release packages
 *.zip
 

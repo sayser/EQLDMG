@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
 using EQLDamageMeter.Models;
@@ -27,6 +29,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly SemaphoreSlim _parsedQueueSlots = new(MaxQueuedParsedLines, MaxQueuedParsedLines);
     private readonly SemaphoreSlim _loadGate = new(1, 1);
     private readonly CancellationTokenSource _lifetimeCancellation = new();
+    private readonly BuffTracker _buffTracker = new();
+    private readonly BuffAlertService _buffAlertService = new();
+    private SpellDataCatalog? _spellDataCatalog;
     private LogFileMonitor? _monitor;
     private LogLineParser? _parser;
     private GroupStateTracker? _group;
@@ -50,6 +55,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private EncounterHistoryViewModel? _renderedHistory;
     private bool _combinePetDamage;
     private bool _isPetDamageExpanded;
+    private BuffRuleViewModel? _selectedBuffRule;
+    private string _buffSearchText = string.Empty;
+    private string _buffFilterMode = "All";
+    private SpellIconStyle _spellIconStyle = SpellIconStyle.Modern;
     private int _parseGeneration;
     private int _drainScheduled;
     private bool _disposed;
@@ -58,11 +67,74 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         _dispatcher = Application.Current.Dispatcher;
         _refreshTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(400), DispatcherPriority.Background,
-            (_, _) => RefreshDisplay(), _dispatcher);
+            (_, _) => OnRefreshTimer(), _dispatcher);
+        _spellIconStyle = AppSettingsStore.TryLoadSpellIconStyle();
+
+        foreach (var settings in AppSettingsStore.TryLoadBuffRules())
+            BuffRules.Add(new BuffRuleViewModel(settings));
+        DotSpellTracker = new SpellRuleSetViewModel(SpellTrackerCategory.DamageOverTime,
+            AppSettingsStore.TryLoadDotRules(), () => _spellDataCatalog,
+            AppSettingsStore.TrySaveDotRulesAsync, _buffAlertService);
+        ControlSpellTracker = new SpellRuleSetViewModel(SpellTrackerCategory.Control,
+            AppSettingsStore.TryLoadControlRules(), () => _spellDataCatalog,
+            AppSettingsStore.TrySaveControlRulesAsync, _buffAlertService);
+        _buffTracker.PreserveBuffTargetOnDeath = (target, timestamp) =>
+            ControlSpellTracker.HasActiveCharmTarget(target, timestamp);
+        BuffRulesView = CollectionViewSource.GetDefaultView(BuffRules);
+        BuffRulesView.Filter = FilterBuffRule;
+        ApplyBuffConfiguration();
+        SelectedBuffRule = BuffRules.FirstOrDefault();
     }
 
     public ObservableCollection<CombatantViewModel> Combatants { get; } = [];
     public ObservableCollection<EncounterHistoryViewModel> EncounterHistory { get; } = [];
+    public ObservableCollection<BuffRuleViewModel> BuffRules { get; } = [];
+    public ObservableCollection<BuffOverlayEntryViewModel> OverlayBuffEntries { get; } = [];
+    public ICollectionView BuffRulesView { get; }
+    public IReadOnlyList<BuffAlertMode> BuffAlertModes { get; } = Enum.GetValues<BuffAlertMode>();
+    public IReadOnlyList<BuffSoundKind> BuffSoundChoices { get; } = Enum.GetValues<BuffSoundKind>();
+    public SpellRuleSetViewModel DotSpellTracker { get; }
+    public SpellRuleSetViewModel ControlSpellTracker { get; }
+
+    public bool UseModernSpellIcons
+    {
+        get => _spellIconStyle == SpellIconStyle.Modern;
+        set
+        {
+            var style = value ? SpellIconStyle.Modern : SpellIconStyle.Classic;
+            if (_spellIconStyle == style) return;
+            _spellIconStyle = style;
+            RaisePropertyChanged();
+            ApplySpellIconStyle();
+            _ = AppSettingsStore.TrySaveSpellIconStyleAsync(style);
+        }
+    }
+
+    public BuffRuleViewModel? SelectedBuffRule
+    {
+        get => _selectedBuffRule;
+        set => SetProperty(ref _selectedBuffRule, value);
+    }
+
+    public string BuffSearchText
+    {
+        get => _buffSearchText;
+        set
+        {
+            if (!SetProperty(ref _buffSearchText, value)) return;
+            BuffRulesView.Refresh();
+        }
+    }
+
+    public string BuffFilterMode
+    {
+        get => _buffFilterMode;
+        private set
+        {
+            if (!SetProperty(ref _buffFilterMode, value)) return;
+            BuffRulesView.Refresh();
+        }
+    }
 
     public CombatantViewModel? SelectedCombatant
     {
@@ -181,6 +253,90 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public void ShowDefense() => SetBreakdownMode(BreakdownMode.Defense);
     public void ShowHealing() => SetBreakdownMode(BreakdownMode.Healing);
 
+    public void SetBuffFilter(string mode) => BuffFilterMode = mode;
+
+    public BuffRuleViewModel AddBuffRule()
+    {
+        var rule = new BuffRuleViewModel(new BuffRuleSettings(Guid.NewGuid(), string.Empty, 9 * 60 + 6, 3.4,
+            true, false, BuffAlertMode.Both, BuffSoundKind.Chime, string.Empty));
+        BuffRules.Add(rule);
+        SelectedBuffRule = rule;
+        BuffFilterMode = "All";
+        BuffRulesView.Refresh();
+        return rule;
+    }
+
+    public async Task<string?> DeleteBuffRuleAsync(BuffRuleViewModel rule)
+    {
+        BuffRules.Remove(rule);
+        if (ReferenceEquals(SelectedBuffRule, rule)) SelectedBuffRule = BuffRules.FirstOrDefault();
+        return await SaveBuffRulesAsync();
+    }
+
+    public async Task<string?> SaveBuffRulesAsync()
+    {
+        var settings = new List<BuffRuleSettings>(BuffRules.Count);
+        foreach (var rule in BuffRules)
+        {
+            if (!rule.TryCreateSettings(out var configured, out var error))
+            {
+                SelectedBuffRule = rule;
+                var displayName = string.IsNullOrWhiteSpace(rule.SpellName) ? "New buff" : rule.SpellName;
+                return $"{displayName}: {error}";
+            }
+            if (!TryResolveSpell(rule.SpellName, out var spell, out error))
+            {
+                SelectedBuffRule = rule;
+                rule.SetSpellValidation(error);
+                return error;
+            }
+            rule.SpellName = spell!.Name;
+            rule.SetSpellValidation(null);
+            rule.SetIcon(_spellDataCatalog?.GetIcon(spell));
+            settings.Add(configured! with { SpellName = spell.Name });
+        }
+
+        var duplicate = settings.GroupBy(rule => rule.SpellName, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(group => group.Count() > 1);
+        if (duplicate is not null) return $"Only one tracking rule can use the spell name {duplicate.Key}.";
+
+        _buffTracker.Configure(settings, ResolveFadeMessages, ResolveSelfAppliedMessages,
+            ResolveOtherAppliedMessages);
+        RefreshBuffRuleIcons();
+        RefreshOverlayEntries(DateTime.Now);
+        BuffRulesView.Refresh();
+        return await AppSettingsStore.TrySaveBuffRulesAsync(settings)
+            ? null
+            : "Buff rules could not be saved beside the app. Check that the app folder is writable.";
+    }
+
+    public string? TestSelectedBuffAlert()
+    {
+        if (SelectedBuffRule is null) return "Select a buff first.";
+        if (!SelectedBuffRule.TryCreateSettings(out var settings, out var error)) return error;
+        _buffAlertService.Test(settings!);
+        return null;
+    }
+
+    public string? ValidateBuffSpell(BuffRuleViewModel? rule)
+    {
+        if (rule is null) return null;
+        if (string.IsNullOrWhiteSpace(rule.SpellName))
+        {
+            rule.SetSpellValidation("Enter a spell name.");
+            return "Enter a spell name.";
+        }
+        if (!TryResolveSpell(rule.SpellName, out var spell, out var error))
+        {
+            rule.SetSpellValidation(error);
+            return error;
+        }
+        rule.SpellName = spell!.Name;
+        rule.SetSpellValidation(null);
+        rule.SetIcon(_spellDataCatalog?.GetIcon(spell));
+        return null;
+    }
+
     private void SetBreakdownMode(BreakdownMode mode)
     {
         if (_breakdownMode == mode) return;
@@ -232,6 +388,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _parser = parser;
         _group = group;
         _encounter = new EncounterTracker(identity.Character);
+        _buffTracker.ClearRuntime();
+        DotSpellTracker.ClearRuntime();
+        ControlSpellTracker.ClearRuntime();
         EncounterHistory.Clear();
         _archivedStarts.Clear();
         _dataVersion++;
@@ -245,9 +404,16 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         LogMonitorStart liveStart;
         try
         {
+            var spellCatalogTask = Task.Run(() => SpellDataCatalog.TryLoadForLog(path, _spellIconStyle),
+                cancellationToken);
             liveStart = await LogFileMonitor.CaptureLiveStartAsync(path, cancellationToken);
-            await Task.Run(() => GroupContextRestorer.RestoreAsync(path, liveStart.ResumePosition,
+            var groupRestoreTask = Task.Run(() => GroupContextRestorer.RestoreAsync(path, liveStart.ResumePosition,
                 parser, group, cancellationToken), cancellationToken);
+            await Task.WhenAll(spellCatalogTask, groupRestoreTask);
+            _spellDataCatalog = await spellCatalogTask;
+            ApplyBuffConfiguration();
+            DotSpellTracker.RefreshConfiguration();
+            ControlSpellTracker.RefreshConfiguration();
         }
         catch (IOException)
         {
@@ -388,6 +554,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_group is null || _encounter is null) return;
 
+        _buffTracker.Observe(parsed.Timestamp, parsed.Message);
+        DotSpellTracker.Observe(parsed.Timestamp, parsed.Message);
+        ControlSpellTracker.Observe(parsed.Timestamp, parsed.Message);
+
         var priorStart = _encounter.StartedAt;
         var priorCompletionCandidate = _encounter.CompletionCandidateAt;
         var priorFinalized = _encounter.IsFinalized;
@@ -398,7 +568,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                                     eventTimestamp.Value - _encounter.CompletionCandidateAt.Value >=
                                     _encounter.KillCompletionGrace) || (_encounter.LastDamageAt.HasValue &&
                                     eventTimestamp.Value - _encounter.LastDamageAt.Value > _encounter.EncounterTimeout));
-        var priorSnapshot = mayStartNewEncounter
+        // The refresh timer usually archives a finished encounter before the next log
+        // line arrives, and Archive ignores a start that is already recorded, so
+        // cloning the aggregate again would be pure waste.
+        var priorSnapshot = mayStartNewEncounter && !_archivedStarts.Contains(priorStart!.Value)
             ? _encounter.CreateSnapshot(_encounter.CompletionCandidateAt ?? _encounter.LastDamageAt ?? parsed.Timestamp)
             : null;
 
@@ -505,6 +678,131 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _renderedHistory = history;
     }
 
+    private void OnRefreshTimer()
+    {
+        RefreshDisplay();
+        var now = DateTime.Now;
+        foreach (var alert in _buffTracker.Tick(now)) _buffAlertService.Play(alert.Rule);
+        foreach (var rule in BuffRules) rule.ApplyRuntime(_buffTracker.GetSnapshot(rule.Id, now));
+        RefreshOverlayEntries(now);
+        DotSpellTracker.Tick(now);
+        ControlSpellTracker.Tick(now);
+    }
+
+    private bool FilterBuffRule(object item)
+    {
+        if (item is not BuffRuleViewModel rule) return false;
+        if (!string.IsNullOrWhiteSpace(BuffSearchText) &&
+            !rule.SpellName.Contains(BuffSearchText.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        return BuffFilterMode switch
+        {
+            "Enabled" => rule.IsEnabled,
+            "Disabled" => !rule.IsEnabled,
+            _ => true
+        };
+    }
+
+    private void ApplyBuffConfiguration()
+    {
+        var settings = BuffRules.Select(rule => rule.TryCreateSettings(out var configured, out _)
+            ? configured
+            : null).OfType<BuffRuleSettings>().ToArray();
+        _buffTracker.Configure(settings, ResolveFadeMessages, ResolveSelfAppliedMessages,
+            ResolveOtherAppliedMessages);
+        RefreshBuffRuleIcons();
+        RefreshOverlayEntries(DateTime.Now);
+    }
+
+    private void RefreshBuffRuleIcons()
+    {
+        foreach (var rule in BuffRules)
+            rule.SetIcon(string.IsNullOrWhiteSpace(rule.SpellName) ? null : _spellDataCatalog?.GetIcon(rule.SpellName));
+    }
+
+    private void ApplySpellIconStyle()
+    {
+        _spellDataCatalog?.SetIconStyle(_spellIconStyle);
+        RefreshBuffRuleIcons();
+        OverlayBuffEntries.Clear();
+        RefreshOverlayEntries(DateTime.Now);
+        DotSpellTracker.RefreshIcons();
+        ControlSpellTracker.RefreshIcons();
+        _dataVersion++;
+        _renderedDataVersion = -1;
+        RefreshDisplay(force: true);
+    }
+
+    private IReadOnlyList<string> ResolveFadeMessages(string spellName) =>
+        _spellDataCatalog is not null && _spellDataCatalog.TryFind(spellName, out var spell)
+            ? spell!.FadeMessages
+            : [];
+
+    private IReadOnlyList<string> ResolveSelfAppliedMessages(string spellName) =>
+        _spellDataCatalog is not null && _spellDataCatalog.TryFind(spellName, out var spell)
+            ? spell!.SelfAppliedMessages
+            : [];
+
+    private IReadOnlyList<string> ResolveOtherAppliedMessages(string spellName) =>
+        _spellDataCatalog is not null && _spellDataCatalog.TryFind(spellName, out var spell)
+            ? spell!.OtherAppliedMessageSuffixes
+            : [];
+
+    private bool TryResolveSpell(string spellName, out SpellDataEntry? spell, out string error)
+    {
+        spell = null;
+        if (_spellDataCatalog is null)
+        {
+            error = "EverQuest Legends spell data is not available. Select the game's Logs folder and try again.";
+            return false;
+        }
+        if (_spellDataCatalog.TryFind(spellName, out spell))
+        {
+            error = string.Empty;
+            return true;
+        }
+
+        var suggestions = _spellDataCatalog.FindSuggestions(spellName);
+        var suggestionText = suggestions.Count == 0
+            ? string.Empty
+            : $" Did you mean {string.Join(", ", suggestions)}?";
+        error = $"Spell '{spellName.Trim()}' was not found in the installed EverQuest Legends spell data.{suggestionText}";
+        return false;
+    }
+
+    private void RefreshOverlayEntries(DateTime now)
+    {
+        var visibleIds = BuffRules.Where(rule => rule.IsEnabled && rule.ShowInOverlay)
+            .Select(rule => rule.Id).ToHashSet();
+        var snapshots = _buffTracker.GetActiveSnapshots(now)
+            .Where(snapshot => visibleIds.Contains(snapshot.RuleId)).ToArray();
+        var desiredKeys = snapshots.Select(BuffOverlayEntryViewModel.CreateKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var stale in OverlayBuffEntries.Where(entry => !desiredKeys.Contains(entry.InstanceKey)).ToArray())
+            OverlayBuffEntries.Remove(stale);
+
+        for (var index = 0; index < snapshots.Length; index++)
+        {
+            var snapshot = snapshots[index];
+            var key = BuffOverlayEntryViewModel.CreateKey(snapshot);
+            var entry = OverlayBuffEntries.FirstOrDefault(item =>
+                item.InstanceKey.Equals(key, StringComparison.OrdinalIgnoreCase));
+            if (entry is null)
+            {
+                var ruleIcon = BuffRules.FirstOrDefault(rule => rule.Id == snapshot.RuleId)?.Icon;
+                entry = new BuffOverlayEntryViewModel(snapshot,
+                    icon: ruleIcon ?? _spellDataCatalog?.GetIcon(snapshot.SpellName));
+                OverlayBuffEntries.Insert(Math.Min(index, OverlayBuffEntries.Count), entry);
+            }
+            else
+            {
+                entry.Update(snapshot);
+                var currentIndex = OverlayBuffEntries.IndexOf(entry);
+                if (currentIndex != index) OverlayBuffEntries.Move(currentIndex, index);
+            }
+        }
+    }
+
     private static CombatantAggregate[] CombinePetAggregates(CombatantAggregate[] aggregates)
     {
         var owners = aggregates.Where(item => string.IsNullOrWhiteSpace(item.OwnerName))
@@ -540,6 +838,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 Absorbed = owner.Absorbed + pets.Sum(pet => pet.Absorbed),
                 SpellAbsorbs = owner.SpellAbsorbs + pets.Sum(pet => pet.SpellAbsorbs),
                 IncomingSpellResists = owner.IncomingSpellResists + pets.Sum(pet => pet.IncomingSpellResists),
+                StunsLanded = owner.StunsLanded + pets.Sum(pet => pet.StunsLanded),
+                StunsTaken = owner.StunsTaken + pets.Sum(pet => pet.StunsTaken),
                 Healing = owner.Healing + pets.Sum(pet => pet.Healing),
                 PotentialHealing = owner.PotentialHealing + pets.Sum(pet => pet.PotentialHealing),
                 DirectHeals = owner.DirectHeals + pets.Sum(pet => pet.DirectHeals),
@@ -649,6 +949,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 Ripostes = aggregate.Ripostes, Absorbed = aggregate.Absorbed,
                 SpellAbsorbs = aggregate.SpellAbsorbs,
                 IncomingSpellResists = aggregate.IncomingSpellResists, Rank = index + 1,
+                StunsLanded = aggregate.StunsLanded, StunsTaken = aggregate.StunsTaken,
                 Healing = aggregate.Healing,
                 DirectHeals = aggregate.DirectHeals, HealOverTimeTicks = aggregate.HealOverTimeTicks,
                 CriticalHeals = aggregate.CriticalHeals,
@@ -663,7 +964,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                             ?? Combatants.FirstOrDefault();
     }
 
-    private static AbilityViewModel[] CreateAbilities(IEnumerable<AbilityAggregate> source, double seconds)
+    private AbilityViewModel[] CreateAbilities(IEnumerable<AbilityAggregate> source, double seconds)
     {
         var abilities = source.OrderByDescending(item => item.Damage).ToArray();
         var total = Math.Max(1, abilities.Sum(item => item.Damage));
@@ -672,6 +973,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             Name = ability.Name, Damage = ability.Damage, Dps = ability.Damage / Math.Max(1, seconds),
             Share = ability.Damage * 100d / total,
             Color = ChartBrushes[index % ChartBrushes.Length],
+            Icon = _spellDataCatalog?.GetAbilityIcon(ability.Name) ?? SpellIconAtlas.GenericIcon,
             IsPetSummary = ability.Children.Count > 0,
             Children = ability.Children.Count == 0
                 ? []

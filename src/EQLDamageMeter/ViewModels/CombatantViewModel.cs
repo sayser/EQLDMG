@@ -25,6 +25,8 @@ public sealed class CombatantViewModel
     public int Absorbed { get; init; }
     public int SpellAbsorbs { get; init; }
     public int IncomingSpellResists { get; init; }
+    public int StunsLanded { get; init; }
+    public int StunsTaken { get; init; }
     public long Healing { get; init; }
     public int DirectHeals { get; init; }
     public int HealOverTimeTicks { get; init; }
