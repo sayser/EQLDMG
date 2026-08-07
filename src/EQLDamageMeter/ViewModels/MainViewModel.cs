@@ -83,7 +83,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         BuffRulesView = CollectionViewSource.GetDefaultView(BuffRules);
         BuffRulesView.Filter = FilterBuffRule;
         ApplyBuffConfiguration();
-        SelectedBuffRule = BuffRules.FirstOrDefault();
     }
 
     public ObservableCollection<CombatantViewModel> Combatants { get; } = [];
@@ -269,7 +268,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public async Task<string?> DeleteBuffRuleAsync(BuffRuleViewModel rule)
     {
         BuffRules.Remove(rule);
-        if (ReferenceEquals(SelectedBuffRule, rule)) SelectedBuffRule = BuffRules.FirstOrDefault();
+        if (ReferenceEquals(SelectedBuffRule, rule)) SelectedBuffRule = null;
         return await SaveBuffRulesAsync();
     }
 
@@ -296,12 +295,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             settings.Add(configured! with { SpellName = spell.Name });
         }
 
-        var duplicate = settings.GroupBy(rule => rule.SpellName, StringComparer.OrdinalIgnoreCase)
+        var duplicate = settings.GroupBy(rule => SpellNameNormalizer.GetFamilyName(rule.SpellName),
+            StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1);
         if (duplicate is not null) return $"Only one tracking rule can use the spell name {duplicate.Key}.";
 
         _buffTracker.Configure(settings, ResolveFadeMessages, ResolveSelfAppliedMessages,
-            ResolveOtherAppliedMessages);
+            ResolveOtherAppliedMessages,
+            suffix => _spellDataCatalog?.IsAmbiguousOtherAppliedSuffix(suffix) == true);
         RefreshBuffRuleIcons();
         RefreshOverlayEntries(DateTime.Now);
         BuffRulesView.Refresh();
@@ -708,7 +709,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             ? configured
             : null).OfType<BuffRuleSettings>().ToArray();
         _buffTracker.Configure(settings, ResolveFadeMessages, ResolveSelfAppliedMessages,
-            ResolveOtherAppliedMessages);
+            ResolveOtherAppliedMessages,
+            suffix => _spellDataCatalog?.IsAmbiguousOtherAppliedSuffix(suffix) == true);
         RefreshBuffRuleIcons();
         RefreshOverlayEntries(DateTime.Now);
     }
@@ -733,17 +735,17 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     private IReadOnlyList<string> ResolveFadeMessages(string spellName) =>
-        _spellDataCatalog is not null && _spellDataCatalog.TryFind(spellName, out var spell)
+        _spellDataCatalog is not null && _spellDataCatalog.TryResolveFamily(spellName, out var spell)
             ? spell!.FadeMessages
             : [];
 
     private IReadOnlyList<string> ResolveSelfAppliedMessages(string spellName) =>
-        _spellDataCatalog is not null && _spellDataCatalog.TryFind(spellName, out var spell)
+        _spellDataCatalog is not null && _spellDataCatalog.TryResolveFamily(spellName, out var spell)
             ? spell!.SelfAppliedMessages
             : [];
 
     private IReadOnlyList<string> ResolveOtherAppliedMessages(string spellName) =>
-        _spellDataCatalog is not null && _spellDataCatalog.TryFind(spellName, out var spell)
+        _spellDataCatalog is not null && _spellDataCatalog.TryResolveFamily(spellName, out var spell)
             ? spell!.OtherAppliedMessageSuffixes
             : [];
 
@@ -755,7 +757,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             error = "EverQuest Legends spell data is not available. Select the game's Logs folder and try again.";
             return false;
         }
-        if (_spellDataCatalog.TryFind(spellName, out spell))
+        if (_spellDataCatalog.TryResolveFamily(spellName, out spell))
         {
             error = string.Empty;
             return true;

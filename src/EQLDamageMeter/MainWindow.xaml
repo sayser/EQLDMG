@@ -350,9 +350,7 @@
                                 </StackPanel>
                             </Border>
                         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center">
-                            <Button Content="Overlay" Padding="10,6" Margin="0,0,6,0" Click="ToggleOverlay_Click" />
-                            <Button Content="Logs" Padding="10,6" Margin="0,0,6,0" Click="ChooseLogs_Click" />
-                            <Button Content="Reset" Padding="12,6" Click="ResetEncounter_Click" />
+                            <Button Content="Logs" Padding="12,6" Click="ChooseLogs_Click" />
                         </StackPanel>
                     </Grid>
 
@@ -420,11 +418,17 @@
                                     <TextBlock Text="Current encounter" Foreground="#66879D" FontSize="10" Margin="0,3,0,0" />
                                 </StackPanel>
                             </StackPanel>
-                            <CheckBox Content="Combine pet DPS with owner"
-                                      IsChecked="{Binding CombinePetDamage, Mode=TwoWay}"
-                                      HorizontalAlignment="Right" VerticalAlignment="Center"
-                                      Foreground="#C8DEEA" FontSize="11" Margin="0,0,4,0"
-                                      ToolTip="Combine regular and charmed pet damage into the owner's DPS row" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <CheckBox Content="Combine pet DPS with owner"
+                                          IsChecked="{Binding CombinePetDamage, Mode=TwoWay}"
+                                          VerticalAlignment="Center"
+                                          Foreground="#C8DEEA" FontSize="11" Margin="0,0,12,0"
+                                          ToolTip="Combine regular and charmed pet damage into the owner's DPS row" />
+                                <Button Content="Overlay" Padding="10,6" Margin="0,0,6,0" Click="ToggleOverlay_Click"
+                                        ToolTip="Open the DPS ranking overlay window" />
+                                <Button Content="Reset" Padding="12,6" Click="ResetEncounter_Click"
+                                        ToolTip="Reset the current DPS encounter" />
+                            </StackPanel>
                         </Grid>
 
                         <ListBox Grid.Row="1" ItemsSource="{Binding Combatants}" SelectedItem="{Binding SelectedCombatant}"
@@ -919,7 +923,36 @@
 
                 <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource GlassCard}" Padding="16,12"
                         Visibility="{Binding IsChecked, ElementName=BuffsSpellTab, Converter={StaticResource BooleanToVisibility}}">
+                    <Grid>
+                        <StackPanel VerticalAlignment="Center" Margin="12,0">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedBuffRule}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <TextBlock Text="BUFF DETAILS" Style="{StaticResource SectionLabel}" FontSize="15"
+                                       HorizontalAlignment="Center" />
+                            <Rectangle Height="2" Width="92" Fill="#7658E2" HorizontalAlignment="Center" Margin="0,7,0,14" />
+                            <TextBlock Text="Select a buff or click + Add Buff to view details."
+                                       Foreground="#66879D" FontSize="12" TextAlignment="Center"
+                                       TextWrapping="Wrap" HorizontalAlignment="Center" />
+                        </StackPanel>
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ScrollViewer.Style>
+                            <Style TargetType="ScrollViewer">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedBuffRule}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ScrollViewer.Style>
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="44" /><RowDefinition Height="Auto" />
@@ -1054,6 +1087,7 @@
                             </Grid>
                         </Grid>
                     </ScrollViewer>
+                    </Grid>
                 </Border>
 
                 <controls:SpellRuleEditor Grid.Row="1" Grid.ColumnSpan="3" DataContext="{Binding DotSpellTracker}"

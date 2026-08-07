@@ -36,7 +36,6 @@ public sealed class SpellRuleSetViewModel : ObservableObject
             }));
         RulesView = CollectionViewSource.GetDefaultView(Rules);
         RulesView.Filter = FilterRule;
-        SelectedRule = Rules.FirstOrDefault();
         RefreshConfiguration();
     }
 
@@ -46,6 +45,9 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     public string DetailsTitle => _category == SpellTrackerCategory.Control ? "CONTROL DETAILS" : "DoT DETAILS";
     public string AddLabel => _category == SpellTrackerCategory.Control ? "+ Add Control" : "+ Add DoT";
     public string OverlayLabel => _category == SpellTrackerCategory.Control ? "Control Overlay" : "DoT Overlay";
+    public string EmptyDetailsHint => _category == SpellTrackerCategory.Control
+        ? "Select a control spell or click + Add Control to view details."
+        : "Select a DoT or click + Add DoT to view details.";
     public bool IsControl => _category == SpellTrackerCategory.Control;
     public ObservableCollection<BuffRuleViewModel> Rules { get; } = [];
     public ObservableCollection<BuffOverlayEntryViewModel> OverlayEntries { get; } = [];
@@ -92,7 +94,7 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     public async Task<string?> DeleteRuleAsync(BuffRuleViewModel rule)
     {
         Rules.Remove(rule);
-        if (ReferenceEquals(SelectedRule, rule)) SelectedRule = Rules.FirstOrDefault();
+        if (ReferenceEquals(SelectedRule, rule)) SelectedRule = null;
         return await SaveAsync();
     }
 
@@ -127,7 +129,8 @@ public sealed class SpellRuleSetViewModel : ObservableObject
             });
         }
 
-        var duplicate = settings.GroupBy(rule => rule.SpellName, StringComparer.OrdinalIgnoreCase)
+        var duplicate = settings.GroupBy(rule => SpellNameNormalizer.GetFamilyName(rule.SpellName),
+            StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1);
         if (duplicate is not null) return $"Only one {_category} rule can use {duplicate.Key}.";
 
@@ -200,7 +203,8 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     }
 
     private void Configure(IReadOnlyCollection<BuffRuleSettings> settings) =>
-        _tracker.Configure(settings, ResolveFadeMessages, _ => [], ResolveOtherAppliedMessages);
+        _tracker.Configure(settings, ResolveFadeMessages, _ => [], ResolveOtherAppliedMessages,
+            suffix => _catalog()?.IsAmbiguousOtherAppliedSuffix(suffix) == true);
 
     private void RefreshRuleIcons()
     {
@@ -210,11 +214,14 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     }
 
     private IReadOnlyList<string> ResolveFadeMessages(string spellName) =>
-        _catalog() is { } catalog && catalog.TryFind(spellName, out var spell) ? spell!.FadeMessages : [];
+        _catalog() is { } catalog && catalog.TryResolveFamily(spellName, out var spell)
+            ? spell!.FadeMessages
+            : [];
 
     private IReadOnlyList<string> ResolveOtherAppliedMessages(string spellName) =>
-        _catalog() is { } catalog && catalog.TryFind(spellName, out var spell)
-            ? spell!.OtherAppliedMessageSuffixes : [];
+        _catalog() is { } catalog && catalog.TryResolveFamily(spellName, out var spell)
+            ? spell!.OtherAppliedMessageSuffixes
+            : [];
 
     private bool TryResolveSpell(string spellName, out SpellDataEntry? spell, out string error)
     {
@@ -230,7 +237,7 @@ public sealed class SpellRuleSetViewModel : ObservableObject
             error = "EverQuest Legends spell data is not available. Select the game's Logs folder and try again.";
             return false;
         }
-        if (catalog.TryFind(spellName, out spell))
+        if (catalog.TryResolveFamily(spellName, out spell))
         {
             error = string.Empty;
             return true;

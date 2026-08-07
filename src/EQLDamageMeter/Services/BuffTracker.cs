@@ -6,15 +6,23 @@ namespace EQLDamageMeter.Services;
 public sealed class BuffTracker
 {
     private const string SelfTargetKey = "\0SELF";
+    private const string UnconfirmedTargetKey = "\0TARGET";
+    private const string UnconfirmedTargetName = "Target";
     private static readonly TimeSpan ConfirmationGrace = TimeSpan.FromSeconds(10);
 
     private sealed class ActiveInstance
     {
-        public required string TargetName { get; init; }
+        public required string TargetName { get; set; }
         public required bool IsSelf { get; init; }
         public required DateTime StartedAt { get; set; }
         public required DateTime ExpiresAt { get; set; }
         public bool Alerted { get; set; }
+        /// <summary>
+        /// False when the land message is shared by many spells (e.g. "yawns.") or the
+        /// timer was started from cast time alone. Those instances must not disappear
+        /// just because some nearby mob with that name died.
+        /// </summary>
+        public bool ClearsOnTargetDeath { get; set; }
     }
 
     private sealed class RuleRuntime
@@ -59,7 +67,8 @@ public sealed class BuffTracker
     private readonly Dictionary<Guid, RuleRuntime> _states = [];
     private readonly Dictionary<Guid, HashSet<string>> _fadeMessages = [];
     private readonly Dictionary<Guid, HashSet<string>> _selfAppliedMessages = [];
-    private readonly Dictionary<Guid, string[]> _otherAppliedSuffixes = [];
+    private readonly Dictionary<Guid, string[]> _uniqueOtherSuffixes = [];
+    private readonly Dictionary<Guid, string[]> _ambiguousOtherSuffixes = [];
     private readonly Queue<BuffExpirationAlert> _queuedAlerts = [];
     private DateTime? _lastSpecificFadeAt;
 
@@ -68,7 +77,8 @@ public sealed class BuffTracker
     public void Configure(IEnumerable<BuffRuleSettings> rules,
         Func<string, IReadOnlyList<string>>? fadeMessageResolver = null,
         Func<string, IReadOnlyList<string>>? selfAppliedMessageResolver = null,
-        Func<string, IReadOnlyList<string>>? otherAppliedMessageResolver = null)
+        Func<string, IReadOnlyList<string>>? otherAppliedMessageResolver = null,
+        Func<string, bool>? isAmbiguousOtherSuffix = null)
     {
         var configured = rules.ToDictionary(rule => rule.Id);
         foreach (var removed in _rules.Keys.Except(configured.Keys).ToArray())
@@ -77,7 +87,8 @@ public sealed class BuffTracker
             _states.Remove(removed);
             _fadeMessages.Remove(removed);
             _selfAppliedMessages.Remove(removed);
-            _otherAppliedSuffixes.Remove(removed);
+            _uniqueOtherSuffixes.Remove(removed);
+            _ambiguousOtherSuffixes.Remove(removed);
         }
 
         foreach (var rule in configured.Values)
@@ -87,9 +98,17 @@ public sealed class BuffTracker
                 fadeMessageResolver?.Invoke(rule.SpellName) ?? [], StringComparer.OrdinalIgnoreCase);
             _selfAppliedMessages[rule.Id] = new HashSet<string>(
                 selfAppliedMessageResolver?.Invoke(rule.SpellName) ?? [], StringComparer.OrdinalIgnoreCase);
-            _otherAppliedSuffixes[rule.Id] = (otherAppliedMessageResolver?.Invoke(rule.SpellName) ?? [])
+            var otherSuffixes = (otherAppliedMessageResolver?.Invoke(rule.SpellName) ?? [])
                 .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderByDescending(value => value.Length)
+                .ToArray();
+            _uniqueOtherSuffixes[rule.Id] = otherSuffixes
+                .Where(suffix => isAmbiguousOtherSuffix?.Invoke(suffix) != true)
+                .ToArray();
+            _ambiguousOtherSuffixes[rule.Id] = otherSuffixes
+                .Where(suffix => isAmbiguousOtherSuffix?.Invoke(suffix) == true)
                 .ToArray();
             if (!_states.TryGetValue(rule.Id, out var state))
             {
@@ -182,8 +201,16 @@ public sealed class BuffTracker
             var state = _states[rule.Id];
             if (state.PendingStart is { } pendingStart && now >= pendingStart)
             {
-                if (!state.PendingRequiresConfirmation && rule.TrackSelf)
-                    Activate(state, rule, SelfTargetKey, "Self", true, pendingStart);
+                if (!state.PendingRequiresConfirmation)
+                {
+                    if (rule.TrackSelf)
+                        Activate(state, rule, SelfTargetKey, "Self", true, pendingStart,
+                            clearsOnTargetDeath: true);
+                    else if (rule.TrackOthers)
+                        Activate(state, rule, UnconfirmedTargetKey, UnconfirmedTargetName, false,
+                            pendingStart, clearsOnTargetDeath: false);
+                    else ClearPendingCast(state);
+                }
                 else if (now > (state.PendingConfirmationEndsAt ?? pendingStart + ConfirmationGrace))
                     ClearPendingCast(state);
             }
@@ -258,9 +285,11 @@ public sealed class BuffTracker
             state.PendingConfirmationEndsAt = null;
             state.PendingTargetKeys.Clear();
             state.PendingTargetOccurrences.Clear();
+            // Only unique land text can prove the spell landed. Shared lines like
+            // "yawns." are used later to rename the target, not to gate the timer.
             state.PendingRequiresConfirmation =
                 _selfAppliedMessages.GetValueOrDefault(rule.Id)?.Count > 0 ||
-                _otherAppliedSuffixes.GetValueOrDefault(rule.Id)?.Length > 0;
+                _uniqueOtherSuffixes.GetValueOrDefault(rule.Id)?.Length > 0;
             state.StopReason = BuffStopReason.None;
         }
     }
@@ -287,28 +316,55 @@ public sealed class BuffTracker
     private bool ConfirmOtherApplication(DateTime timestamp, string message)
     {
         var matched = false;
-        foreach (var rule in PendingRules(timestamp).ToArray())
+        foreach (var rule in _rules.Values.Where(rule => rule.IsEnabled && rule.TrackOthers).ToArray())
         {
-            var suffix = _otherAppliedSuffixes.GetValueOrDefault(rule.Id)?
-                .FirstOrDefault(value => message.EndsWith(value, StringComparison.OrdinalIgnoreCase));
-            if (suffix is null) continue;
-            var target = message[..^suffix.Length].Trim();
-            if (target.Length == 0) continue;
-            matched = true;
             var state = _states[rule.Id];
-            if (rule.TrackOthers)
+            var isPending = state.PendingCastStartedAt is { } castStarted && timestamp >= castStarted &&
+                            state.PendingStart is { } expected &&
+                            timestamp <= (state.PendingConfirmationEndsAt ?? expected + ConfirmationGrace);
+
+            var uniqueSuffix = _uniqueOtherSuffixes.GetValueOrDefault(rule.Id)?
+                .FirstOrDefault(value => message.EndsWith(value, StringComparison.OrdinalIgnoreCase));
+            if (uniqueSuffix is not null && isPending)
             {
+                var target = message[..^uniqueSuffix.Length].Trim();
+                if (target.Length == 0) continue;
+                matched = true;
                 if (rule.Category == SpellTrackerCategory.Control && rule.ControlType == ControlEffectType.Charm)
                 {
-                    foreach (var charmRule in _rules.Values.Where(item => item.Category == SpellTrackerCategory.Control &&
+                    foreach (var charmRule in _rules.Values.Where(item =>
+                                 item.Category == SpellTrackerCategory.Control &&
                                  item.ControlType == ControlEffectType.Charm))
                         _states[charmRule.Id].Instances.Clear();
                 }
                 var targetKey = ResolvePendingTargetKey(state, target);
-                Activate(state, rule, targetKey, target, false, timestamp, clearPending: false);
+                state.Instances.Remove(UnconfirmedTargetKey);
+                Activate(state, rule, targetKey, target, false, timestamp, clearPending: false,
+                    clearsOnTargetDeath: true);
                 state.PendingConfirmationEndsAt ??= timestamp.AddSeconds(1);
+                continue;
             }
-            else ClearPendingCast(state);
+
+            var ambiguousSuffix = _ambiguousOtherSuffixes.GetValueOrDefault(rule.Id)?
+                .FirstOrDefault(value => message.EndsWith(value, StringComparison.OrdinalIgnoreCase));
+            if (ambiguousSuffix is null) continue;
+            var ambiguousTarget = message[..^ambiguousSuffix.Length].Trim();
+            if (ambiguousTarget.Length == 0) continue;
+
+            // Shared land text can only rename an already-running / pending timer. It
+            // must not create a new authoritative instance that dies with a bystander mob.
+            if (isPending || state.Instances.ContainsKey(UnconfirmedTargetKey))
+            {
+                matched = true;
+                if (!state.Instances.ContainsKey(UnconfirmedTargetKey))
+                {
+                    var startedAt = state.PendingStart ?? timestamp;
+                    Activate(state, rule, UnconfirmedTargetKey, ambiguousTarget, false, startedAt,
+                        clearPending: false, clearsOnTargetDeath: false);
+                    state.PendingConfirmationEndsAt ??= timestamp.AddSeconds(1);
+                }
+                else state.Instances[UnconfirmedTargetKey].TargetName = ambiguousTarget;
+            }
         }
         return matched;
     }
@@ -337,7 +393,8 @@ public sealed class BuffTracker
     }
 
     private static void Activate(RuleRuntime state, BuffRuleSettings rule, string targetKey,
-        string targetName, bool isSelf, DateTime startedAt, bool clearPending = true)
+        string targetName, bool isSelf, DateTime startedAt, bool clearPending = true,
+        bool clearsOnTargetDeath = true)
     {
         if (clearPending) ClearPendingCast(state);
         state.Instances[targetKey] = new ActiveInstance
@@ -345,7 +402,8 @@ public sealed class BuffTracker
             TargetName = targetName,
             IsSelf = isSelf,
             StartedAt = startedAt,
-            ExpiresAt = startedAt.AddSeconds(rule.DurationSeconds)
+            ExpiresAt = startedAt.AddSeconds(rule.DurationSeconds),
+            ClearsOnTargetDeath = clearsOnTargetDeath
         };
         state.StopReason = BuffStopReason.None;
     }
@@ -398,8 +456,12 @@ public sealed class BuffTracker
                 PreserveBuffTargetOnDeath?.Invoke(normalized, timestamp) == true)
                 continue;
             var state = _states[rule.Id];
-            var key = FindTargetInstanceKey(state, normalized);
-            if (key is not null) state.Instances.Remove(key);
+            foreach (var key in state.Instances
+                         .Where(pair => pair.Value.ClearsOnTargetDeath &&
+                                        pair.Value.TargetName.Equals(normalized, StringComparison.OrdinalIgnoreCase))
+                         .Select(pair => pair.Key)
+                         .ToArray())
+                state.Instances.Remove(key);
         }
     }
 
@@ -435,7 +497,7 @@ public sealed class BuffTracker
 
     private IEnumerable<BuffRuleSettings> MatchingEnabledRules(string spell) =>
         _rules.Values.Where(rule => rule.IsEnabled &&
-            rule.SpellName.Equals(spell, StringComparison.OrdinalIgnoreCase));
+            SpellNameNormalizer.BelongsToFamily(spell, rule.SpellName));
 
     private static void ResetState(RuleRuntime state)
     {

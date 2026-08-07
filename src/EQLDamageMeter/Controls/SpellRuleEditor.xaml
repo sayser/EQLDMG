@@ -111,7 +111,35 @@
         </Border>
 
         <Border Grid.Column="2" Style="{DynamicResource GlassCard}" Padding="16,12">
-            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <Grid>
+                <StackPanel VerticalAlignment="Center" Margin="12,0">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedRule}" Value="{x:Null}">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <TextBlock Text="{Binding DetailsTitle}" Style="{DynamicResource SectionLabel}" FontSize="15"
+                               HorizontalAlignment="Center" />
+                    <Rectangle Height="2" Width="105" Fill="#7658E2" HorizontalAlignment="Center" Margin="0,7,0,14" />
+                    <TextBlock Text="{Binding EmptyDetailsHint}" Foreground="#66879D" FontSize="12"
+                               TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Center" />
+                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer.Style>
+                    <Style TargetType="ScrollViewer">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding SelectedRule}" Value="{x:Null}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ScrollViewer.Style>
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="44" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
@@ -177,6 +205,7 @@
                     </Grid>
                 </Grid>
             </ScrollViewer>
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

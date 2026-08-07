@@ -16,27 +16,77 @@ public sealed class SpellDataCatalog
 {
     private const int IconFieldIndex = 75;
     private readonly Dictionary<string, SpellDataEntry> _byName;
+    private readonly HashSet<string> _ambiguousOtherSuffixes;
     private SpellIconAtlas? _icons;
 
     private SpellDataCatalog(string sourceDirectory, Dictionary<string, SpellDataEntry> byName,
-        SpellIconAtlas? icons)
+        HashSet<string> ambiguousOtherSuffixes, SpellIconAtlas? icons)
     {
         SourceDirectory = sourceDirectory;
         _byName = byName;
+        _ambiguousOtherSuffixes = ambiguousOtherSuffixes;
         _icons = icons;
     }
 
     public string SourceDirectory { get; }
     public int Count => _byName.Count;
 
+    /// <summary>
+    /// True when an "other applied" suffix is shared by multiple spell families
+    /// (for example " yawns." is used by Togor's Insects, Drowsy, Tagar's Insects, ...).
+    /// Those messages cannot uniquely prove which of your tracked spells landed.
+    /// </summary>
+    public bool IsAmbiguousOtherAppliedSuffix(string suffix) =>
+        !string.IsNullOrWhiteSpace(suffix) && _ambiguousOtherSuffixes.Contains(suffix.Trim());
+
     public bool TryFind(string spellName, out SpellDataEntry? entry) =>
         _byName.TryGetValue(spellName.Trim(), out entry);
 
+    /// <summary>
+    /// Resolves a typed spell name to its unranked family entry. "Inner Fire",
+    /// "Inner Fire IX", and missing exact ranks all map to the family so users
+    /// can track upgrades without typing the Roman numeral.
+    /// </summary>
+    public bool TryResolveFamily(string spellName, out SpellDataEntry? entry)
+    {
+        entry = null;
+        var trimmed = spellName.Trim();
+        if (trimmed.Length == 0) return false;
+
+        var family = SpellNameNormalizer.GetFamilyName(trimmed);
+        var members = FindFamilyMembers(family);
+        if (members.Count == 0) return false;
+
+        if (TryFind(family, out var baseEntry) && baseEntry is not null)
+            entry = AggregateFamily(family, baseEntry.IconId, members);
+        else if (TryFind(trimmed, out var exact) && exact is not null)
+            entry = AggregateFamily(family, exact.IconId, members);
+        else
+            entry = AggregateFamily(family, members[0].IconId, members);
+
+        return entry is not null;
+    }
+
+    public IReadOnlyList<SpellDataEntry> FindFamilyMembers(string spellName)
+    {
+        var family = SpellNameNormalizer.GetFamilyName(spellName);
+        if (family.Length == 0) return [];
+
+        return _byName.Values
+            .Where(entry => SpellNameNormalizer.GetFamilyName(entry.Name)
+                .Equals(family, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     public ImageSource? GetIcon(string? spellName)
     {
-        if (string.IsNullOrWhiteSpace(spellName) || !TryFind(spellName, out var entry) || entry is null)
-            return null;
-        return _icons?.GetIcon(entry.IconId);
+        if (string.IsNullOrWhiteSpace(spellName)) return null;
+        if (TryFind(spellName, out var entry) && entry is not null)
+            return _icons?.GetIcon(entry.IconId);
+        if (TryResolveFamily(spellName, out entry) && entry is not null)
+            return _icons?.GetIcon(entry.IconId);
+        return null;
     }
 
     public ImageSource GetAbilityIcon(string? abilityName) =>
@@ -51,16 +101,41 @@ public sealed class SpellDataCatalog
     {
         var search = spellName.Trim();
         if (search.Length == 0) return [];
+        var familySearch = SpellNameNormalizer.GetFamilyName(search);
 
         return _byName.Values
-            .Where(entry => entry.Name.StartsWith(search, StringComparison.OrdinalIgnoreCase))
+            .Where(entry => entry.Name.StartsWith(search, StringComparison.OrdinalIgnoreCase) ||
+                            SpellNameNormalizer.GetFamilyName(entry.Name)
+                                .StartsWith(familySearch, StringComparison.OrdinalIgnoreCase))
             .Concat(_byName.Values.Where(entry =>
                 !entry.Name.StartsWith(search, StringComparison.OrdinalIgnoreCase) &&
                 entry.Name.Contains(search, StringComparison.OrdinalIgnoreCase)))
-            .Select(entry => entry.Name)
+            .Select(entry => SpellNameNormalizer.GetFamilyName(entry.Name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(Math.Max(0, limit))
             .ToArray();
+    }
+
+    private static SpellDataEntry AggregateFamily(string familyName, int preferredIconId,
+        IReadOnlyList<SpellDataEntry> members)
+    {
+        var iconId = preferredIconId > 0
+            ? preferredIconId
+            : members.Select(member => member.IconId).FirstOrDefault(id => id > 0);
+        var self = members.SelectMany(member => member.SelfAppliedMessages)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var other = members.SelectMany(member => member.OtherAppliedMessageSuffixes)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(value => value.Length)
+            .ThenBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var fades = members.SelectMany(member => member.FadeMessages)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return new SpellDataEntry(familyName, iconId, self, other, fades);
     }
 
     public static SpellDataCatalog? TryLoadForLog(string logPath,
@@ -110,7 +185,7 @@ public sealed class SpellDataCatalog
                     pair.Value.OtherApplied.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToArray(),
                     pair.Value.Fades.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToArray()),
                 StringComparer.OrdinalIgnoreCase);
-            return new SpellDataCatalog(installDirectory, entries,
+            return new SpellDataCatalog(installDirectory, entries, BuildAmbiguousOtherSuffixes(entries.Values),
                 SpellIconAtlas.TryCreate(installDirectory, iconStyle));
         }
         catch (IOException)
@@ -121,6 +196,31 @@ public sealed class SpellDataCatalog
         {
             return null;
         }
+    }
+
+    private static HashSet<string> BuildAmbiguousOtherSuffixes(IEnumerable<SpellDataEntry> entries)
+    {
+        var familiesBySuffix = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries)
+        {
+            var family = SpellNameNormalizer.GetFamilyName(entry.Name);
+            foreach (var suffix in entry.OtherAppliedMessageSuffixes)
+            {
+                if (string.IsNullOrWhiteSpace(suffix)) continue;
+                var key = suffix.Trim();
+                if (!familiesBySuffix.TryGetValue(key, out var families))
+                {
+                    families = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    familiesBySuffix[key] = families;
+                }
+                families.Add(family);
+            }
+        }
+
+        return familiesBySuffix
+            .Where(pair => pair.Value.Count > 1)
+            .Select(pair => pair.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     private static Dictionary<int, (string Name, int IconId)> ReadSpellRecords(string path)
