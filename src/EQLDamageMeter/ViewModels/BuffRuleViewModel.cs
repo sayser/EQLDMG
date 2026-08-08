@@ -39,7 +39,7 @@ public sealed class BuffRuleViewModel : ObservableObject
         _trackOthers = settings.TrackOthers;
         _category = settings.Category;
         _controlType = settings.ControlType;
-        _alertMode = settings.AlertMode;
+        _alertMode = BuffAlertModeOptions.Normalize(settings.AlertMode);
         _sound = settings.Sound;
         _voiceText = settings.VoiceText;
     }
@@ -115,7 +115,11 @@ public sealed class BuffRuleViewModel : ObservableObject
         get => _alertMode;
         set
         {
-            if (SetProperty(ref _alertMode, value)) RaisePropertyChanged(nameof(AlertSummary));
+            var normalized = BuffAlertModeOptions.Normalize(value);
+            if (!SetProperty(ref _alertMode, normalized)) return;
+            RaisePropertyChanged(nameof(AlertSummary));
+            RaisePropertyChanged(nameof(SoundPickerVisibility));
+            RaisePropertyChanged(nameof(VoiceTextVisibility));
         }
     }
     public BuffSoundKind Sound
@@ -126,7 +130,15 @@ public sealed class BuffRuleViewModel : ObservableObject
             if (SetProperty(ref _sound, value)) RaisePropertyChanged(nameof(AlertSummary));
         }
     }
-    public string VoiceText { get => _voiceText; set => SetProperty(ref _voiceText, value); }
+    public string VoiceText
+    {
+        get => _voiceText;
+        set
+        {
+            if (!SetProperty(ref _voiceText, value)) return;
+            RaisePropertyChanged(nameof(AlertSummary));
+        }
+    }
     public string RemainingText { get => _remainingText; private set => SetProperty(ref _remainingText, value); }
     public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
     public bool IsActive { get => _isActive; private set => SetProperty(ref _isActive, value); }
@@ -138,12 +150,14 @@ public sealed class BuffRuleViewModel : ObservableObject
         private set => SetProperty(ref _spellValidationText, value);
     }
     public Visibility OverlayVisibility => IsEnabled && ShowInOverlay ? Visibility.Visible : Visibility.Collapsed;
-    public string AlertSummary => AlertMode switch
-    {
-        BuffAlertMode.Sound => Sound.ToString(),
-        BuffAlertMode.TextToSpeech => "Voice",
-        _ => $"{Sound} + Voice"
-    };
+    public Visibility SoundPickerVisibility =>
+        AlertMode == BuffAlertMode.Sound ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility VoiceTextVisibility =>
+        AlertMode == BuffAlertMode.TextToSpeech ? Visibility.Visible : Visibility.Collapsed;
+
+    public string AlertSummary => AlertMode == BuffAlertMode.TextToSpeech
+        ? (string.IsNullOrWhiteSpace(VoiceText) ? "Voice" : "Voice (custom)")
+        : Sound.ToString();
     public string TargetSummary => Category switch
     {
         SpellTrackerCategory.DamageOverTime => "Enemy targets",
@@ -189,7 +203,8 @@ public sealed class BuffRuleViewModel : ObservableObject
             ? $"{SpellName.Trim()} has expired"
             : VoiceText.Trim();
         settings = new BuffRuleSettings(Id, SpellName.Trim(), checked((int)duration.TotalSeconds), castTime,
-            IsEnabled, ShowInOverlay, AlertMode, Sound, voice, TrackSelf, TrackOthers, Category, ControlType);
+            IsEnabled, ShowInOverlay, BuffAlertModeOptions.Normalize(AlertMode), Sound, voice, TrackSelf,
+            TrackOthers, Category, ControlType);
         error = string.Empty;
         return true;
     }

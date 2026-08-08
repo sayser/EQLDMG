@@ -128,9 +128,6 @@ public sealed class SpellDataCatalog
         return startsWith.Concat(contains).Take(limit).ToArray();
     }
 
-    public IReadOnlyList<string> FindSuggestions(string spellName, int limit = 3) =>
-        FindMatches(spellName, limit);
-
     private static SpellDataEntry AggregateFamily(string familyName, int preferredIconId,
         IReadOnlyList<SpellDataEntry> members)
     {

@@ -14,6 +14,10 @@ publish/
 settings.json
 spelltracker.json
 session_info.json
+questtracker.json
+quest_catalog.json
+skytracker.json
+sky_catalog.json
 Diagnostics/
 *.log
 

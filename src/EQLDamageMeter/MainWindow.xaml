@@ -426,6 +426,9 @@
                                 <ContextMenu>
                                     <MenuItem Header="Logs folder…" Click="ChooseLogs_Click"
                                               ToolTip="Choose the EverQuest Legends Logs folder" />
+                                    <MenuItem Header="Populate session from last 3h of log"
+                                              Click="PopulateSessionFromLog_Click"
+                                              ToolTip="Rebuild a test session from the last 3 hours of the loaded character log" />
                                 </ContextMenu>
                             </Button.ContextMenu>
                         </Button>
@@ -477,8 +480,10 @@
                                          Style="{StaticResource ModuleNavigationButton}" />
                             <RadioButton x:Name="SessionTrackerButton" Content="Session Tracker" GroupName="PrimaryModule"
                                          Style="{StaticResource ModuleNavigationButton}" MinWidth="148" />
-                            <RadioButton Content="Loot Tracker" GroupName="PrimaryModule"
-                                         Style="{StaticResource ModuleNavigationButton}" />
+                            <RadioButton x:Name="QuestTrackerButton" Content="Quest Tracker" GroupName="PrimaryModule"
+                                         Style="{StaticResource ModuleNavigationButton}" MinWidth="138" />
+                            <RadioButton x:Name="SkyTrackerButton" Content="Plane of Sky" GroupName="PrimaryModule"
+                                         Style="{StaticResource ModuleNavigationButton}" MinWidth="138" />
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -574,7 +579,7 @@
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="44" /><RowDefinition Height="58" />
-                            <RowDefinition Height="200" /><RowDefinition Height="*" />
+                            <RowDefinition Height="220" /><RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <Border Margin="2,2,2,0" CornerRadius="17,17,0,0" Background="#9A071C2D"
                                 BorderBrush="#527B94" BorderThickness="1" ClipToBounds="True">
@@ -605,7 +610,7 @@
                         </Grid>
 
                         <!-- Offense metrics -->
-                        <Grid Grid.Row="2" Margin="15,0,15,8" Visibility="{Binding OffenseVisibility}">
+                        <Grid Grid.Row="2" Margin="15,0,15,6" ClipToBounds="False" Visibility="{Binding OffenseVisibility}">
                             <Grid.RowDefinitions><RowDefinition Height="54" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
@@ -617,14 +622,14 @@
                                 <Border Grid.Column="10" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="FIZZLED" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.SpellFizzles}" FontSize="16" FontWeight="Bold" Foreground="#A985FF" /></StackPanel></Border>
                                 <Border Grid.Column="12" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="STUNS" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.StunsLanded}" FontSize="16" FontWeight="Bold" Foreground="#7FC6FF" /></StackPanel></Border>
                             </Grid>
-                            <Grid Grid.Row="1" Margin="0,4,0,0">
+                            <Grid Grid.Row="1" Margin="0,8,0,4" ClipToBounds="False">
                                 <controls:DonutChart Width="184" Height="145" ItemsSource="{Binding SelectedAbilities}"
-                                                     HorizontalAlignment="Center" VerticalAlignment="Bottom" />
+                                                     HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Grid>
                         </Grid>
 
                         <!-- Healing metrics -->
-                        <Grid Grid.Row="2" Margin="15,0,15,8" Visibility="{Binding HealingVisibility}">
+                        <Grid Grid.Row="2" Margin="15,0,15,6" ClipToBounds="False" Visibility="{Binding HealingVisibility}">
                             <Grid.RowDefinitions><RowDefinition Height="54" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
@@ -634,84 +639,90 @@
                                 <Border Grid.Column="6" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="HOT TICKS" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.HealOverTimeTicks}" FontSize="16" FontWeight="Bold" /></StackPanel></Border>
                                 <Border Grid.Column="8" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="HEAL CRIT %" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.HealingCriticalRateText}" FontSize="16" FontWeight="Bold" Foreground="#FFBD57" /></StackPanel></Border>
                             </Grid>
-                            <Grid Grid.Row="1" Margin="0,4,0,0">
+                            <Grid Grid.Row="1" Margin="0,8,0,4" ClipToBounds="False">
                                 <controls:DonutChart Width="184" Height="145" ItemsSource="{Binding SelectedAbilities}"
-                                                     HorizontalAlignment="Center" VerticalAlignment="Bottom" />
+                                                     HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Grid>
                         </Grid>
 
                         <!-- Defense charts -->
-                        <Grid Grid.Row="2" Grid.RowSpan="2" Margin="15,4,15,8" Visibility="{Binding DefenseVisibility}">
-                            <Grid.RowDefinitions><RowDefinition Height="54" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="1" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <Border Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="DAMAGE TAKEN" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.DamageTakenText}" FontSize="16" FontWeight="Bold" /></StackPanel></Border>
-                                <Border Grid.Column="2" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="AVOIDANCE" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.AvoidanceRateText}" FontSize="16" FontWeight="Bold" Foreground="#2FD8C7" /></StackPanel></Border>
-                                <Border Grid.Column="4" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="RESISTS" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.IncomingSpellResists}" FontSize="16" FontWeight="Bold" Foreground="#A985FF" /></StackPanel></Border>
-                                <Border Grid.Column="6" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="ABSORBED" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.Absorbed}" FontSize="16" FontWeight="Bold" /></StackPanel></Border>
-                                <Border Grid.Column="8" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="STUNNED" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.StunsTaken}" FontSize="16" FontWeight="Bold" Foreground="#FF6C91" /></StackPanel></Border>
-                            </Grid>
-                            <TextBlock Grid.Row="1" Text="MITIGATION OUTCOMES" Style="{StaticResource MetricLabel}" HorizontalAlignment="Center" Margin="0,5,0,0" />
-                            <Grid Grid.Row="2" Margin="0,3,0,6">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <controls:DonutChart Width="145" Height="120" ItemsSource="{Binding SelectedMitigations}" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                <ListBox Grid.Column="1" ItemsSource="{Binding SelectedMitigations}" Background="Transparent" BorderThickness="0" Padding="4"
-                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
-                                    <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Focusable" Value="False" /><Setter Property="Padding" Value="0" /><Setter Property="Background" Value="Transparent" /><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
-                                    <ListBox.ItemTemplate><DataTemplate><Grid Margin="8,3"><Grid.ColumnDefinitions><ColumnDefinition Width="18" /><ColumnDefinition Width="*" /><ColumnDefinition Width="58" /><ColumnDefinition Width="58" /></Grid.ColumnDefinitions><Ellipse Fill="{Binding Color}" Width="8" Height="8" HorizontalAlignment="Left" /><TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="2" Text="{Binding DamageText}" HorizontalAlignment="Right" TextAlignment="Right" /><TextBlock Grid.Column="3" Text="{Binding ShareText}" HorizontalAlignment="Right" TextAlignment="Right" Foreground="#96B7CA" /></Grid></DataTemplate></ListBox.ItemTemplate>
-                                </ListBox>
-                                <TextBlock Grid.Column="1" Text="No mitigation outcomes recorded" Foreground="#7899AD" FontSize="11"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding SelectedMitigations.Count}" Value="0"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
-                                </TextBlock>
-                            </Grid>
-                            <Border Grid.Row="3" Background="#31546A" />
-                            <TextBlock Grid.Row="4" Text="INCOMING DAMAGE BY ABILITY" Style="{StaticResource MetricLabel}" HorizontalAlignment="Center" Margin="0,5,0,0" />
-                            <Grid Grid.Row="5" Margin="0,3,0,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <controls:DonutChart Width="145" Height="120" ItemsSource="{Binding SelectedIncomingAbilities}" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                <ListBox Grid.Column="1" ItemsSource="{Binding SelectedIncomingAbilities}" Background="Transparent" BorderThickness="0" Padding="4"
-                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
-                                    <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Focusable" Value="False" /><Setter Property="Padding" Value="0" /><Setter Property="Background" Value="Transparent" /><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Margin="8,3">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="70" /><ColumnDefinition Width="58" />
-                                                </Grid.ColumnDefinitions>
-                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
-                                                    <Image Source="{Binding Icon}" Width="14" Height="14" Margin="0,0,5,0"
-                                                           RenderOptions.BitmapScalingMode="NearestNeighbor" SnapsToDevicePixels="True">
-                                                        <Image.Style>
-                                                            <Style TargetType="Image">
-                                                                <Setter Property="Visibility" Value="Visible" />
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
-                                                                        <Setter Property="Visibility" Value="Collapsed" />
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Image.Style>
-                                                    </Image>
-                                                    <Ellipse Fill="{Binding Color}" Width="8" Height="8" VerticalAlignment="Center" />
-                                                </StackPanel>
-                                                <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Grid.Column="2" Text="{Binding DamageText}" HorizontalAlignment="Right" TextAlignment="Right" />
-                                                <TextBlock Grid.Column="3" Text="{Binding ShareText}" HorizontalAlignment="Right" TextAlignment="Right" Foreground="#96B7CA" />
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                                <TextBlock Grid.Column="1" Text="No incoming damage recorded" Foreground="#7899AD" FontSize="11"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding SelectedIncomingAbilities.Count}" Value="0"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
-                                </TextBlock>
-                            </Grid>
-                        </Grid>
+                        <ScrollViewer Grid.Row="2" Grid.RowSpan="2" Margin="15,4,10,8"
+                                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                      CanContentScroll="False"
+                                      Visibility="{Binding DefenseVisibility}">
+                            <StackPanel Margin="0,0,6,0">
+                                <Grid Height="54">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <Border Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="DAMAGE TAKEN" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.DamageTakenText}" FontSize="16" FontWeight="Bold" /></StackPanel></Border>
+                                    <Border Grid.Column="2" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="AVOIDANCE" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.AvoidanceRateText}" FontSize="16" FontWeight="Bold" Foreground="#2FD8C7" /></StackPanel></Border>
+                                    <Border Grid.Column="4" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="RESISTS" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.IncomingSpellResists}" FontSize="16" FontWeight="Bold" Foreground="#A985FF" /></StackPanel></Border>
+                                    <Border Grid.Column="6" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="ABSORBED" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.Absorbed}" FontSize="16" FontWeight="Bold" /></StackPanel></Border>
+                                    <Border Grid.Column="8" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="STUNNED" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.StunsTaken}" FontSize="16" FontWeight="Bold" Foreground="#FF6C91" /></StackPanel></Border>
+                                </Grid>
+
+                                <TextBlock Text="MITIGATION OUTCOMES" Style="{StaticResource MetricLabel}" HorizontalAlignment="Center" Margin="0,12,0,0" />
+                                <Grid Height="140" Margin="0,6,0,10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <controls:DonutChart Width="145" Height="120" ItemsSource="{Binding SelectedMitigations}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <ListBox Grid.Column="1" ItemsSource="{Binding SelectedMitigations}" Background="Transparent" BorderThickness="0" Padding="4"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                        <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Focusable" Value="False" /><Setter Property="Padding" Value="0" /><Setter Property="Background" Value="Transparent" /><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
+                                        <ListBox.ItemTemplate><DataTemplate><Grid Margin="8,3"><Grid.ColumnDefinitions><ColumnDefinition Width="18" /><ColumnDefinition Width="*" /><ColumnDefinition Width="58" /><ColumnDefinition Width="58" /></Grid.ColumnDefinitions><Ellipse Fill="{Binding Color}" Width="8" Height="8" HorizontalAlignment="Left" /><TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="2" Text="{Binding DamageText}" HorizontalAlignment="Right" TextAlignment="Right" /><TextBlock Grid.Column="3" Text="{Binding ShareText}" HorizontalAlignment="Right" TextAlignment="Right" Foreground="#96B7CA" /></Grid></DataTemplate></ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <TextBlock Grid.Column="1" Text="No mitigation outcomes recorded" Foreground="#7899AD" FontSize="11"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding SelectedMitigations.Count}" Value="0"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+
+                                <Border Height="1" Background="#31546A" />
+                                <TextBlock Text="INCOMING DAMAGE BY ABILITY" Style="{StaticResource MetricLabel}" HorizontalAlignment="Center" Margin="0,12,0,0" />
+                                <Grid MinHeight="140" Margin="0,6,0,8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <controls:DonutChart Width="145" Height="120" ItemsSource="{Binding SelectedIncomingAbilities}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,0,0,0" />
+                                    <ListBox Grid.Column="1" ItemsSource="{Binding SelectedIncomingAbilities}" Background="Transparent" BorderThickness="0" Padding="4"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                        <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Focusable" Value="False" /><Setter Property="Padding" Value="0" /><Setter Property="Background" Value="Transparent" /><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="8,3">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="70" /><ColumnDefinition Width="58" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                        <Image Source="{Binding Icon}" Width="14" Height="14" Margin="0,0,5,0"
+                                                               RenderOptions.BitmapScalingMode="NearestNeighbor" SnapsToDevicePixels="True">
+                                                            <Image.Style>
+                                                                <Style TargetType="Image">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Image.Style>
+                                                        </Image>
+                                                        <Ellipse Fill="{Binding Color}" Width="8" Height="8" VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Grid.Column="2" Text="{Binding DamageText}" HorizontalAlignment="Right" TextAlignment="Right" />
+                                                    <TextBlock Grid.Column="3" Text="{Binding ShareText}" HorizontalAlignment="Right" TextAlignment="Right" Foreground="#96B7CA" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <TextBlock Grid.Column="1" Text="No incoming damage recorded" Foreground="#7899AD" FontSize="11"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding SelectedIncomingAbilities.Count}" Value="0"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                            </StackPanel>
+                        </ScrollViewer>
 
                         <!-- Ability breakdown table -->
-                        <Grid Grid.Row="3" Margin="15,-8,15,6">
+                        <Grid Grid.Row="3" Margin="15,4,15,6">
                             <Grid.Style><Style TargetType="Grid"><Style.Triggers><DataTrigger Binding="{Binding DefenseVisibility}" Value="Visible"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></Grid.Style>
                             <Grid.RowDefinitions><RowDefinition Height="24" /><RowDefinition Height="24" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                             <Grid>
@@ -1135,19 +1146,22 @@
                                 <StackPanel>
                                     <TextBlock Text="Alert Type" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
                                     <ComboBox Style="{StaticResource BuffCombo}" ItemsSource="{Binding BuffAlertModes}"
-                                              SelectedItem="{Binding SelectedBuffRule.AlertMode, Mode=TwoWay}" />
+                                              SelectedItem="{Binding SelectedBuffRule.AlertMode, Mode=TwoWay}"
+                                              ToolTip="Choose Sound or TextToSpeech (not both)" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="2">
+                                <StackPanel Grid.Column="2"
+                                            Visibility="{Binding SelectedBuffRule.SoundPickerVisibility}">
                                     <TextBlock Text="Sound" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
                                     <ComboBox Style="{StaticResource BuffCombo}" ItemsSource="{Binding BuffSoundChoices}"
                                               SelectedItem="{Binding SelectedBuffRule.Sound, Mode=TwoWay}" />
                                 </StackPanel>
                             </Grid>
 
-                            <StackPanel Grid.Row="7" Margin="0,14,0,0">
+                            <StackPanel Grid.Row="7" Margin="0,14,0,0"
+                                        Visibility="{Binding SelectedBuffRule.VoiceTextVisibility}">
                                 <TextBlock Text="Voice Text" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
                                 <TextBox Style="{StaticResource BuffInput}" Text="{Binding SelectedBuffRule.VoiceText, UpdateSourceTrigger=PropertyChanged}"
-                                         ToolTip="Text spoken by the installed Windows voice when this buff expires" />
+                                         ToolTip="Custom text spoken when this alert fires. Leave blank for the default phrase." />
                             </StackPanel>
 
                             <Border Grid.Row="8" Style="{StaticResource InnerCard}" Margin="0,14,0,0" Padding="10,8">
@@ -1236,8 +1250,17 @@
                                 <DataTemplate>
                                     <StackPanel>
                                         <Grid>
-                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                            <Border HorizontalAlignment="Right" Padding="7,2" CornerRadius="8"
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Button Content="{Binding ExpandGlyph}" Width="28" Height="26" Padding="0"
+                                                    Margin="0,0,8,0" FontSize="11" Click="SessionExpand_Click"
+                                                    ToolTip="Show or hide loot for this session" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                            <Border Grid.Column="2" Padding="7,2" CornerRadius="8"
                                                     Visibility="{Binding IsLive, Converter={StaticResource BooleanToVisibility}}"
                                                     Background="#193E3D" BorderBrush="#2B7A70" BorderThickness="1">
                                                 <TextBlock Text="LIVE" FontSize="9" FontWeight="Bold" Foreground="#91F2E6" />
@@ -1245,6 +1268,57 @@
                                         </Grid>
                                         <TextBlock Text="{Binding Subtitle}" Foreground="#8BA9BD" FontSize="11" Margin="0,4,0,0" />
                                         <TextBlock Text="{Binding CharacterText}" Foreground="#66879D" FontSize="10" Margin="0,2,0,0" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                            <TextBlock Text="Money earned: " Foreground="#66879D" FontSize="11" />
+                                            <TextBlock Text="{Binding MoneyText}" Foreground="#2ED9C7"
+                                                       FontSize="11" FontWeight="SemiBold" />
+                                        </StackPanel>
+
+                                        <StackPanel Margin="0,8,0,0" Visibility="{Binding LootExpandVisibility}">
+                                            <TextBlock Text="LOOT BY MOB" Style="{StaticResource SectionLabel}" Margin="0,0,0,6" />
+                                            <ItemsControl ItemsSource="{Binding Mobs}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border BorderThickness="1" CornerRadius="8" Padding="8,6"
+                                                                Margin="0,0,0,6" Cursor="Hand"
+                                                                MouseLeftButtonUp="SessionMobSelect_Click"
+                                                                ToolTip="Show loot details on the right">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="Background" Value="#4A0C2436" />
+                                                                    <Setter Property="BorderBrush" Value="#2A4A5E" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                            <Setter Property="Background" Value="#7A103249" />
+                                                                            <Setter Property="BorderBrush" Value="#50CFC5" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                            <StackPanel>
+                                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                                                           FontSize="12" TextTrimming="CharacterEllipsis" />
+                                                                <TextBlock Text="{Binding Summary}" Foreground="#8BA9BD"
+                                                                           FontSize="10" Margin="0,2,0,0" />
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Text="No loot recorded yet" Foreground="#66879D" FontSize="11"
+                                                       Margin="2,2,0,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Mobs.Count}" Value="0">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
@@ -1253,7 +1327,344 @@
                 </Border>
 
                 <Border Grid.Column="2" Style="{StaticResource GlassCard}" Padding="16,14">
-                    <Grid DataContext="{Binding SessionHistory.SelectedSession}">
+                    <Grid>
+                        <!-- Session details (default) -->
+                        <Grid DataContext="{Binding SessionHistory.SelectedSession}"
+                              Visibility="{Binding DataContext.SessionHistory.SessionDetailsVisibility, RelativeSource={RelativeSource AncestorType=Window}}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel>
+                                <TextBlock Text="SESSION DETAILS" Style="{StaticResource SectionLabel}" />
+                                <TextBlock Text="{Binding Title}" FontSize="22" FontWeight="SemiBold" Margin="0,8,0,0" />
+                                <TextBlock Text="{Binding Subtitle}" Foreground="#8BA9BD" FontSize="12" Margin="0,4,0,0" />
+                                <TextBlock Text="{Binding CharacterText}" Foreground="#66879D" FontSize="11" Margin="0,2,0,0" />
+                            </StackPanel>
+
+                            <UniformGrid Grid.Row="1" Columns="2" Rows="3" Margin="0,18,0,0">
+                                <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="0,0,8,8">
+                                    <StackPanel>
+                                        <TextBlock Text="Level XP gained" Style="{StaticResource MetricLabel}" />
+                                        <TextBlock Text="{Binding LevelXpText}" FontSize="26" FontWeight="SemiBold"
+                                                   Foreground="#2ED9C7" Margin="0,4,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="8,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="Levels gained" Style="{StaticResource MetricLabel}" />
+                                        <TextBlock Text="{Binding LevelsText}" FontSize="26" FontWeight="SemiBold"
+                                                   Foreground="#E8F8FF" Margin="0,4,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="0,8,8,8">
+                                    <StackPanel>
+                                        <TextBlock Text="AA points gained" Style="{StaticResource MetricLabel}" />
+                                        <TextBlock Text="{Binding AaPointsText}" FontSize="26" FontWeight="SemiBold"
+                                                   Foreground="#A98BFF" Margin="0,4,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="8,8,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="Motes of Potential" Style="{StaticResource MetricLabel}" />
+                                        <TextBlock Text="{Binding MotesText}" FontSize="26" FontWeight="SemiBold"
+                                                   Foreground="#F2FAFF" Margin="0,4,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="0,8,8,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Money earned" Style="{StaticResource MetricLabel}" />
+                                        <TextBlock Text="{Binding MoneyText}" FontSize="26" FontWeight="SemiBold"
+                                                   Foreground="#2ED9C7" Margin="0,4,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="8,8,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Deaths" Style="{StaticResource MetricLabel}" />
+                                        <TextBlock Text="{Binding DeathsText}" FontSize="26" FontWeight="SemiBold"
+                                                   Foreground="#FF8B8B" Margin="0,4,0,0" />
+                                    </StackPanel>
+                                </Border>
+                            </UniformGrid>
+
+                            <Border Grid.Row="2" Style="{StaticResource InnerCard}" Padding="12,10" Margin="0,16,0,0">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="MOTE BREAKDOWN" Style="{StaticResource SectionLabel}" Margin="2,0,0,8" />
+                                    <ListBox Grid.Row="1" ItemsSource="{Binding MoteRows}"
+                                             Background="Transparent" BorderThickness="0">
+                                        <ListBox.ItemContainerStyle>
+                                            <Style TargetType="ListBoxItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                                <Setter Property="Padding" Value="0" />
+                                                <Setter Property="Margin" Value="0,0,0,6" />
+                                                <Setter Property="Focusable" Value="False" />
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="ListBoxItem">
+                                                            <ContentPresenter />
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </ListBox.ItemContainerStyle>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="2,0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding Count}" FontWeight="SemiBold"
+                                                               Foreground="#A98BFF" Margin="12,0,0,0" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Grid>
+                            </Border>
+                        </Grid>
+
+                        <!-- Mob loot details: latest kill first, then all-kills history -->
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                      Visibility="{Binding DataContext.SessionHistory.MobDetailsVisibility, RelativeSource={RelativeSource AncestorType=Window}}">
+                            <StackPanel DataContext="{Binding SessionHistory.SelectedMob}">
+                                <Grid>
+                                    <StackPanel>
+                                        <TextBlock Text="MOB DETAILS" Style="{StaticResource SectionLabel}" />
+                                        <TextBlock Text="{Binding Name, TargetNullValue=Select a mob}"
+                                                   FontSize="22" FontWeight="SemiBold" Margin="0,8,0,0" />
+                                        <TextBlock Text="{Binding Summary, TargetNullValue=Click a mob under LOOT BY MOB}"
+                                                   Foreground="#8BA9BD" FontSize="12" Margin="0,4,0,0" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                                        <Button Content="Back" Padding="12,6" Margin="0,0,8,0"
+                                                Click="SessionMobClear_Click"
+                                                ToolTip="Return to session details" />
+                                        <Button Content="Open wiki" Padding="12,6"
+                                                Click="OpenSessionMobWiki_Click"
+                                                ToolTip="Open this mob on the EverQuest Legends wiki" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Latest single kill -->
+                                <Border Style="{StaticResource InnerCard}" Padding="12,10" Margin="0,16,0,0"
+                                        DataContext="{Binding LatestKill}">
+                                    <StackPanel>
+                                        <Grid Margin="0,0,0,10">
+                                            <TextBlock Text="LATEST KILL" Style="{StaticResource SectionLabel}" />
+                                            <TextBlock Text="{Binding TimeText}" Foreground="#8BA9BD" FontSize="11"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        </Grid>
+                                        <TextBlock Text="{Binding Summary}" Foreground="#8BA9BD" FontSize="12" Margin="0,0,0,10" />
+                                        <UniformGrid Columns="4" Margin="0,0,0,12">
+                                            <Border Background="#4A0C2436" BorderBrush="#2A4A5E" BorderThickness="1"
+                                                    CornerRadius="8" Padding="10,8" Margin="0,0,6,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Coin" Style="{StaticResource MetricLabel}" />
+                                                    <TextBlock Text="{Binding CoinText}" FontSize="18" FontWeight="SemiBold"
+                                                               Foreground="#2ED9C7" Margin="0,3,0,0" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Background="#4A0C2436" BorderBrush="#2A4A5E" BorderThickness="1"
+                                                    CornerRadius="8" Padding="10,8" Margin="6,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Items" Style="{StaticResource MetricLabel}" />
+                                                    <TextBlock Text="{Binding ItemCountText}" FontSize="18" FontWeight="SemiBold"
+                                                               Margin="0,3,0,0" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Background="#4A0C2436" BorderBrush="#2A4A5E" BorderThickness="1"
+                                                    CornerRadius="8" Padding="10,8" Margin="6,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Sold" Style="{StaticResource MetricLabel}" />
+                                                    <TextBlock Text="{Binding SoldText}" FontSize="18" FontWeight="SemiBold"
+                                                               Foreground="#A98BFF" Margin="0,3,0,0" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Background="#4A0C2436" BorderBrush="#2A4A5E" BorderThickness="1"
+                                                    CornerRadius="8" Padding="10,8" Margin="6,0,0,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Kept / Merged" Style="{StaticResource MetricLabel}" />
+                                                    <TextBlock FontSize="18" FontWeight="SemiBold" Margin="0,3,0,0">
+                                                        <Run Text="{Binding KeptStoredText, Mode=OneWay}" />
+                                                        <Run Text=" / " Foreground="#66879D" />
+                                                        <Run Text="{Binding MergedText, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </Border>
+                                        </UniformGrid>
+                                        <Grid Margin="2,0,2,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="90" />
+                                                <ColumnDefinition Width="120" />
+                                                <ColumnDefinition Width="50" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Item" Style="{StaticResource MetricLabel}" />
+                                            <TextBlock Grid.Column="1" Text="Disposition" Style="{StaticResource MetricLabel}" />
+                                            <TextBlock Grid.Column="2" Text="Value / note" Style="{StaticResource MetricLabel}" />
+                                            <TextBlock Grid.Column="3" Text="Qty" Style="{StaticResource MetricLabel}"
+                                                       HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <ItemsControl ItemsSource="{Binding Items}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="2,0,2,6">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="90" />
+                                                            <ColumnDefinition Width="120" />
+                                                            <ColumnDefinition Width="50" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding Disposition}" Foreground="#8BA9BD" />
+                                                        <TextBlock Grid.Column="2" Text="{Binding ValueText}" Foreground="#A98BFF"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Grid.Column="3" Text="{Binding CountText}" FontWeight="SemiBold"
+                                                                   HorizontalAlignment="Right" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Aggregate history across all kills of this mob -->
+                                <Border Style="{StaticResource InnerCard}" Padding="12,10" Margin="0,14,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="KILL HISTORY" Style="{StaticResource SectionLabel}" Margin="0,0,0,4" />
+                                        <TextBlock Text="{Binding Summary}" Foreground="#8BA9BD" FontSize="12" Margin="0,0,0,10" />
+                                        <UniformGrid Columns="4" Margin="0,0,0,12">
+                                            <Border Background="#4A0C2436" BorderBrush="#2A4A5E" BorderThickness="1"
+                                                    CornerRadius="8" Padding="10,8" Margin="0,0,6,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Total coin" Style="{StaticResource MetricLabel}" />
+                                                    <TextBlock Text="{Binding HistoryCoinText}" FontSize="18" FontWeight="SemiBold"
+                                                               Foreground="#2ED9C7" Margin="0,3,0,0" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Background="#4A0C2436" BorderBrush="#2A4A5E" BorderThickness="1"
+                                                    CornerRadius="8" Padding="10,8" Margin="6,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Corpses" Style="{StaticResource MetricLabel}" />
+                                                    <TextBlock Text="{Binding CorpsesText}" FontSize="18" FontWeight="SemiBold"
+                                                               Margin="0,3,0,0" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Background="#4A0C2436" BorderBrush="#2A4A5E" BorderThickness="1"
+                                                    CornerRadius="8" Padding="10,8" Margin="6,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Items" Style="{StaticResource MetricLabel}" />
+                                                    <TextBlock Text="{Binding HistoryItemCountText}" FontSize="18" FontWeight="SemiBold"
+                                                               Margin="0,3,0,0" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Background="#4A0C2436" BorderBrush="#2A4A5E" BorderThickness="1"
+                                                    CornerRadius="8" Padding="10,8" Margin="6,0,0,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Sold / Kept / Merged" Style="{StaticResource MetricLabel}" />
+                                                    <TextBlock FontSize="16" FontWeight="SemiBold" Margin="0,3,0,0">
+                                                        <Run Text="{Binding HistorySoldText, Mode=OneWay}" Foreground="#A98BFF" />
+                                                        <Run Text=" / " Foreground="#66879D" />
+                                                        <Run Text="{Binding HistoryKeptStoredText, Mode=OneWay}" />
+                                                        <Run Text=" / " Foreground="#66879D" />
+                                                        <Run Text="{Binding HistoryMergedText, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </Border>
+                                        </UniformGrid>
+
+                                        <TextBlock Text="ALL KILLS" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
+                                        <ItemsControl ItemsSource="{Binding KillHistory}" Margin="0,0,0,12">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="#3A0A1F30" BorderBrush="#2A4A5E" BorderThickness="1"
+                                                            CornerRadius="8" Padding="10,8" Margin="0,0,0,6">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="70" />
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="{Binding TimeText}" FontWeight="SemiBold"
+                                                                       VerticalAlignment="Center" />
+                                                            <TextBlock Grid.Column="1" Text="{Binding Summary}"
+                                                                       Foreground="#8BA9BD" FontSize="11"
+                                                                       VerticalAlignment="Center" Margin="8,0" />
+                                                            <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="11">
+                                                                <Run Text="S " Foreground="#66879D" />
+                                                                <Run Text="{Binding SoldText, Mode=OneWay}" Foreground="#A98BFF" />
+                                                                <Run Text="  K " Foreground="#66879D" />
+                                                                <Run Text="{Binding KeptStoredText, Mode=OneWay}" />
+                                                                <Run Text="  M " Foreground="#66879D" />
+                                                                <Run Text="{Binding MergedText, Mode=OneWay}" />
+                                                            </TextBlock>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <TextBlock Text="COMBINED ITEMS" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
+                                        <Grid Margin="2,0,2,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="90" />
+                                                <ColumnDefinition Width="120" />
+                                                <ColumnDefinition Width="50" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Item" Style="{StaticResource MetricLabel}" />
+                                            <TextBlock Grid.Column="1" Text="Disposition" Style="{StaticResource MetricLabel}" />
+                                            <TextBlock Grid.Column="2" Text="Value / note" Style="{StaticResource MetricLabel}" />
+                                            <TextBlock Grid.Column="3" Text="Qty" Style="{StaticResource MetricLabel}"
+                                                       HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <ItemsControl ItemsSource="{Binding HistoryItems}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="2,0,2,6">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="90" />
+                                                            <ColumnDefinition Width="120" />
+                                                            <ColumnDefinition Width="50" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding Disposition}" Foreground="#8BA9BD" />
+                                                        <TextBlock Grid.Column="2" Text="{Binding ValueText}" Foreground="#A98BFF"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Grid.Column="3" Text="{Binding CountText}" FontWeight="SemiBold"
+                                                                   HorizontalAlignment="Right" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Quest tracker workspace -->
+            <Grid Grid.Row="2" Grid.RowSpan="3"
+                  Visibility="{Binding IsChecked, ElementName=QuestTrackerButton, Converter={StaticResource BooleanToVisibility}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.05*" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="1.55*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource GlassCard}" Padding="14,12">
+                    <Grid DataContext="{Binding QuestTracker}">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -1261,51 +1672,107 @@
                         </Grid.RowDefinitions>
 
                         <StackPanel>
-                            <TextBlock Text="SESSION DETAILS" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="{Binding Title}" FontSize="22" FontWeight="SemiBold" Margin="0,8,0,0" />
-                            <TextBlock Text="{Binding Subtitle}" Foreground="#8BA9BD" FontSize="12" Margin="0,4,0,0" />
-                            <TextBlock Text="{Binding CharacterText}" Foreground="#66879D" FontSize="11" Margin="0,2,0,0" />
+                            <TextBlock Text="QUEST SEARCH" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="{Binding CatalogSummary}" Foreground="#66879D" FontSize="10" Margin="0,4,0,8" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <controls:QuestNameSearchBox Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                             SuggestionChosen="QuestSuggestionChosen" />
+                                <Button Grid.Column="1" Content="Open" Margin="8,0,0,0" Padding="14,7"
+                                        Click="QuestOpenSearch_Click" />
+                                <Button Grid.Column="2" Content="Refresh list" Margin="8,0,0,0" Padding="12,7"
+                                        Click="QuestRefreshCatalog_Click"
+                                        ToolTip="Download quest titles from eqlwiki.com" />
+                            </Grid>
+                            <TextBlock Text="{Binding StatusText}" Foreground="#8BA9BD" FontSize="11" Margin="0,8,0,0"
+                                       TextWrapping="Wrap" />
                         </StackPanel>
 
-                        <UniformGrid Grid.Row="1" Columns="2" Rows="2" Margin="0,18,0,0">
-                            <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="0,0,8,8">
-                                <StackPanel>
-                                    <TextBlock Text="Level XP gained" Style="{StaticResource MetricLabel}" />
-                                    <TextBlock Text="{Binding LevelXpText}" FontSize="26" FontWeight="SemiBold"
-                                               Foreground="#2ED9C7" Margin="0,4,0,0" />
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="8,0,0,8">
-                                <StackPanel>
-                                    <TextBlock Text="Levels gained" Style="{StaticResource MetricLabel}" />
-                                    <TextBlock Text="{Binding LevelsText}" FontSize="26" FontWeight="SemiBold"
-                                               Foreground="#E8F8FF" Margin="0,4,0,0" />
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="0,8,8,0">
-                                <StackPanel>
-                                    <TextBlock Text="AA points gained" Style="{StaticResource MetricLabel}" />
-                                    <TextBlock Text="{Binding AaPointsText}" FontSize="26" FontWeight="SemiBold"
-                                               Foreground="#A98BFF" Margin="0,4,0,0" />
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="8,8,0,0">
-                                <StackPanel>
-                                    <TextBlock Text="Motes of Potential" Style="{StaticResource MetricLabel}" />
-                                    <TextBlock Text="{Binding MotesText}" FontSize="26" FontWeight="SemiBold"
-                                               Foreground="#F2FAFF" Margin="0,4,0,0" />
-                                </StackPanel>
-                            </Border>
-                        </UniformGrid>
+                        <Border Grid.Row="1" Style="{StaticResource InnerCard}" Padding="12,10" Margin="0,14,0,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="180" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="TRACKED ITEMS" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
+                                <ListBox Grid.Row="1" ItemsSource="{Binding TrackedItems}"
+                                         Background="Transparent" BorderThickness="0"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                    <ListBox.ItemContainerStyle>
+                                        <Style TargetType="ListBoxItem">
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                            <Setter Property="Padding" Value="0" />
+                                            <Setter Property="Margin" Value="0,0,0,8" />
+                                            <Setter Property="Focusable" Value="False" />
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="ListBoxItem">
+                                                        <ContentPresenter />
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </ListBox.ItemContainerStyle>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#4A0C2436" BorderBrush="#2A4A5E" BorderThickness="1"
+                                                    CornerRadius="8" Padding="10,8">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding ItemName}" FontWeight="SemiBold"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding QuestTitle}" Foreground="#66879D"
+                                                                   FontSize="10" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding LastDropText}" Foreground="#2ED9C7"
+                                                                   FontSize="10" Margin="0,4,0,0" />
+                                                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                                            <CheckBox Content="Alert" IsChecked="{Binding Enabled}"
+                                                                      Foreground="#C8DEEA" VerticalAlignment="Center" />
+                                                            <ComboBox Style="{StaticResource BuffCombo}"
+                                                                      ItemsSource="{Binding DataContext.AlertModeChoices, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                                      SelectedItem="{Binding AlertMode}" Width="120" Margin="10,0,0,0"
+                                                                      VerticalAlignment="Center"
+                                                                      ToolTip="Sound or TextToSpeech" />
+                                                            <ComboBox Style="{StaticResource BuffCombo}"
+                                                                      ItemsSource="{Binding DataContext.SoundChoices, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                                      SelectedItem="{Binding Sound}" Width="110" Margin="8,0,0,0"
+                                                                      VerticalAlignment="Center"
+                                                                      Visibility="{Binding SoundPickerVisibility}" />
+                                                        </StackPanel>
+                                                        <TextBox Margin="0,8,0,0" Padding="8,6"
+                                                                 Text="{Binding VoiceText, UpdateSourceTrigger=LostFocus}"
+                                                                 Visibility="{Binding VoiceTextVisibility}"
+                                                                 ToolTip="Custom text to speak when this item drops"
+                                                                 Background="#EAF7FC" Foreground="#102A3D"
+                                                                 BorderBrush="#42677F" />
+                                                    </StackPanel>
+                                                    <Button Grid.Column="1" Content="Remove" Padding="10,4"
+                                                            VerticalAlignment="Top"
+                                                            Click="QuestUntrack_Click" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Grid>
+                        </Border>
 
-                        <Border Grid.Row="2" Style="{StaticResource InnerCard}" Padding="12,10" Margin="0,16,0,0">
+                        <Border Grid.Row="2" Style="{StaticResource InnerCard}" Padding="12,10" Margin="0,14,0,0">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
                                 </Grid.RowDefinitions>
-                                <TextBlock Text="MOTE BREAKDOWN" Style="{StaticResource SectionLabel}" Margin="2,0,0,8" />
-                                <ListBox Grid.Row="1" ItemsSource="{Binding MoteRows}"
+                                <TextBlock Text="SUGGESTED ITEMS TO TRACK" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
+                                <ListBox Grid.Row="1" ItemsSource="{Binding SuggestedItems}"
                                          Background="Transparent" BorderThickness="0">
                                     <ListBox.ItemContainerStyle>
                                         <Style TargetType="ListBoxItem">
@@ -1324,18 +1791,405 @@
                                     </ListBox.ItemContainerStyle>
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
-                                            <Grid Margin="2,0">
+                                            <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Grid.Column="1" Text="{Binding Count}" FontWeight="SemiBold"
-                                                           Foreground="#A98BFF" Margin="12,0,0,0" />
+                                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <Button Grid.Column="1" Content="{Binding TrackButtonText}"
+                                                        Padding="10,3" Click="QuestTrackItem_Click" />
                                             </Grid>
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
                                 </ListBox>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Column="2" Style="{StaticResource GlassCard}" Padding="16,14">
+                    <Grid DataContext="{Binding QuestTracker}">
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                                    Visibility="{Binding EmptyDetailsVisibility}">
+                            <TextBlock Text="Select a quest" FontSize="20" FontWeight="SemiBold"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="Search the wiki list, then open a quest to see NPCs, checklist steps, and trackable items."
+                                       Foreground="#8BA9BD" FontSize="12" Margin="0,8,0,0" TextAlignment="Center"
+                                       TextWrapping="Wrap" MaxWidth="420" />
+                        </StackPanel>
+
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      Visibility="{Binding QuestDetailsVisibility}">
+                            <StackPanel>
+                                <Grid>
+                                    <StackPanel>
+                                        <TextBlock Text="QUEST DETAILS" Style="{StaticResource SectionLabel}" />
+                                        <TextBlock Text="{Binding SelectedQuest.Title}" FontSize="22" FontWeight="SemiBold"
+                                                   Margin="0,8,0,0" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <Button Content="Open wiki" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                            Padding="12,6" Click="QuestOpenWiki_Click" />
+                                </Grid>
+
+                                <UniformGrid Columns="2" Margin="0,16,0,0">
+                                    <Border Style="{StaticResource InnerCard}" Padding="12,10" Margin="0,0,6,6">
+                                        <StackPanel>
+                                            <TextBlock Text="Start zone" Style="{StaticResource MetricLabel}" />
+                                            <TextBlock Text="{Binding SelectedQuest.StartZone}" Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Style="{StaticResource InnerCard}" Padding="12,10" Margin="6,0,0,6">
+                                        <StackPanel>
+                                            <TextBlock Text="Quest giver" Style="{StaticResource MetricLabel}" />
+                                            <TextBlock Text="{Binding SelectedQuest.QuestGiver}" Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Style="{StaticResource InnerCard}" Padding="12,10" Margin="0,6,6,6">
+                                        <StackPanel>
+                                            <TextBlock Text="Level" Style="{StaticResource MetricLabel}" />
+                                            <TextBlock Text="{Binding SelectedQuest.RecommendedLevel}" Margin="0,4,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Style="{StaticResource InnerCard}" Padding="12,10" Margin="6,6,0,6">
+                                        <StackPanel>
+                                            <TextBlock Text="Classes" Style="{StaticResource MetricLabel}" />
+                                            <TextBlock Text="{Binding SelectedQuest.Classes}" Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Style="{StaticResource InnerCard}" Padding="12,10" Margin="0,6,6,0">
+                                        <StackPanel>
+                                            <TextBlock Text="Related zones" Style="{StaticResource MetricLabel}" />
+                                            <TextBlock Text="{Binding SelectedQuest.RelatedZones}" Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Style="{StaticResource InnerCard}" Padding="12,10" Margin="6,6,0,0">
+                                        <StackPanel>
+                                            <TextBlock Text="Related NPCs" Style="{StaticResource MetricLabel}" />
+                                            <TextBlock Text="{Binding SelectedQuest.RelatedNpcs}" Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </UniformGrid>
+
+                                <Border Style="{StaticResource InnerCard}" Padding="12,10" Margin="0,14,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="CHECKLIST / STEPS" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
+                                        <ItemsControl ItemsSource="{Binding ChecklistLines}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,0,0,8"
+                                                               Foreground="#D7EAF5" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock Text="No checklist bullets found on this page. Open the wiki for the full walkthrough."
+                                                   Foreground="#66879D" FontSize="11">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding ChecklistLines.Count}" Value="0">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Plane of Sky tracker workspace -->
+            <Grid Grid.Row="2" Grid.RowSpan="3"
+                  Visibility="{Binding IsChecked, ElementName=SkyTrackerButton, Converter={StaticResource BooleanToVisibility}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.15*" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="1.45*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource GlassCard}" Padding="14,12">
+                    <Grid DataContext="{Binding SkyTracker}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel>
+                            <TextBlock Text="ADD SKY REWARD" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="{Binding CatalogSummary}" Foreground="#66879D" FontSize="10" Margin="0,4,0,8" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox ItemsSource="{Binding ClassNames}"
+                                          SelectedItem="{Binding SelectedClass}"
+                                          Style="{StaticResource BuffCombo}" Margin="0,0,6,0" />
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableRewards}"
+                                          SelectedItem="{Binding SelectedReward}"
+                                          Style="{StaticResource BuffCombo}" Margin="0,0,6,0">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding RewardName}" Foreground="#102A3D" FontWeight="SemiBold" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <Button Grid.Column="2" Content="Refresh" Padding="12,7"
+                                        Click="SkyRefreshCatalog_Click"
+                                        ToolTip="Download Plane of Sky rewards from eqlwiki.com" />
+                            </Grid>
+                            <TextBlock Text="{Binding StatusText}" Foreground="#8BA9BD" FontSize="11" Margin="0,8,0,0"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <Border Grid.Row="1" Style="{StaticResource InnerCard}" Padding="12,10" Margin="0,14,0,0">
+                            <Grid>
+                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                                            Visibility="{Binding EmptyPreviewVisibility}">
+                                    <TextBlock Text="Pick a class and reward" Foreground="#8BA9BD"
+                                               HorizontalAlignment="Center" />
+                                    <TextBlock Text="Stats and required items will appear here."
+                                               Foreground="#66879D" FontSize="11" Margin="0,6,0,0"
+                                               HorizontalAlignment="Center" />
+                                </StackPanel>
+
+                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                              Visibility="{Binding PreviewVisibility}">
+                                    <StackPanel>
+                                        <TextBlock Text="REWARD PREVIEW" Style="{StaticResource SectionLabel}" />
+                                        <TextBlock Text="{Binding SelectedReward.RewardName}" FontSize="18"
+                                                   FontWeight="SemiBold" Margin="0,8,0,0" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding PreviewQuestSummary}" Foreground="#66879D"
+                                                   FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding PreviewStats}" Foreground="#D7EAF5"
+                                                   FontSize="12" Margin="0,10,0,0" TextWrapping="Wrap" />
+
+                                        <TextBlock Text="REQUIRED ITEMS" Style="{StaticResource SectionLabel}"
+                                                   Margin="0,16,0,8" />
+                                        <ItemsControl ItemsSource="{Binding PreviewParts}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="#4A0C2436" BorderBrush="#2A4A5E" BorderThickness="1"
+                                                            CornerRadius="8" Padding="10,8" Margin="0,0,0,8">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel>
+                                                                <CheckBox Content="{Binding DisplayName}"
+                                                                          IsChecked="{Binding IsSelected}"
+                                                                          Foreground="#C8DEEA" />
+                                                                <TextBox Margin="0,8,0,0" Padding="8,6"
+                                                                         Text="{Binding VoiceText, UpdateSourceTrigger=LostFocus}"
+                                                                         Visibility="{Binding VoiceTextVisibility}"
+                                                                         ToolTip="Custom text to speak when this item drops"
+                                                                         Background="#EAF7FC" Foreground="#102A3D"
+                                                                         BorderBrush="#42677F" />
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                                                        VerticalAlignment="Top">
+                                                                <ComboBox Style="{StaticResource BuffCombo}"
+                                                                          ItemsSource="{Binding DataContext.AlertModeChoices, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                          SelectedItem="{Binding AlertMode}" Width="120"
+                                                                          ToolTip="Sound or TextToSpeech" />
+                                                                <ComboBox Style="{StaticResource BuffCombo}"
+                                                                          ItemsSource="{Binding DataContext.SoundChoices, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                          SelectedItem="{Binding Sound}" Width="110" Margin="8,0,0,0"
+                                                                          Visibility="{Binding SoundPickerVisibility}" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Grid>
+                        </Border>
+
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,0">
+                            <Button Content="Add selected items" Padding="14,8" Click="SkyAddSelected_Click" />
+                            <Button Content="Open wiki" Margin="8,0,0,0" Padding="12,8" Click="SkyOpenWiki_Click" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Column="2" Style="{StaticResource GlassCard}" Padding="16,14">
+                    <Grid DataContext="{Binding SkyTracker}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="220" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <Grid>
+                            <TextBlock Text="YOUR SKY LIST" Style="{StaticResource SectionLabel}" />
+                            <Button Content="Plane of Sky page" HorizontalAlignment="Right" Padding="12,4"
+                                    Click="SkyOpenPlanePage_Click" />
+                        </Grid>
+
+                        <ListBox Grid.Row="1" ItemsSource="{Binding Goals}"
+                                 SelectedItem="{Binding SelectedGoal}"
+                                 Background="Transparent" BorderThickness="0" Margin="0,10,0,0"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="Margin" Value="0,0,0,8" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border x:Name="Card" Background="#4A0C2436" BorderBrush="#2A4A5E"
+                                                        BorderThickness="1" CornerRadius="8" Padding="10,8">
+                                                    <ContentPresenter />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="Card" Property="BorderBrush" Value="#9C7CFF" />
+                                                        <Setter TargetName="Card" Property="Background" Value="#A51A3152" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Card" Property="Background" Value="#A5163A50" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding RewardName}" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Subtitle}" Foreground="#66879D" FontSize="10"
+                                                       Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Foreground="#2ED9C7"
+                                                   FontWeight="Bold" VerticalAlignment="Center" Margin="10,0" />
+                                        <Button Grid.Column="2" Content="Remove" Padding="10,4"
+                                                Click="SkyRemoveGoal_Click" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <Border Grid.Row="2" Style="{StaticResource InnerCard}" Padding="12,10" Margin="0,12,0,0">
+                            <Grid>
+                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                                            Visibility="{Binding EmptyGoalDetailsVisibility}">
+                                    <TextBlock Text="Select a reward from your list" Foreground="#8BA9BD"
+                                               HorizontalAlignment="Center" />
+                                    <TextBlock Text="Tracked ingredients, locations, and alert sounds show here."
+                                               Foreground="#66879D" FontSize="11" Margin="0,6,0,0"
+                                               HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" />
+                                </StackPanel>
+
+                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                              Visibility="{Binding GoalDetailsVisibility}">
+                                    <StackPanel>
+                                        <TextBlock Text="TRACKED PARTS" Style="{StaticResource SectionLabel}" />
+                                        <TextBlock Text="{Binding SelectedGoal.RewardName}" FontSize="18"
+                                                   FontWeight="SemiBold" Margin="0,8,0,0" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding SelectedGoal.RewardStats}" Foreground="#D7EAF5"
+                                                   FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap" />
+
+                                        <ItemsControl ItemsSource="{Binding SelectedGoal.Parts}" Margin="0,14,0,0">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="#4A0C2436" BorderBrush="#2A4A5E" BorderThickness="1"
+                                                            CornerRadius="8" Padding="10,8" Margin="0,0,0,8">
+                                                        <Grid>
+                                                            <Grid.RowDefinitions>
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="Auto" />
+                                                            </Grid.RowDefinitions>
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <StackPanel>
+                                                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
+                                                                               TextWrapping="Wrap" />
+                                                                    <TextBlock Text="{Binding ProgressText}" Foreground="#2ED9C7"
+                                                                               FontSize="11" Margin="0,2,0,0" />
+                                                                    <TextBlock Text="{Binding LastDropText}" Foreground="#8BA9BD"
+                                                                               FontSize="10" Margin="0,2,0,0" />
+                                                                </StackPanel>
+                                                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                                    <Button Content="Bank" Padding="8,3" Margin="0,0,6,0"
+                                                                            Click="SkyMarkBank_Click"
+                                                                            ToolTip="Mark this item as stored in the bank" />
+                                                                    <Button Content="Remove" Padding="8,3"
+                                                                            Click="SkyRemovePart_Click" />
+                                                                </StackPanel>
+                                                            </Grid>
+                                                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
+                                                                <CheckBox Content="Alert" IsChecked="{Binding AlertEnabled}"
+                                                                          Foreground="#C8DEEA" VerticalAlignment="Center" />
+                                                                <ComboBox Style="{StaticResource BuffCombo}"
+                                                                          ItemsSource="{Binding DataContext.AlertModeChoices, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                          SelectedItem="{Binding AlertMode}" Width="120"
+                                                                          Margin="10,0,0,0" VerticalAlignment="Center"
+                                                                          ToolTip="Sound or TextToSpeech" />
+                                                                <ComboBox Style="{StaticResource BuffCombo}"
+                                                                          ItemsSource="{Binding DataContext.SoundChoices, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                          SelectedItem="{Binding Sound}" Width="110"
+                                                                          Margin="8,0,0,0" VerticalAlignment="Center"
+                                                                          Visibility="{Binding SoundPickerVisibility}" />
+                                                                <ComboBox Style="{StaticResource BuffCombo}"
+                                                                          ItemsSource="{Binding DataContext.LocationChoices, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                          SelectedItem="{Binding Location}" Width="110"
+                                                                          Margin="8,0,0,0" VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                            <TextBox Grid.Row="2" Margin="0,8,0,0" Padding="8,6"
+                                                                     Text="{Binding VoiceText, UpdateSourceTrigger=LostFocus}"
+                                                                     Visibility="{Binding VoiceTextVisibility}"
+                                                                     ToolTip="Custom text to speak when this item drops"
+                                                                     Background="#EAF7FC" Foreground="#102A3D"
+                                                                     BorderBrush="#42677F" />
+                                                            <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,0">
+                                                                <TextBlock Text="Found" VerticalAlignment="Center"
+                                                                           Foreground="#8BA9BD" Margin="0,0,8,0" />
+                                                                <Button Content="-" Width="28" Padding="0,2"
+                                                                        Click="SkyFoundMinus_Click" />
+                                                                <TextBlock Text="{Binding FoundCount}" Width="28"
+                                                                           TextAlignment="Center" VerticalAlignment="Center"
+                                                                           FontWeight="Bold" />
+                                                                <Button Content="+" Width="28" Padding="0,2"
+                                                                        Click="SkyFoundPlus_Click" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </ScrollViewer>
                             </Grid>
                         </Border>
                     </Grid>

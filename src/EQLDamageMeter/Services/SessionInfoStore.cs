@@ -17,7 +17,19 @@ public static class SessionInfoStore
         {
             if (!File.Exists(StorePath)) return [];
             var document = JsonSerializer.Deserialize<SessionInfoDocument>(File.ReadAllText(StorePath), JsonOptions);
-            return document?.Sessions ?? [];
+            var sessions = document?.Sessions ?? [];
+            foreach (var session in sessions)
+            {
+                session.Loot ??= new SessionLootData();
+                session.Loot.Mobs ??= [];
+                foreach (var mob in session.Loot.Mobs)
+                {
+                    mob.Items ??= [];
+                    mob.Kills ??= [];
+                }
+            }
+
+            return sessions;
         }
         catch (IOException)
         {

@@ -2,16 +2,46 @@ namespace EQLDamageMeter.Models;
 
 public enum BuffAlertMode
 {
-    Sound,
-    TextToSpeech,
-    Both
+    Sound = 0,
+    TextToSpeech = 1,
+    /// <summary>Legacy persisted value; treated as Sound.</summary>
+    Both = 2
+}
+
+public static class BuffAlertModeOptions
+{
+    public static IReadOnlyList<BuffAlertMode> ExclusiveChoices { get; } =
+    [
+        BuffAlertMode.Sound,
+        BuffAlertMode.TextToSpeech
+    ];
+
+    public static BuffAlertMode Normalize(BuffAlertMode mode) =>
+        mode == BuffAlertMode.TextToSpeech ? BuffAlertMode.TextToSpeech : BuffAlertMode.Sound;
 }
 
 public enum BuffSoundKind
 {
     Bell,
     Chime,
-    Drum
+    Drum,
+    Ping,
+    Alert,
+    Fanfare,
+    Horn,
+    Gong,
+    Click,
+    Blip,
+    Pulse,
+    Siren,
+    Knock,
+    Triangle,
+    Marimba,
+    Glass,
+    Coin,
+    Thud,
+    Whistle,
+    Cascade
 }
 
 public enum BuffStopReason

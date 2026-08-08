@@ -53,7 +53,7 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     public ObservableCollection<BuffRuleViewModel> Rules { get; } = [];
     public ObservableCollection<BuffOverlayEntryViewModel> OverlayEntries { get; } = [];
     public ICollectionView RulesView { get; }
-    public IReadOnlyList<BuffAlertMode> AlertModes { get; } = Enum.GetValues<BuffAlertMode>();
+    public IReadOnlyList<BuffAlertMode> AlertModes { get; } = BuffAlertModeOptions.ExclusiveChoices;
     public IReadOnlyList<BuffSoundKind> SoundChoices { get; } = Enum.GetValues<BuffSoundKind>();
     public IReadOnlyList<ControlEffectType> ControlTypes { get; } = Enum.GetValues<ControlEffectType>();
 
@@ -83,7 +83,7 @@ public sealed class SpellRuleSetViewModel : ObservableObject
         var duration = _category == SpellTrackerCategory.Control ? 30 : 60;
         var controlType = _category == SpellTrackerCategory.Control ? ControlEffectType.Mez : ControlEffectType.Other;
         var rule = new BuffRuleViewModel(new BuffRuleSettings(Guid.NewGuid(), string.Empty, duration, 3,
-            true, true, BuffAlertMode.Both, BuffSoundKind.Chime, string.Empty, false, true,
+            true, true, BuffAlertMode.Sound, BuffSoundKind.Chime, string.Empty, false, true,
             _category, controlType));
         Rules.Add(rule);
         SelectedRule = rule;

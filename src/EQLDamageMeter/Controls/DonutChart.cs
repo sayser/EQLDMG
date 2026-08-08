@@ -23,13 +23,14 @@ public sealed class DonutChart : FrameworkElement
         base.OnRender(drawingContext);
         var items = ItemsSource?.Cast<AbilityViewModel>().Where(item => item.Damage > 0).ToArray() ?? [];
         var total = items.Sum(item => item.Damage);
-        var radius = Math.Max(0, Math.Min(ActualWidth, ActualHeight) / 2 - 8);
+        // Keep outer diameter fixed to the control size; only the ring band gets thicker.
+        var outerRadius = Math.Max(0, Math.Min(ActualWidth, ActualHeight) / 2 - 6);
         var center = new Point(ActualWidth / 2, ActualHeight / 2);
-        var thickness = Math.Max(18, radius * 0.28);
+        var thickness = Math.Clamp(outerRadius * 0.46, 26, outerRadius * 0.72);
+        var pathRadius = Math.Max(0, outerRadius - thickness / 2);
 
-        drawingContext.DrawEllipse(null, new Pen(EmptyRingBrush, thickness), center,
-            Math.Max(0, radius - thickness / 2), Math.Max(0, radius - thickness / 2));
-        if (total <= 0 || radius <= 0) return;
+        drawingContext.DrawEllipse(null, new Pen(EmptyRingBrush, thickness), center, pathRadius, pathRadius);
+        if (total <= 0 || pathRadius <= 0) return;
 
         var start = -90d;
         foreach (var item in items)
@@ -37,12 +38,11 @@ public sealed class DonutChart : FrameworkElement
             var sweep = item.Damage * 360d / total;
             if (sweep >= 359.999)
             {
-                drawingContext.DrawEllipse(null, new Pen(item.Color, thickness), center,
-                    radius - thickness / 2, radius - thickness / 2);
+                drawingContext.DrawEllipse(null, new Pen(item.Color, thickness), center, pathRadius, pathRadius);
             }
             else if (sweep > 0.05)
             {
-                var geometry = CreateArc(center, radius - thickness / 2, start, sweep);
+                var geometry = CreateArc(center, pathRadius, start, sweep);
                 var pen = new Pen(item.Color, thickness) { StartLineCap = PenLineCap.Flat, EndLineCap = PenLineCap.Flat };
                 drawingContext.DrawGeometry(null, pen, geometry);
             }

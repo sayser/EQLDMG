@@ -195,12 +195,23 @@
                     </Grid>
                     <Grid Grid.Row="6" Margin="0,14,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                        <StackPanel><TextBlock Text="Alert Type" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" /><ComboBox Style="{DynamicResource BuffCombo}" ItemsSource="{Binding AlertModes}" SelectedItem="{Binding SelectedRule.AlertMode, Mode=TwoWay}" /></StackPanel>
-                        <StackPanel Grid.Column="2"><TextBlock Text="Sound" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" /><ComboBox Style="{DynamicResource BuffCombo}" ItemsSource="{Binding SoundChoices}" SelectedItem="{Binding SelectedRule.Sound, Mode=TwoWay}" /></StackPanel>
+                        <StackPanel>
+                            <TextBlock Text="Alert Type" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" />
+                            <ComboBox Style="{DynamicResource BuffCombo}" ItemsSource="{Binding AlertModes}"
+                                      SelectedItem="{Binding SelectedRule.AlertMode, Mode=TwoWay}"
+                                      ToolTip="Choose Sound or TextToSpeech (not both)" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Visibility="{Binding SelectedRule.SoundPickerVisibility}">
+                            <TextBlock Text="Sound" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" />
+                            <ComboBox Style="{DynamicResource BuffCombo}" ItemsSource="{Binding SoundChoices}"
+                                      SelectedItem="{Binding SelectedRule.Sound, Mode=TwoWay}" />
+                        </StackPanel>
                     </Grid>
-                    <StackPanel Grid.Row="7" Margin="0,14,0,0">
+                    <StackPanel Grid.Row="7" Margin="0,14,0,0" Visibility="{Binding SelectedRule.VoiceTextVisibility}">
                         <TextBlock Text="Voice Text" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" />
-                        <TextBox Style="{DynamicResource BuffInput}" Text="{Binding SelectedRule.VoiceText, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBox Style="{DynamicResource BuffInput}"
+                                 Text="{Binding SelectedRule.VoiceText, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="Custom text spoken when this alert fires. Leave blank for the default phrase." />
                     </StackPanel>
                     <Grid Grid.Row="8" Margin="0,16,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="8" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>

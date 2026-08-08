@@ -7,9 +7,9 @@ namespace EQLDamageMeter.Services;
 
 /// <summary>
 /// Checks GitHub-hosted update.xml and applies zip updates into the portable
-/// app folder. Runtime files such as settings.json, spelltracker.json, and
-/// session_info.json are not shipped in the release zip, so user preferences,
-/// spell rules, and session history survive updates.
+/// app folder. Runtime JSON listed in <see cref="UserDataGuard.ProtectedFileNames"/>
+/// must never be shipped in the release zip. Before the updater replaces app files,
+/// user data is flushed, backed up, and always restored on the next launch.
 /// </summary>
 public static class AppUpdateService
 {
@@ -19,7 +19,7 @@ public static class AppUpdateService
     private static bool _configured;
 
     public static Version CurrentVersion { get; } =
-        Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 2, 1, 0);
+        Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 2, 5, 0);
 
     public static string CurrentVersionText
     {
@@ -49,6 +49,24 @@ public static class AppUpdateService
             AutoUpdater.HttpUserAgent = $"EQDM/{CurrentVersionText}";
             AutoUpdater.ApplicationExitEvent += () =>
             {
+                // Flush portable JSON before backing up, so the backup includes the
+                // latest session/tracker state rather than a stale pre-close snapshot.
+                foreach (Window window in Application.Current.Windows)
+                {
+                    if (window is global::EQLDamageMeter.MainWindow mainWindow)
+                    {
+                        try
+                        {
+                            mainWindow.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                        }
+                        catch (Exception)
+                        {
+                            // Still attempt backup/shutdown even if flush fails.
+                        }
+                    }
+                }
+
+                UserDataGuard.BackupBeforeUpdate();
                 foreach (Window window in Application.Current.Windows)
                     window.Close();
                 Application.Current.Shutdown();
@@ -57,6 +75,9 @@ public static class AppUpdateService
 
         if (owner is not null) AutoUpdater.SetOwner(owner);
     }
+
+    public static void InitializeUserDataProtection() =>
+        UserDataGuard.RestoreAfterUpdateIfNeeded();
 
     public static void CheckForUpdates(Window? owner = null, bool reportNoUpdate = false)
     {

@@ -15,6 +15,7 @@ public partial class MainWindow : Window, IAsyncDisposable
     private SpellEffectOverlayWindow? _dotOverlay;
     private SpellEffectOverlayWindow? _controlOverlay;
     private bool _startupUpdateChecked;
+    private bool _disposed;
 
     public MainWindow()
     {
@@ -37,6 +38,48 @@ public partial class MainWindow : Window, IAsyncDisposable
 
     private void CheckUpdates_Click(object sender, RoutedEventArgs e) =>
         AppUpdateService.CheckForUpdates(this, reportNoUpdate: true);
+
+    private void SessionExpand_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: SessionEntryViewModel session })
+            session.ToggleExpanded();
+        e.Handled = true;
+    }
+
+    private void SessionMobSelect_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: SessionMobLootRowViewModel mob }) return;
+        var session = FindParentDataContext<SessionEntryViewModel>(sender as DependencyObject);
+        if (session is null) return;
+        _viewModel.SessionHistory.SelectMob(session, mob);
+        e.Handled = true;
+    }
+
+    private void SessionMobClear_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.SessionHistory.ClearSelectedMob();
+        e.Handled = true;
+    }
+
+    private void OpenSessionMobWiki_Click(object sender, RoutedEventArgs e)
+    {
+        var mob = _viewModel.SessionHistory.SelectedMob
+                  ?? (sender as FrameworkElement)?.DataContext as SessionMobLootRowViewModel;
+        mob?.OpenWiki();
+        e.Handled = true;
+    }
+
+    private static T? FindParentDataContext<T>(DependencyObject? current) where T : class
+    {
+        while (current is not null)
+        {
+            if (current is FrameworkElement { DataContext: T match })
+                return match;
+            current = System.Windows.Media.VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
 
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
@@ -62,6 +105,95 @@ public partial class MainWindow : Window, IAsyncDisposable
             {
                 MessageBox.Show(this, error, "Logs folder", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
+        }
+    }
+
+    private async void PopulateSessionFromLog_Click(object sender, RoutedEventArgs e)
+    {
+        var error = await _viewModel.PopulateSessionFromLastHoursAsync(3);
+        if (error is not null)
+        {
+            MessageBox.Show(this, error, "Session Tracker", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        MessageBox.Show(this, "Session Tracker was populated from the last 3 hours of your character log.",
+            "Session Tracker", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private async void QuestRefreshCatalog_Click(object sender, RoutedEventArgs e) =>
+        await _viewModel.QuestTracker.RefreshCatalogAsync();
+
+    private async void QuestOpenSearch_Click(object sender, RoutedEventArgs e) =>
+        await _viewModel.QuestTracker.LoadSelectedSearchAsync();
+
+    private async void QuestSuggestionChosen(object sender, RoutedEventArgs e)
+    {
+        var title = _viewModel.QuestTracker.SearchText;
+        if (!string.IsNullOrWhiteSpace(title))
+            await _viewModel.QuestTracker.SelectSuggestionAsync(title);
+    }
+
+    private void QuestTrackItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: QuestItemRowViewModel item })
+            _viewModel.QuestTracker.TrackSuggestedItem(item);
+    }
+
+    private void QuestUntrack_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: TrackedQuestItemViewModel item })
+            _viewModel.QuestTracker.UntrackItem(item);
+    }
+
+    private void QuestOpenWiki_Click(object sender, RoutedEventArgs e) =>
+        _viewModel.QuestTracker.OpenSelectedQuestWiki();
+
+    private async void SkyRefreshCatalog_Click(object sender, RoutedEventArgs e) =>
+        await _viewModel.SkyTracker.RefreshCatalogAsync();
+
+    private async void SkyAddSelected_Click(object sender, RoutedEventArgs e) =>
+        await _viewModel.SkyTracker.AddSelectedPartsAsync();
+
+    private void SkyOpenWiki_Click(object sender, RoutedEventArgs e) =>
+        _viewModel.SkyTracker.OpenSelectedRewardWiki();
+
+    private void SkyOpenPlanePage_Click(object sender, RoutedEventArgs e) =>
+        _viewModel.SkyTracker.OpenSkyWiki();
+
+    private void SkyRemoveGoal_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: SkyTrackedGoalViewModel goal })
+            _viewModel.SkyTracker.RemoveGoal(goal);
+    }
+
+    private void SkyRemovePart_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: SkyTrackedPartViewModel part })
+            _viewModel.SkyTracker.RemovePart(part);
+    }
+
+    private void SkyMarkBank_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: SkyTrackedPartViewModel part })
+            _viewModel.SkyTracker.MarkPartInBank(part);
+    }
+
+    private void SkyFoundMinus_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: SkyTrackedPartViewModel part } && part.FoundCount > 0)
+        {
+            part.FoundCount--;
+            _viewModel.SkyTracker.SelectedGoal?.RefreshProgress();
+        }
+    }
+
+    private void SkyFoundPlus_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: SkyTrackedPartViewModel part })
+        {
+            part.FoundCount++;
+            _viewModel.SkyTracker.SelectedGoal?.RefreshProgress();
         }
     }
 
@@ -160,6 +292,8 @@ public partial class MainWindow : Window, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (_disposed) return;
+        _disposed = true;
         _overlay?.Close();
         _buffOverlay?.Close();
         _dotOverlay?.Close();

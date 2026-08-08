@@ -15,13 +15,15 @@ public sealed partial class SessionTracker
 
     public void StartSession(string character, string server, DateTime startedAt)
     {
+        SessionLootParser.ResetRuntime();
         _current = new SessionRecord
         {
             Id = startedAt.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture),
             StartedAt = startedAt,
             EndedAt = null,
             Character = character,
-            Server = server
+            Server = server,
+            Loot = new SessionLootData()
         };
     }
 
@@ -74,6 +76,15 @@ public sealed partial class SessionTracker
             changed = true;
         }
 
+        if (IsLocalPlayerDeath(message))
+        {
+            _current.Deaths++;
+            changed = true;
+        }
+
+        if (SessionLootParser.TryObserve(_current, timestamp, message))
+            changed = true;
+
         return changed;
     }
 
@@ -96,7 +107,9 @@ public sealed partial class SessionTracker
         EndLevel = source.EndLevel,
         AaPointsGained = source.AaPointsGained,
         MotesLooted = source.MotesLooted,
-        MotesByName = new Dictionary<string, int>(source.MotesByName, StringComparer.OrdinalIgnoreCase)
+        Deaths = source.Deaths,
+        MotesByName = new Dictionary<string, int>(source.MotesByName, StringComparer.OrdinalIgnoreCase),
+        Loot = SessionLootParser.Clone(source.Loot)
     };
 
     private static bool TryReadExperiencePercent(string message, out double percent)
@@ -140,6 +153,8 @@ public sealed partial class SessionTracker
         return moteName.Length > 0;
     }
 
+    private static bool IsLocalPlayerDeath(string message) => LocalDeathRegex().IsMatch(message);
+
     [GeneratedRegex(@"^You gain(?:ed)? (?:party |raid )?experience(?: \(with a (?:bonus|penalty)\))?!\s*\((\d+(?:\.\d+)?)%\)",
         RegexOptions.CultureInvariant)]
     private static partial Regex ExperiencePercentRegex();
@@ -155,4 +170,7 @@ public sealed partial class SessionTracker
 
     [GeneratedRegex(@"^--You have looted a (Mote of .+? Potential) from .+--$", RegexOptions.CultureInvariant)]
     private static partial Regex MoteLootRegex();
+
+    [GeneratedRegex(@"^(?:You died\.|You have been slain by .+?!)$", RegexOptions.CultureInvariant)]
+    private static partial Regex LocalDeathRegex();
 }

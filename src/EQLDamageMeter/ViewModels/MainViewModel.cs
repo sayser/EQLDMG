@@ -91,6 +91,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             .Where(item => item.EndedAt.HasValue)
             .OrderByDescending(item => item.StartedAt));
         SessionHistory.LoadHistory(_sessionHistory, current: null);
+        QuestTracker.Initialize();
+        SkyTracker.Initialize();
     }
 
     public ObservableCollection<CombatantViewModel> Combatants { get; } = [];
@@ -98,8 +100,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<BuffRuleViewModel> BuffRules { get; } = [];
     public ObservableCollection<BuffOverlayEntryViewModel> OverlayBuffEntries { get; } = [];
     public SessionHistoryViewModel SessionHistory { get; } = new();
+    public QuestTrackerViewModel QuestTracker { get; } = new();
+    public SkyTrackerViewModel SkyTracker { get; } = new();
     public ICollectionView BuffRulesView { get; }
-    public IReadOnlyList<BuffAlertMode> BuffAlertModes { get; } = Enum.GetValues<BuffAlertMode>();
+    public IReadOnlyList<BuffAlertMode> BuffAlertModes { get; } = BuffAlertModeOptions.ExclusiveChoices;
     public IReadOnlyList<BuffSoundKind> BuffSoundChoices { get; } = Enum.GetValues<BuffSoundKind>();
     public SpellRuleSetViewModel DotSpellTracker { get; }
     public SpellRuleSetViewModel ControlSpellTracker { get; }
@@ -274,7 +278,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public BuffRuleViewModel AddBuffRule()
     {
         var rule = new BuffRuleViewModel(new BuffRuleSettings(Guid.NewGuid(), string.Empty, 9 * 60 + 6, 3.4,
-            true, false, BuffAlertMode.Both, BuffSoundKind.Chime, string.Empty));
+            true, false, BuffAlertMode.Sound, BuffSoundKind.Chime, string.Empty));
         BuffRules.Add(rule);
         SelectedBuffRule = rule;
         BuffFilterMode = "All";
@@ -429,7 +433,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             liveStart = await LogFileMonitor.CaptureLiveStartAsync(path, cancellationToken);
             var groupRestoreTask = Task.Run(() => GroupContextRestorer.RestoreAsync(path, liveStart.ResumePosition,
                 parser, group, cancellationToken), cancellationToken);
-            await Task.WhenAll(spellCatalogTask, groupRestoreTask);
+            var backfillTask = Task.Run(
+                () => SessionLogBackfill.TryBuild(path, identity.Character, identity.Server, TimeSpan.FromHours(3)),
+                cancellationToken);
+            await Task.WhenAll(spellCatalogTask, groupRestoreTask, backfillTask);
             _spellDataCatalog = await spellCatalogTask;
             RaisePropertyChanged(nameof(SpellCatalog));
             DotSpellTracker.NotifyCatalogChanged();
@@ -437,6 +444,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             ApplyBuffConfiguration();
             DotSpellTracker.RefreshConfiguration();
             ControlSpellTracker.RefreshConfiguration();
+            ApplyBackfillSession(await backfillTask);
         }
         catch (IOException)
         {
@@ -462,6 +470,45 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             liveStart.DiscardInitialPartialLine);
         _monitor.Start();
         return true;
+    }
+
+    public async Task<string?> PopulateSessionFromLastHoursAsync(double hours = 3)
+    {
+        if (_activeLogPath is null || !LogIdentity.TryFromPath(_activeLogPath, out var identity) || identity is null)
+            return "No character log is loaded.";
+
+        try
+        {
+            var lookback = TimeSpan.FromHours(Math.Clamp(hours, 0.25, 24));
+            var built = await Task.Run(() =>
+                SessionLogBackfill.TryBuild(_activeLogPath, identity.Character, identity.Server, lookback));
+            if (built is null)
+                return "No session data found in that log window.";
+
+            ApplyBackfillSession(built);
+            return null;
+        }
+        catch (IOException)
+        {
+            return "The character log could not be read.";
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return "Access to the character log was denied.";
+        }
+    }
+
+    private void ApplyBackfillSession(SessionRecord? built)
+    {
+        if (built is null) return;
+        _sessionHistory.RemoveAll(item => string.Equals(item.Id, built.Id, StringComparison.Ordinal));
+        _sessionHistory.Insert(0, built);
+        _sessionDirty = true;
+        RefreshSessionHistoryUi();
+        SessionHistory.SelectedSession = SessionHistory.Sessions.FirstOrDefault(item =>
+                                            string.Equals(item.Id, built.Id, StringComparison.Ordinal))
+                                        ?? SessionHistory.SelectedSession;
+        PersistSessionHistoryIfNeeded(force: true);
     }
 
     private async Task ParseAndQueueAsync(string line, LogLineParser parser, int generation,
@@ -583,6 +630,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             RefreshSessionHistoryUi();
             PersistSessionHistoryIfNeeded(force: false);
         }
+
+        QuestTracker.ObserveLootMessage(parsed.Message);
+        SkyTracker.ObserveLootMessage(parsed.Message);
 
         _buffTracker.Observe(parsed.Timestamp, parsed.Message);
         DotSpellTracker.Observe(parsed.Timestamp, parsed.Message);
@@ -1188,11 +1238,17 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (!_sessionDirty && !force) return;
         var records = BuildPersistableSessions();
-        _sessionDirty = false;
-        _lastSessionPersistUtc = DateTime.UtcNow;
         try
         {
-            await SessionInfoStore.TrySaveSessionsAsync(records, CancellationToken.None);
+            var saved = await SessionInfoStore.TrySaveSessionsAsync(records, CancellationToken.None);
+            if (!saved)
+            {
+                // Keep dirty so a later flush can retry instead of silently dropping data.
+                return;
+            }
+
+            _sessionDirty = false;
+            _lastSessionPersistUtc = DateTime.UtcNow;
         }
         catch (OperationCanceledException)
         {
