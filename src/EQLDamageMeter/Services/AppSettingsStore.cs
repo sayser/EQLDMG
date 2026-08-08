@@ -13,7 +13,7 @@ public static class AppSettingsStore
         public SpellIconStyle SpellIconStyle { get; set; } = SpellIconStyle.Modern;
     }
 
-    private static readonly string SettingsPath = Path.Combine(AppContext.BaseDirectory, "settings.json");
+    private static readonly string SettingsPath = AppPaths.Combine("settings.json");
     private static readonly SemaphoreSlim SettingsGate = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

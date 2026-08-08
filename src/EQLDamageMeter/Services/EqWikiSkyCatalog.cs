@@ -9,7 +9,7 @@ namespace EQLDamageMeter.Services;
 
 public sealed partial class EqWikiSkyCatalog
 {
-    private static readonly string CachePath = Path.Combine(AppContext.BaseDirectory, "sky_catalog.json");
+    private static readonly string CachePath = AppPaths.Combine("sky_catalog.json");
     private static readonly HttpClient Http = CreateClient();
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
@@ -252,7 +252,7 @@ public sealed partial class EqWikiSkyCatalog
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "EQDM/1.2.5 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
+            "EQDM/1.2.6 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
         return client;
     }
 

@@ -6,7 +6,7 @@ namespace EQLDamageMeter.Services;
 
 public static class SkyTrackerStore
 {
-    private static readonly string StorePath = Path.Combine(AppContext.BaseDirectory, "skytracker.json");
+    private static readonly string StorePath = AppPaths.Combine("skytracker.json");
     private static readonly SemaphoreSlim StoreGate = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 

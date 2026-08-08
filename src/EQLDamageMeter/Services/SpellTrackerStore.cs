@@ -25,8 +25,8 @@ public static class SpellTrackerStore
         public List<BuffRuleSettings>? ControlRules { get; set; }
     }
 
-    private static readonly string TrackerPath = Path.Combine(AppContext.BaseDirectory, "spelltracker.json");
-    private static readonly string LegacySettingsPath = Path.Combine(AppContext.BaseDirectory, "settings.json");
+    private static readonly string TrackerPath = AppPaths.Combine("spelltracker.json");
+    private static readonly string LegacySettingsPath = AppPaths.Combine("settings.json");
     private static readonly SemaphoreSlim TrackerGate = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

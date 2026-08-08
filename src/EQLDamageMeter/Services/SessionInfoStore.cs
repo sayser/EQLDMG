@@ -6,7 +6,7 @@ namespace EQLDamageMeter.Services;
 
 public static class SessionInfoStore
 {
-    private static readonly string StorePath = Path.Combine(AppContext.BaseDirectory, "session_info.json");
+    private static readonly string StorePath = AppPaths.Combine("session_info.json");
     private static readonly SemaphoreSlim StoreGate = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private const int MaxStoredSessions = 100;

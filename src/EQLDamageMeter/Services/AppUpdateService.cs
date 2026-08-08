@@ -19,7 +19,7 @@ public static class AppUpdateService
     private static bool _configured;
 
     public static Version CurrentVersion { get; } =
-        Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 2, 5, 0);
+        Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 2, 6, 0);
 
     public static string CurrentVersionText
     {
@@ -42,10 +42,9 @@ public static class AppUpdateService
             AutoUpdater.RunUpdateAsAdmin = false;
             AutoUpdater.ShowSkipButton = true;
             AutoUpdater.ShowRemindLaterButton = true;
-            AutoUpdater.InstallationPath = AppContext.BaseDirectory.TrimEnd(
-                Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            AutoUpdater.InstallationPath = AppPaths.AppDirectory;
             AutoUpdater.DownloadPath = Path.Combine(Path.GetTempPath(), "EQDMUpdates");
-            AutoUpdater.ExecutablePath = "EQLDamageMeter.exe";
+            AutoUpdater.ExecutablePath = AppPaths.Combine("EQLDamageMeter.exe");
             AutoUpdater.HttpUserAgent = $"EQDM/{CurrentVersionText}";
             AutoUpdater.ApplicationExitEvent += () =>
             {

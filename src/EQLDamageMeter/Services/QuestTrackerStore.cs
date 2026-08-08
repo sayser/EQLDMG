@@ -6,7 +6,7 @@ namespace EQLDamageMeter.Services;
 
 public static class QuestTrackerStore
 {
-    private static readonly string StorePath = Path.Combine(AppContext.BaseDirectory, "questtracker.json");
+    private static readonly string StorePath = AppPaths.Combine("questtracker.json");
     private static readonly SemaphoreSlim StoreGate = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
