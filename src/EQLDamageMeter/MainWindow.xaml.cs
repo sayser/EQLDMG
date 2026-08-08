@@ -208,6 +208,7 @@ public partial class MainWindow : Window, IAsyncDisposable
         }
 
         _overlay = new OverlayWindow { DataContext = _viewModel, Owner = this };
+        OverlayWindowPlacement.Attach(_overlay, OverlayWindowPlacement.DpsKey);
         _overlay.Closed += (_, _) => _overlay = null;
         _overlay.Show();
     }
@@ -221,17 +222,20 @@ public partial class MainWindow : Window, IAsyncDisposable
         }
 
         _buffOverlay = new BuffOverlayWindow { DataContext = _viewModel, Owner = this };
+        OverlayWindowPlacement.Attach(_buffOverlay, OverlayWindowPlacement.BuffKey);
         _buffOverlay.Closed += (_, _) => _buffOverlay = null;
         _buffOverlay.Show();
     }
 
     private void DotOverlay_Requested(object sender, RoutedEventArgs e) =>
-        ToggleSpellOverlay(ref _dotOverlay, _viewModel.DotSpellTracker);
+        ToggleSpellOverlay(ref _dotOverlay, _viewModel.DotSpellTracker, OverlayWindowPlacement.DotKey);
 
     private void ControlOverlay_Requested(object sender, RoutedEventArgs e) =>
-        ToggleSpellOverlay(ref _controlOverlay, _viewModel.ControlSpellTracker);
+        ToggleSpellOverlay(ref _controlOverlay, _viewModel.ControlSpellTracker,
+            OverlayWindowPlacement.ControlKey);
 
-    private void ToggleSpellOverlay(ref SpellEffectOverlayWindow? overlay, object dataContext)
+    private void ToggleSpellOverlay(ref SpellEffectOverlayWindow? overlay, object dataContext,
+        string placementKey)
     {
         if (overlay is { IsVisible: true })
         {
@@ -239,6 +243,7 @@ public partial class MainWindow : Window, IAsyncDisposable
             return;
         }
         var window = new SpellEffectOverlayWindow { DataContext = dataContext, Owner = this };
+        OverlayWindowPlacement.Attach(window, placementKey);
         overlay = window;
         window.Closed += (_, _) =>
         {

@@ -11,6 +11,8 @@ public static class AppSettingsStore
     {
         public string? LogFolder { get; set; }
         public SpellIconStyle SpellIconStyle { get; set; } = SpellIconStyle.Modern;
+        public Dictionary<string, OverlayBounds> OverlayBounds { get; set; } =
+            new(StringComparer.OrdinalIgnoreCase);
     }
 
     private static readonly string SettingsPath = AppPaths.Combine("settings.json");
@@ -37,6 +39,31 @@ public static class AppSettingsStore
     public static Task<bool> TrySaveSpellIconStyleAsync(SpellIconStyle style,
         CancellationToken cancellationToken = default) =>
         UpdateAsync(settings => settings.SpellIconStyle = style, cancellationToken);
+
+    public static bool TryLoadOverlayBounds(string key, out OverlayBounds? bounds)
+    {
+        bounds = null;
+        if (string.IsNullOrWhiteSpace(key)) return false;
+        var settings = TryLoad();
+        if (settings?.OverlayBounds is null) return false;
+        if (!settings.OverlayBounds.TryGetValue(key, out var stored) || stored is null) return false;
+        if (stored.Width < 80 || stored.Height < 40) return false;
+        if (double.IsNaN(stored.Left) || double.IsNaN(stored.Top) ||
+            double.IsNaN(stored.Width) || double.IsNaN(stored.Height)) return false;
+        bounds = stored;
+        return true;
+    }
+
+    public static Task<bool> TrySaveOverlayBoundsAsync(string key, OverlayBounds bounds,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(key) || bounds is null) return Task.FromResult(false);
+        return UpdateAsync(settings =>
+        {
+            settings.OverlayBounds ??= new Dictionary<string, OverlayBounds>(StringComparer.OrdinalIgnoreCase);
+            settings.OverlayBounds[key] = bounds;
+        }, cancellationToken);
+    }
 
     /// <summary>
     /// Rewrites settings.json without legacy Buff/DoT/Control rule lists after those
