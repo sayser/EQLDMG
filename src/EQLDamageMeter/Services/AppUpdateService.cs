@@ -19,7 +19,7 @@ public static class AppUpdateService
     private static bool _configured;
 
     public static Version CurrentVersion { get; } =
-        Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 2, 10, 0);
+        Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 3, 0, 0);
 
     public static string CurrentVersionText
     {

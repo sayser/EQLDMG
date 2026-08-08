@@ -119,6 +119,16 @@ public sealed class EncounterTracker(string localPlayerName)
         // damage taken, never group output. Includes local player hitting a grouped ally.
         var friendlyFire = sourceIsKnownMember && targetIsKnownMember &&
                            !damage.Source.Equals(damage.Target, StringComparison.OrdinalIgnoreCase);
+        // Charm name collision: a living hostile can share the controlled pet's name.
+        // Logs cannot tell them apart, so contributor hits on that name are treated as
+        // outgoing DPS (hitting your own pet is rare; same-named NPCs are common).
+        if (friendlyFire && IsAmbiguousHostilePetNameHit(damage.Source, damage.Target, group))
+        {
+            _hostileTargets.Add(damage.Target);
+            AddDamage(damage, group);
+            ReplayPendingFor(damage.Target, group);
+            return;
+        }
         if (friendlyFire)
         {
             // Only a controlled/owned pet should become an encounter hostile. Player
@@ -221,6 +231,9 @@ public sealed class EncounterTracker(string localPlayerName)
                            !outcome.Source.Equals(outcome.Target, StringComparison.OrdinalIgnoreCase) &&
                            (outcome.Target.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase) ||
                             group.IsConfirmedMemberOrPet(outcome.Target));
+        if (friendlyFire && outcome.Target is not null &&
+            IsAmbiguousHostilePetNameHit(outcome.Source, outcome.Target, group))
+            friendlyFire = false;
 
         var startsNewOffensiveEncounter = sourceIsEligible && !friendlyFire && outcome.Target is not null &&
                                           (!StartedAt.HasValue || IsFinalized ||
@@ -596,6 +609,16 @@ public sealed class EncounterTracker(string localPlayerName)
 
         if (targetIsFriendly)
         {
+            // Stun on a charm-shared name is usually the hostile; credit the recent caster.
+            if (group.TryGetControlledPetOwner(target, out _) &&
+                group.TryGetRecentEligibleCaster(outcome.Timestamp, out var stunCaster) &&
+                stunCaster is not null)
+            {
+                group.TryGetPetOwner(stunCaster, out var stunCasterOwner);
+                GetOrCreateCombatant(stunCaster, stunCasterOwner).StunsLanded++;
+                return;
+            }
+
             group.TryGetPetOwner(target, out var stunnedOwner);
             GetOrCreateCombatant(target, stunnedOwner).StunsTaken++;
             return;
@@ -609,6 +632,19 @@ public sealed class EncounterTracker(string localPlayerName)
 
         group.TryGetPetOwner(caster, out var casterOwner);
         GetOrCreateCombatant(caster, casterOwner).StunsLanded++;
+    }
+
+    /// <summary>
+    /// True when a group contributor damages/misses a name bound as a controlled pet.
+    /// Often a same-named hostile rather than the pet itself. Source==target lines are
+    /// handled separately (they never enter friendlyFire).
+    /// </summary>
+    private bool IsAmbiguousHostilePetNameHit(string source, string target, GroupStateTracker group)
+    {
+        if (source.Equals(target, StringComparison.OrdinalIgnoreCase)) return false;
+        if (!group.TryGetControlledPetOwner(target, out _)) return false;
+        return source.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase) ||
+               group.IsConfirmedMemberOrPet(source);
     }
 
     private void AddIncomingDamage(DamageEvent damage, GroupStateTracker group)

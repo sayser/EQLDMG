@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Windows;
 using System.Windows.Data;
+using System.Windows.Threading;
 using EQLDamageMeter.Models;
 using EQLDamageMeter.Services;
 
@@ -10,9 +12,11 @@ public sealed class SpellRuleSetViewModel : ObservableObject
 {
     private readonly SpellTrackerCategory _category;
     private readonly Func<SpellDataCatalog?> _catalog;
+    private readonly Func<int> _casterLevel;
     private readonly Func<IEnumerable<BuffRuleSettings>, CancellationToken, Task<bool>> _save;
     private readonly BuffAlertService _alerts;
     private readonly BuffTracker _tracker = new();
+    private readonly SemaphoreSlim _timingLearnGate = new(1, 1);
     private BuffRuleViewModel? _selectedRule;
     private string _searchText = string.Empty;
     private string _filterMode = "All";
@@ -21,10 +25,12 @@ public sealed class SpellRuleSetViewModel : ObservableObject
         IEnumerable<BuffRuleSettings> savedRules,
         Func<SpellDataCatalog?> catalog,
         Func<IEnumerable<BuffRuleSettings>, CancellationToken, Task<bool>> save,
-        BuffAlertService alerts)
+        BuffAlertService alerts,
+        Func<int>? casterLevel = null)
     {
         _category = category;
         _catalog = catalog;
+        _casterLevel = casterLevel ?? (() => SpellDataCatalog.DefaultCasterLevel);
         _save = save;
         _alerts = alerts;
         foreach (var settings in savedRules)
@@ -36,6 +42,7 @@ public sealed class SpellRuleSetViewModel : ObservableObject
             }));
         RulesView = CollectionViewSource.GetDefaultView(Rules);
         RulesView.Filter = FilterRule;
+        _tracker.OnTimingSample = sample => _ = ApplyTimingSampleAsync(sample);
         RefreshConfiguration();
     }
 
@@ -118,9 +125,18 @@ public sealed class SpellRuleSetViewModel : ObservableObject
                 rule.SetSpellValidation(error);
                 return error;
             }
+            var previousFamily = SpellNameNormalizer.GetFamilyName(rule.SpellName);
             rule.SpellName = spell!.Name;
             rule.SetSpellValidation(null);
             rule.SetIcon(_catalog()?.GetIcon(spell));
+            rule.ApplyCatalogTimings(spell,
+                force: !previousFamily.Equals(spell.Name, StringComparison.OrdinalIgnoreCase),
+                casterLevel: _casterLevel());
+            if (!rule.TryCreateSettings(out configured, out error))
+            {
+                SelectedRule = rule;
+                return $"{DisplayName(rule)}: {error}";
+            }
             settings.Add(configured! with
             {
                 SpellName = spell.Name,
@@ -152,10 +168,78 @@ public sealed class SpellRuleSetViewModel : ObservableObject
             rule.SetSpellValidation(error);
             return error;
         }
+        var previousFamily = SpellNameNormalizer.GetFamilyName(rule.SpellName);
         rule.SpellName = spell!.Name;
         rule.SetSpellValidation(null);
         rule.SetIcon(_catalog()?.GetIcon(spell));
+        rule.ApplyCatalogTimings(spell,
+            force: string.IsNullOrWhiteSpace(previousFamily) ||
+                   !previousFamily.Equals(spell.Name, StringComparison.OrdinalIgnoreCase),
+            casterLevel: _casterLevel());
         return null;
+    }
+
+    public string? ResetSelectedTimingsToCatalog()
+    {
+        if (SelectedRule is null) return $"Select a {SingularName} first.";
+        if (!TryResolveSpell(SelectedRule.SpellName, out var spell, out var error))
+        {
+            SelectedRule.SetSpellValidation(error);
+            return error;
+        }
+        SelectedRule.SpellName = spell!.Name;
+        SelectedRule.SetSpellValidation(null);
+        SelectedRule.SetIcon(_catalog()?.GetIcon(spell));
+        SelectedRule.ApplyCatalogTimings(spell, force: true, casterLevel: _casterLevel());
+        return null;
+    }
+
+    /// <summary>Re-seeds Catalog-sourced cast/duration using the current caster level.</summary>
+    public bool ReseedCatalogTimings(int casterLevel)
+    {
+        _timingLearnGate.Wait();
+        try
+        {
+            return ReseedCatalogTimingsCore(casterLevel);
+        }
+        finally
+        {
+            _timingLearnGate.Release();
+        }
+    }
+
+    public async Task<bool> ReseedCatalogTimingsAsync(int casterLevel)
+    {
+        await _timingLearnGate.WaitAsync();
+        try
+        {
+            return ReseedCatalogTimingsCore(casterLevel);
+        }
+        finally
+        {
+            _timingLearnGate.Release();
+        }
+    }
+
+    private bool ReseedCatalogTimingsCore(int casterLevel)
+    {
+        var catalog = _catalog();
+        if (catalog is null || casterLevel <= 0) return false;
+        var changed = false;
+        foreach (var rule in Rules)
+        {
+            if (rule.CastSource != SpellTimingSource.Catalog &&
+                rule.DurationSource != SpellTimingSource.Catalog) continue;
+            if (!catalog.TryResolveFamily(rule.SpellName, out var spell) || spell is null) continue;
+            var beforeCast = rule.CastTimeText;
+            var beforeDuration = rule.DurationText;
+            rule.ApplyCatalogTimings(spell, force: false, casterLevel: casterLevel);
+            if (!string.Equals(beforeCast, rule.CastTimeText, StringComparison.Ordinal) ||
+                !string.Equals(beforeDuration, rule.DurationText, StringComparison.Ordinal))
+                changed = true;
+        }
+        if (changed) RefreshConfiguration();
+        return changed;
     }
 
     public string? TestAlert()
@@ -191,7 +275,8 @@ public sealed class SpellRuleSetViewModel : ObservableObject
                 TrackSelf = false,
                 TrackOthers = true
             }).ToArray();
-        Configure(settings);
+        // Do not prune rules mid-edit: an invalid sibling must keep its last runtime state.
+        Configure(settings, pruneMissing: false);
         RefreshRuleIcons();
         RefreshOverlay(DateTime.Now);
     }
@@ -205,9 +290,10 @@ public sealed class SpellRuleSetViewModel : ObservableObject
 
     public void NotifyCatalogChanged() => RaisePropertyChanged(nameof(SpellCatalog));
 
-    private void Configure(IReadOnlyCollection<BuffRuleSettings> settings) =>
+    private void Configure(IReadOnlyCollection<BuffRuleSettings> settings, bool pruneMissing = true) =>
         _tracker.Configure(settings, ResolveFadeMessages, _ => [], ResolveOtherAppliedMessages,
-            suffix => _catalog()?.IsAmbiguousOtherAppliedSuffix(suffix) == true);
+            suffix => _catalog()?.IsAmbiguousOtherAppliedSuffix(suffix) == true,
+            pruneMissing: pruneMissing);
 
     private void RefreshRuleIcons()
     {
@@ -281,6 +367,80 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     private bool FilterRule(object item) => item is BuffRuleViewModel rule &&
         (string.IsNullOrWhiteSpace(SearchText) || rule.SpellName.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase)) &&
         (_filterMode == "All" || (_filterMode == "Enabled" ? rule.IsEnabled : !rule.IsEnabled));
+
+    private async Task ApplyTimingSampleAsync(SpellTimingSample sample)
+    {
+        await _timingLearnGate.WaitAsync();
+        try
+        {
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher is null || dispatcher.CheckAccess())
+                await ApplyTimingSampleCore(sample);
+            else
+                await dispatcher.InvokeAsync(() => ApplyTimingSampleCore(sample),
+                    DispatcherPriority.Background).Task.Unwrap();
+        }
+        finally
+        {
+            _timingLearnGate.Release();
+        }
+    }
+
+    private async Task ApplyTimingSampleCore(SpellTimingSample sample)
+    {
+        var rule = Rules.FirstOrDefault(item => item.Id == sample.RuleId);
+        if (rule is null || !rule.TryCreateSettings(out var current, out _)) return;
+        current = current! with
+        {
+            Category = _category,
+            TrackSelf = false,
+            TrackOthers = true
+        };
+        if (!SpellTimingLearner.TryApplySample(current, sample, out var updated)) return;
+        rule.ApplyLearnedSettings(updated, sample.Kind);
+        RefreshConfiguration();
+        // Persist without re-seeding catalog timings (that can fight learning).
+        _ = await PersistRulesAsync();
+    }
+
+    private async Task<string?> PersistRulesAsync()
+    {
+        var previous = (_category == SpellTrackerCategory.DamageOverTime
+                ? SpellTrackerStore.TryLoadDotRules()
+                : SpellTrackerStore.TryLoadControlRules())
+            .ToDictionary(rule => rule.Id);
+        var settings = new List<BuffRuleSettings>(Rules.Count);
+        foreach (var rule in Rules)
+        {
+            rule.Category = _category;
+            rule.TrackSelf = false;
+            rule.TrackOthers = true;
+            if (rule.TryCreateSettings(out var configured, out _))
+            {
+                settings.Add(configured! with
+                {
+                    Category = _category,
+                    TrackSelf = false,
+                    TrackOthers = true
+                });
+            }
+            else if (previous.TryGetValue(rule.Id, out var prior))
+            {
+                // Keep last-good disk copy for incomplete drafts so learning on siblings
+                // can still persist.
+                settings.Add(prior with
+                {
+                    Category = _category,
+                    TrackSelf = false,
+                    TrackOthers = true
+                });
+            }
+        }
+        Configure(settings, pruneMissing: false);
+        return await _save(settings, CancellationToken.None)
+            ? null
+            : $"{_category} rules could not be saved to spelltracker.json.";
+    }
 
     private static string DisplayName(BuffRuleViewModel rule) =>
         string.IsNullOrWhiteSpace(rule.SpellName) ? "New spell" : rule.SpellName;

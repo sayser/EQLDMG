@@ -33,6 +33,9 @@ internal static class Program
             RunLogParserTests();
             RunGroupAndEncounterTests();
             RunBuffTrackerTests();
+            RunSmartTimingTests();
+            RunLiveLogTimingLearningTests();
+            RunOdiumLiveCheck();
             RunSessionAndLootTests();
             RunLatestKillVsHistoryTests();
             RunQuestSkyStoreTests();
@@ -218,6 +221,38 @@ internal static class Program
         // Player-on-player FF must not keep the encounter alive via hostile targeting
         encounter3.FinalizeIfInactive(k0.AddSeconds(15));
         Check("Friendly fire does not block timeout finalize", encounter3.IsFinalized || !encounter3.StartedAt.HasValue);
+
+        // Charm name collision: pet and hostile share "an imp protector"
+        var encounter4 = new EncounterTracker("Sayser");
+        var g5 = new GroupStateTracker("Sayser");
+        var c0 = DateTime.Now;
+        void FeedCharm(string message, DateTime at)
+        {
+            var line = $"[{at.ToString("ddd MMM dd HH:mm:ss yyyy", CultureInfo.GetCultureInfo("en-US"))}] {message}";
+            if (!parser.TryParse(line, out var parsed) || parsed is null)
+            {
+                g5.Process(message, at);
+                return;
+            }
+            g5.Process(parsed.Message, parsed.Timestamp);
+            if (parsed.Damage is { } d) encounter4.Process(d, g5);
+            if (parsed.Outcome is { } o) encounter4.ProcessOutcome(o, g5);
+            encounter4.ProcessMessage(parsed.Timestamp, parsed.Message);
+        }
+        FeedCharm("You begin casting Charm.", c0);
+        FeedCharm("an imp protector has been charmed.", c0.AddSeconds(5));
+        Check("Charm name collision pet bound",
+            g5.TryGetControlledPetOwner("an imp protector", out var petOwner) && petOwner == "Sayser");
+        FeedCharm("You slash an imp protector for 312 points of damage.", c0.AddSeconds(6));
+        FeedCharm("You try to slash an imp protector, but miss!", c0.AddSeconds(6.5));
+        FeedCharm("An imp protector slashes an imp protector for 92 points of damage.", c0.AddSeconds(7));
+        FeedCharm("An imp protector backstabs a lava guardian for 313 points of damage.", c0.AddSeconds(8));
+        var sayserDps = encounter4.Combatants.FirstOrDefault(c => c.Name == "Sayser");
+        var petDps = encounter4.Combatants.FirstOrDefault(c =>
+            c.Name.Equals("an imp protector", StringComparison.OrdinalIgnoreCase));
+        Check("Charm name collision local DPS counted", sayserDps is { Damage: 312 });
+        Check("Charm name collision local miss counted", sayserDps is { Misses: >= 1 });
+        Check("Charm name collision pet DPS counted", petDps is not null && petDps.Damage >= 92 + 313);
     }
 
     private static void RunBuffTrackerTests()
@@ -281,6 +316,52 @@ internal static class Program
         pending.Tick(t0.AddSeconds(4));
         Check("Resist cancels DoT", pending.GetActiveSnapshots(t0.AddSeconds(4)).Count == 0);
 
+        // AE mez: many lands, only one cast-timing sample
+        var mezCastSamples = new List<SpellTimingSample>();
+        var mezCast = Rule("Mesmerization", SpellTrackerCategory.Control, ControlEffectType.Mez, 24, 3);
+        var mezCastTracker = new BuffTracker { OnTimingSample = mezCastSamples.Add };
+        mezCastTracker.Configure([mezCast], _ => [], _ => [], _ => [" has been mesmerized."], _ => true);
+        mezCastTracker.Observe(t0, "You begin casting Mesmerization.");
+        mezCastTracker.Observe(t0.AddSeconds(3), "a kobold has been mesmerized.");
+        mezCastTracker.Observe(t0.AddSeconds(3), "a kobold pet has been mesmerized.");
+        mezCastTracker.Observe(t0.AddSeconds(3), "a goblin has been mesmerized.");
+        Check("AE mez one cast sample",
+            mezCastSamples.Count(s => s.Kind == SpellTimingSampleKind.Cast) == 1);
+
+        // Worn-off must not cancel a pending recast of the same spell
+        var recastSamples = new List<SpellTimingSample>();
+        var recast = Rule("Odium", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other, 30, 3);
+        var recastTracker = new BuffTracker { OnTimingSample = recastSamples.Add };
+        recastTracker.Configure([recast], _ => [], _ => [],
+            _ => [" staggers under a dark curse."], _ => false);
+        recastTracker.Observe(t0, "You begin casting Odium.");
+        recastTracker.Observe(t0.AddSeconds(3), "a rat staggers under a dark curse.");
+        recastTracker.Observe(t0.AddSeconds(20), "You begin casting Odium.");
+        recastTracker.Observe(t0.AddSeconds(22),
+            "Your Odium spell has worn off of a rat.");
+        recastTracker.Observe(t0.AddSeconds(23), "a bat staggers under a dark curse.");
+        Check("Worn-off preserves pending recast land",
+            recastTracker.GetActiveSnapshots(t0.AddSeconds(23.1))
+                .Any(s => s.TargetName.Equals("a bat", StringComparison.OrdinalIgnoreCase)));
+        Check("Recast still emits cast sample",
+            recastSamples.Count(s => s.Kind == SpellTimingSampleKind.Cast) == 2);
+
+        // Death must not train duration; tombstone + worn-off still can
+        var nearFull = Rule("Venom of the Snake", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other,
+            36, 3);
+        var nearSamples = new List<SpellTimingSample>();
+        var nearTracker = new BuffTracker { OnTimingSample = nearSamples.Add };
+        nearTracker.Configure([nearFull], _ => [], _ => [], _ => [" has been poisoned."], _ => true);
+        nearTracker.Observe(t0, "You begin casting Venom of the Snake.");
+        nearTracker.Observe(t0.AddSeconds(3), "a bat has been poisoned.");
+        nearTracker.Observe(t0.AddSeconds(33), "You have slain a bat!");
+        Check("Death alone does not train duration",
+            nearSamples.Count(s => s.Kind == SpellTimingSampleKind.Duration) == 0);
+        nearTracker.Observe(t0.AddSeconds(33),
+            "Your Venom of the Snake spell has worn off of a bat.");
+        Check("Worn-off after death tombstone trains duration",
+            nearSamples.Count(s => s.Kind == SpellTimingSampleKind.Duration) == 1);
+
         // Overlapping ambiguous poisons: one land arms only the newest cast
         var venom = Rule("Venom of the Snake", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other, 60, 3);
         var envenom = Rule("Envenomed Bolt", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other, 40, 3);
@@ -292,15 +373,34 @@ internal static class Program
         var snaps = overlap.GetActiveSnapshots(t0.AddSeconds(4.2));
         Check("Ambiguous land one rule", snaps.Count == 1 && snaps[0].SpellName == "Envenomed Bolt");
 
-        // Natural expiry status
+        // Natural expiry status (after learn-grace elapses with no worn-off)
         var shortDot = Rule("Short Poison", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other, 2, 0);
         var expireTracker = new BuffTracker();
         expireTracker.Configure([shortDot], _ => [], _ => [], _ => [" has been poisoned."], _ => true);
         expireTracker.Observe(t0, "You begin casting Short Poison.");
         expireTracker.Observe(t0.AddSeconds(0.1), "a bat has been poisoned.");
+        // UI expiry is +2s; DoT grace holds the instance well past expiry for learning.
         expireTracker.Tick(t0.AddSeconds(2.2));
-        var snap = expireTracker.GetSnapshot(shortDot.Id, t0.AddSeconds(2.3));
+        Check("Post-expiry grace holds instance",
+            expireTracker.GetSnapshot(shortDot.Id, t0.AddSeconds(2.3)).StopReason != BuffStopReason.Expired);
+        // Grace is at least 180s for enemy-effect learning.
+        expireTracker.Tick(t0.AddSeconds(0.1 + 2 + 180 + 0.1));
+        var snap = expireTracker.GetSnapshot(shortDot.Id, t0.AddSeconds(0.1 + 2 + 180 + 0.2));
         Check("Natural expiry flagged", snap.IsExpired && snap.StopReason == BuffStopReason.Expired);
+
+        // Late worn-off after UI timer expiry still trains duration
+        var lateSamples = new List<SpellTimingSample>();
+        var lateDot = Rule("Odium", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other, 30, 3);
+        var lateTracker = new BuffTracker { OnTimingSample = lateSamples.Add };
+        lateTracker.Configure([lateDot], _ => [], _ => [], _ => [" looks very uncomfortable."], _ => true);
+        lateTracker.Observe(t0, "You begin casting Odium.");
+        lateTracker.Observe(t0.AddSeconds(3), "a skeleton looks very uncomfortable.");
+        lateTracker.Tick(t0.AddSeconds(3 + 30)); // UI expiry
+        lateTracker.Observe(t0.AddSeconds(3 + 31),
+            "Your Odium spell has worn off of a skeleton.");
+        Check("Late worn-off trains duration",
+            lateSamples.Count(s => s.Kind == SpellTimingSampleKind.Duration) == 1 &&
+            Math.Abs(lateSamples.First(s => s.Kind == SpellTimingSampleKind.Duration).Seconds - 31) < 0.2);
     }
 
     private static void RunSessionAndLootTests()
@@ -452,7 +552,7 @@ internal static class Program
                 ]
             };
             questDoc.TrackedItems[0].AlertMode = BuffAlertModeOptions.Normalize(questDoc.TrackedItems[0].AlertMode);
-            Check("Alert Both→Sound", questDoc.TrackedItems[0].AlertMode == BuffAlertMode.Sound);
+            Check("Alert legacy Both→Sound", questDoc.TrackedItems[0].AlertMode == BuffAlertMode.Sound);
 
             var sky = new SkyTrackerDocument
             {
@@ -548,11 +648,374 @@ internal static class Program
 
     private static void RunAlertModeTests()
     {
-        Check("Normalize Both", BuffAlertModeOptions.Normalize(BuffAlertMode.Both) == BuffAlertMode.Sound);
-        Check("Normalize TTS",
+        Check("Normalize legacy Both→Sound",
+            BuffAlertModeOptions.Normalize(BuffAlertMode.Both) == BuffAlertMode.Sound);
+        Check("Normalize TTS kept",
             BuffAlertModeOptions.Normalize(BuffAlertMode.TextToSpeech) == BuffAlertMode.TextToSpeech);
-        Check("Exclusive choices", BuffAlertModeOptions.ExclusiveChoices.Count == 2 &&
-                                   !BuffAlertModeOptions.ExclusiveChoices.Contains(BuffAlertMode.Both));
+        Check("Exclusive choices Sound+TTS only",
+            BuffAlertModeOptions.ExclusiveChoices.Count == 2 &&
+            BuffAlertModeOptions.ExclusiveChoices.Contains(BuffAlertMode.Sound) &&
+            BuffAlertModeOptions.ExclusiveChoices.Contains(BuffAlertMode.TextToSpeech) &&
+            !BuffAlertModeOptions.ExclusiveChoices.Contains(BuffAlertMode.Both));
+    }
+
+    private static void RunSmartTimingTests()
+    {
+        Check("Cast ms→sec", Math.Abs(SpellDataCatalog.CastTimeMsToSeconds(3000) - 3.0) < 0.001);
+        Check("Mez duration ticks",
+            SpellDataCatalog.DurationFieldsToSeconds(1, 4) == 24);
+        Check("SoL duration ticks",
+            SpellDataCatalog.DurationFieldsToSeconds(10, 150) == 900);
+        Check("Venom duration ticks",
+            SpellDataCatalog.DurationFieldsToSeconds(1, 6) == 36);
+        // Listless Power: formula 7 (level), cap 65 → at 44 = 44 ticks = 264s (not level-60's 360s)
+        Check("Listless at 44",
+            SpellDataCatalog.DurationFieldsToSeconds(7, 65, 44) == 264);
+        Check("Listless at 60",
+            SpellDataCatalog.DurationFieldsToSeconds(7, 65, 60) == 360);
+        Check("Level-up parse",
+            SpellDataCatalog.TryParseLevelUp("You have gained a level! Welcome to level 44!", out var lvl) &&
+            lvl == 44);
+
+        var dir = Path.Combine(Path.GetTempPath(), "eqdm-verify-spells-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(dir);
+            Directory.CreateDirectory(Path.Combine(dir, "Logs"));
+            File.WriteAllText(Path.Combine(dir, "spells_us.txt"),
+                MakeSpellLine(101, "Mesmerization", 3000, 1, 4, 12) + Environment.NewLine);
+            File.WriteAllText(Path.Combine(dir, "spells_us_str.txt"),
+                "101^0^0^You feel sleepy.^ has been mesmerized.^The mesmerization fades.^" +
+                Environment.NewLine);
+            var catalog = SpellDataCatalog.TryLoadFromInstallDirectory(dir);
+            Check("Fixture catalog loads", catalog is not null && catalog.Count >= 1);
+            Check("Fixture cast/duration",
+                catalog is not null &&
+                catalog.TryResolveFamily("Mesmerization", out var entry) &&
+                entry is not null &&
+                Math.Abs(entry.CastTimeSeconds - 3.0) < 0.001 &&
+                entry.DurationSeconds == 24);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+
+        var seed = Rule("Venom of the Snake", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other,
+            60, 3.0);
+        Check("Cast first sample buffers",
+            SpellTimingLearner.TryApplyCast(seed, 2.4, out var castBuf) &&
+            castBuf.CastSource == SpellTimingSource.Catalog &&
+            castBuf.CastSampleCount == 1 &&
+            Math.Abs(castBuf.CastTimeSeconds - 3.0) < 0.001);
+        Check("Cast second sample sets baseline mean",
+            SpellTimingLearner.TryApplyCast(castBuf, 3.0, out var learnedCast) &&
+            learnedCast.CastSource == SpellTimingSource.Learned &&
+            Math.Abs(learnedCast.CastTimeSeconds - 2.7) < 0.001);
+        Check("Cast later samples EMA",
+            SpellTimingLearner.TryApplyCast(learnedCast, 3.0, out var learnedCast2) &&
+            Math.Abs(learnedCast2.CastTimeSeconds - SpellTimingLearner.ApplyEma(2.7, 3.0)) < 0.001);
+
+        Check("Duration first sample buffers",
+            SpellTimingLearner.TryApplyDuration(seed, 58, out var dur1) &&
+            dur1.DurationSource == SpellTimingSource.Catalog &&
+            dur1.DurationSeconds == 60 &&
+            dur1.DurationSampleCount == 1);
+        Check("Duration second sample buffers",
+            SpellTimingLearner.TryApplyDuration(dur1, 61, out var dur2) &&
+            dur2.DurationSource == SpellTimingSource.Catalog &&
+            dur2.DurationSampleCount == 2);
+        Check("Duration third sample sets baseline mean",
+            SpellTimingLearner.TryApplyDuration(dur2, 61, out var learnedDur) &&
+            learnedDur.DurationSource == SpellTimingSource.Learned &&
+            learnedDur.DurationSeconds == (int)Math.Round((58 + 61 + 61) / 3.0) &&
+            learnedDur.DurationSampleCount == 3);
+        Check("Duration later samples EMA",
+            SpellTimingLearner.TryApplyDuration(learnedDur, 55, out var learnedDur2) &&
+            learnedDur2.DurationSeconds ==
+            (int)Math.Round(SpellTimingLearner.ApplyEma(learnedDur.DurationSeconds, 55)));
+        Check("Duration short death rejected vs 60s seed",
+            !SpellTimingLearner.IsPlausibleFullDurationSample(seed, 26));
+        Check("Duration near-full accepted vs 60s seed",
+            SpellTimingLearner.IsPlausibleFullDurationSample(seed, 45));
+
+        var manual = seed with { CastSource = SpellTimingSource.Manual };
+        Check("Manual cast frozen", !SpellTimingLearner.TryApplyCast(manual, 2.0, out _));
+
+        var t0 = DateTime.Now;
+        var samples = new List<SpellTimingSample>();
+        var deathDot = Rule("Venom of the Snake", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other,
+            60, 3);
+        var deathTracker = new BuffTracker { OnTimingSample = samples.Add };
+        deathTracker.Configure([deathDot], _ => [], _ => [], _ => [" has been poisoned."], _ => true);
+        deathTracker.Observe(t0, "You begin casting Venom of the Snake.");
+        deathTracker.Observe(t0.AddSeconds(3.1), "a gnoll has been poisoned.");
+        deathTracker.Observe(t0.AddSeconds(10), "You have slain a gnoll!");
+        Check("Death clear no duration sample",
+            samples.Count(sample => sample.Kind == SpellTimingSampleKind.Duration) == 0);
+        Check("Cast sample on land",
+            samples.Count(sample => sample.Kind == SpellTimingSampleKind.Cast) == 1);
+
+        samples.Clear();
+        var wornDot = Rule("Venom of the Snake", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other,
+            36, 3);
+        var wornTracker = new BuffTracker { OnTimingSample = samples.Add };
+        wornTracker.Configure([wornDot], _ => [], _ => [], _ => [" has been poisoned."], _ => true);
+        wornTracker.Observe(t0, "You begin casting Venom of the Snake.");
+        wornTracker.Observe(t0.AddSeconds(3.0), "a gnoll has been poisoned.");
+        wornTracker.Observe(t0.AddSeconds(39), "Your Venom of the Snake spell has worn off of a gnoll.");
+        Check("Worn-off duration sample",
+            samples.Count(sample => sample.Kind == SpellTimingSampleKind.Duration) == 1 &&
+            Math.Abs(samples.First(sample => sample.Kind == SpellTimingSampleKind.Duration).Seconds - 36) < 0.2);
+
+        var mez = Rule("Mesmerization", SpellTrackerCategory.Control, ControlEffectType.Mez, 24, 3);
+        Check("Early mez break rejected",
+            !SpellTimingLearner.IsPlausibleFullDurationSample(mez, 1.0));
+        Check("Full mez duration accepted",
+            SpellTimingLearner.IsPlausibleFullDurationSample(mez, 24.0));
+        Check("Listless natural vs catalog-360 accepted",
+            SpellTimingLearner.IsPlausibleFullDurationSample(
+                Rule("Listless Power", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other, 360, 2.75),
+                269));
+        Check("Same-second cast rejected", !SpellTimingLearner.IsSaneCastSample(0));
+        Check("Sub-second cast rejected", !SpellTimingLearner.IsSaneCastSample(0.5));
+        Check("1s cast accepted", SpellTimingLearner.IsSaneCastSample(1.0));
+        var shortDot = Rule("Short Dot", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other, 6, 1.5);
+        Check("Short DoT full duration accepted",
+            SpellTimingLearner.IsPlausibleFullDurationSample(shortDot, 6.0));
+        Check("Short DoT early break rejected",
+            !SpellTimingLearner.IsPlausibleFullDurationSample(shortDot, 2.0));
+    }
+
+    /// <summary>
+    /// Replays real EQ Legends log lines through BuffTracker + SpellTimingLearner.
+    /// Skips when the default install log is not present.
+    /// </summary>
+    private static void RunLiveLogTimingLearningTests()
+    {
+        const string logPath =
+            @"C:\Users\Public\Daybreak Game Company\Installed Games\EverQuest Legends\Logs\eqlog_Sayser_halas.txt";
+        if (!File.Exists(logPath))
+        {
+            Console.WriteLine("Live log timing: skipped (log not found)");
+            return;
+        }
+
+        var parser = new LogLineParser("Sayser");
+        var lines = new List<(DateTime Ts, string Msg)>();
+        foreach (var line in File.ReadLines(logPath))
+        {
+            if (!parser.TryParseEnvelope(line, out var ts, out var msg)) continue;
+            lines.Add((ts, msg));
+        }
+        Check("Live log parsed", lines.Count > 1000, $"count={lines.Count}");
+
+        // --- Listless Power: cast lands + one natural worn-off ---
+        var listless = Rule("Listless Power", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other,
+            360, 2.75);
+        var listlessSamples = new List<SpellTimingSample>();
+        var listlessTracker = new BuffTracker { OnTimingSample = listlessSamples.Add };
+        listlessTracker.Configure([listless], _ => [], _ => [], _ => [" looks frail."], _ => false);
+        var listlessWindow = lines.Where(item =>
+            item.Ts >= new DateTime(2026, 8, 8, 14, 48, 0) &&
+            item.Ts <= new DateTime(2026, 8, 8, 14, 55, 0)).ToArray();
+        foreach (var (ts, msg) in listlessWindow) listlessTracker.Observe(ts, msg);
+
+        var listlessCasts = listlessSamples.Where(s => s.Kind == SpellTimingSampleKind.Cast).ToArray();
+        var listlessDurs = listlessSamples.Where(s => s.Kind == SpellTimingSampleKind.Duration).ToArray();
+        Check("Live Listless cast samples", listlessCasts.Length >= 2,
+            $"casts={listlessCasts.Length}");
+        Check("Live Listless cast ~2-3s",
+            listlessCasts.All(s => s.Seconds is >= 1.5 and <= 4.0),
+            string.Join(',', listlessCasts.Select(s => s.Seconds.ToString("0.00"))));
+        Check("Live Listless duration sample", listlessDurs.Length == 1,
+            $"durs={listlessDurs.Length}");
+        Check("Live Listless duration ~269s",
+            listlessDurs.Length == 1 && listlessDurs[0].Seconds is >= 250 and <= 280,
+            listlessDurs.Length == 0 ? "none" : listlessDurs[0].Seconds.ToString("0.0"));
+
+        var learnedListless = listless;
+        foreach (var sample in listlessSamples)
+            SpellTimingLearner.TryApplySample(learnedListless, sample, out learnedListless);
+        Check("Live Listless cast learned",
+            learnedListless.CastSource == SpellTimingSource.Learned &&
+            learnedListless.CastTimeSeconds is >= 1.5 and <= 4.0,
+            learnedListless.CastTimeSeconds.ToString("0.00"));
+        // Duration needs 3 natural expiries before replacing catalog; one live sample only buffers.
+        Check("Live Listless duration buffered not applied",
+            learnedListless.DurationSource == SpellTimingSource.Catalog &&
+            learnedListless.DurationSeconds == 360 &&
+            learnedListless.DurationSampleCount == listlessDurs.Length,
+            $"count={learnedListless.DurationSampleCount} dur={learnedListless.DurationSeconds}");
+        if (listlessDurs.Length == 1)
+        {
+            var buffered = learnedListless;
+            SpellTimingLearner.TryApplyDuration(buffered, listlessDurs[0].Seconds, out buffered);
+            SpellTimingLearner.TryApplyDuration(buffered, listlessDurs[0].Seconds, out buffered);
+            Check("Live Listless duration baseline after 3 samples",
+                buffered.DurationSource == SpellTimingSource.Learned &&
+                buffered.DurationSeconds is >= 250 and <= 280,
+                buffered.DurationSeconds.ToString());
+            learnedListless = buffered;
+        }
+
+        // --- Interrupt: begin cast then interrupted → no cast sample ---
+        var mez = Rule("Mesmerization", SpellTrackerCategory.Control, ControlEffectType.Mez, 24, 3);
+        var mezSamples = new List<SpellTimingSample>();
+        var mezTracker = new BuffTracker { OnTimingSample = mezSamples.Add };
+        mezTracker.Configure([mez], _ => [], _ => [], _ => [" has been mesmerized."], _ => true);
+        mezTracker.Observe(new DateTime(2026, 8, 8, 14, 44, 37), "You begin casting Mesmerization.");
+        mezTracker.Observe(new DateTime(2026, 8, 8, 14, 44, 40), "Your Mesmerization spell is interrupted.");
+        Check("Live interrupt no cast sample",
+            mezSamples.Count(s => s.Kind == SpellTimingSampleKind.Cast) == 0);
+
+        // Successful mez cast then AE lands → cast sample; early worn-off must not learn duration
+        mezSamples.Clear();
+        mezTracker.ClearRuntime();
+        mezTracker.Configure([mez], _ => [], _ => [], _ => [" has been mesmerized."], _ => true);
+        var mezWindow = lines.Where(item =>
+            item.Ts >= new DateTime(2026, 8, 8, 14, 44, 43) &&
+            item.Ts <= new DateTime(2026, 8, 8, 14, 45, 0)).ToArray();
+        foreach (var (ts, msg) in mezWindow) mezTracker.Observe(ts, msg);
+        Check("Live mez cast learned sample",
+            mezSamples.Count(s => s.Kind == SpellTimingSampleKind.Cast) >= 1);
+        var mezDurSamples = mezSamples.Where(s => s.Kind == SpellTimingSampleKind.Duration).ToArray();
+        var mezRule = mez;
+        var mezDurationApplied = false;
+        foreach (var sample in mezDurSamples)
+            mezDurationApplied |= SpellTimingLearner.TryApplyDuration(mezRule, sample.Seconds, out mezRule);
+        Check("Live early mez worn-off not applied",
+            !mezDurationApplied && mezRule.DurationSource == SpellTimingSource.Catalog &&
+            mezRule.DurationSeconds == 24,
+            $"applied={mezDurationApplied} durs={mezDurSamples.Length} " +
+            string.Join(',', mezDurSamples.Select(s => s.Seconds.ToString("0.0"))));
+
+        // --- Venom: cast learns; death clear does not learn duration ---
+        var venom = Rule("Venom of the Snake", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other,
+            36, 3);
+        var venomSamples = new List<SpellTimingSample>();
+        var venomTracker = new BuffTracker { OnTimingSample = venomSamples.Add };
+        venomTracker.Configure([venom], _ => ["The poison has run its course."], _ => [],
+            _ => [" has been poisoned."], _ => true);
+        var venomWindow = lines.Where(item =>
+            item.Ts >= new DateTime(2026, 8, 8, 15, 0, 35) &&
+            item.Ts <= new DateTime(2026, 8, 8, 15, 1, 20)).ToArray();
+        foreach (var (ts, msg) in venomWindow) venomTracker.Observe(ts, msg);
+        // If the mob died in-window, ensure no duration sample; always expect cast.
+        Check("Live Venom cast sample",
+            venomSamples.Count(s => s.Kind == SpellTimingSampleKind.Cast) >= 1,
+            $"casts={venomSamples.Count(s => s.Kind == SpellTimingSampleKind.Cast)}");
+        var venomLearned = venom;
+        var venomCasts = venomSamples.Where(s => s.Kind == SpellTimingSampleKind.Cast).ToArray();
+        foreach (var sample in venomCasts)
+            SpellTimingLearner.TryApplySample(venomLearned, sample, out venomLearned);
+        // Cast baseline needs 2 samples; duplicate the observed land if the window only has one.
+        if (venomLearned.CastSource != SpellTimingSource.Learned && venomCasts.Length >= 1)
+            SpellTimingLearner.TryApplyCast(venomLearned, venomCasts[0].Seconds, out venomLearned);
+        Check("Live Venom cast time updated",
+            venomLearned.CastSource == SpellTimingSource.Learned &&
+            venomLearned.CastTimeSeconds is >= 1.5 and <= 4.0,
+            venomLearned.CastTimeSeconds.ToString("0.00"));
+
+        // --- Charm worn-off after short break should not overwrite long catalog duration ---
+        var charm = Rule("Cajoling Whispers", SpellTrackerCategory.Control, ControlEffectType.Charm,
+            750, 5);
+        Check("Live charm short break rejected",
+            !SpellTimingLearner.IsPlausibleFullDurationSample(charm, 137));
+
+        Console.WriteLine(
+            $"Live log timing: Listless cast={learnedListless.CastTimeSeconds:0.00}s " +
+            $"dur={learnedListless.DurationSeconds}s; Venom cast={venomLearned.CastTimeSeconds:0.00}s");
+    }
+
+    private static void RunOdiumLiveCheck()
+    {
+        const string logPath =
+            @"C:\Users\Public\Daybreak Game Company\Installed Games\EverQuest Legends\Logs\eqlog_Sayser_halas.txt";
+        if (!File.Exists(logPath)) return;
+
+        var parser = new LogLineParser("Sayser");
+        var lines = new List<(DateTime Ts, string Msg)>();
+        foreach (var line in File.ReadLines(logPath))
+        {
+            if (!parser.TryParseEnvelope(line, out var ts, out var msg)) continue;
+            if (ts < new DateTime(2026, 8, 8, 15, 11, 0) || ts > new DateTime(2026, 8, 8, 15, 23, 0))
+                continue;
+            lines.Add((ts, msg));
+        }
+
+        var odium = Rule("Odium", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other, 30, 3.0);
+        var samples = new List<SpellTimingSample>();
+        var tracker = new BuffTracker { OnTimingSample = samples.Add };
+        tracker.Configure([odium], _ => ["You are no longer cursed."], _ => [],
+            _ => [" staggers under a dark curse."], _ => false);
+        foreach (var (ts, msg) in lines) tracker.Observe(ts, msg);
+
+        Console.WriteLine($"Odium live: samples={samples.Count}");
+        foreach (var s in samples)
+            Console.WriteLine($"  {s.Kind} {s.Seconds:0.###}s");
+
+        var rule = odium;
+        foreach (var s in samples)
+        {
+            var ok = SpellTimingLearner.TryApplySample(rule, s, out var updated);
+            if (ok) rule = updated;
+            Console.WriteLine($"  {(ok ? "APPLY" : "REJECT")} {s.Kind} {s.Seconds:0.###} -> " +
+                              $"cast={rule.CastTimeSeconds:0.##} dur={rule.DurationSeconds} " +
+                              $"({rule.CastSource}/{rule.DurationSource})");
+        }
+
+        // Cast samples should exist; duration may be missing if death is processed before worn-off
+        // in the same second — check ordering bug by inspecting samples.
+        Check("Odium cast samples from log",
+            samples.Count(s => s.Kind == SpellTimingSampleKind.Cast) >= 2,
+            $"casts={samples.Count(s => s.Kind == SpellTimingSampleKind.Cast)}");
+        Check("Odium duration samples from worn-off",
+            samples.Count(s => s.Kind == SpellTimingSampleKind.Duration) >= 1,
+            $"durs={samples.Count(s => s.Kind == SpellTimingSampleKind.Duration)} " +
+            string.Join(',', samples.Where(s => s.Kind == SpellTimingSampleKind.Duration)
+                .Select(s => s.Seconds.ToString("0.0"))));
+        Check("Odium learned cast in 2-3s band",
+            rule.CastSource == SpellTimingSource.Learned && rule.CastTimeSeconds is >= 1.5 and <= 3.5,
+            rule.CastTimeSeconds.ToString("0.##"));
+        var odiumDurs = samples.Where(s => s.Kind == SpellTimingSampleKind.Duration).Select(s => s.Seconds)
+            .ToArray();
+        if (odiumDurs.Length >= SpellTimingLearner.MinDurationSamplesToApply)
+        {
+            Check("Odium learned duration ~30s",
+                rule.DurationSource == SpellTimingSource.Learned && rule.DurationSeconds is >= 28 and <= 40,
+                rule.DurationSeconds.ToString());
+        }
+        else
+        {
+            Check("Odium duration buffered awaiting baseline",
+                rule.DurationSource == SpellTimingSource.Catalog &&
+                rule.DurationSeconds == 30 &&
+                rule.DurationSampleCount == odiumDurs.Length,
+                $"count={rule.DurationSampleCount} durs={string.Join(',', odiumDurs.Select(s => s.ToString("0")))}");
+            // Complete the baseline with the observed natural samples.
+            var buffered = rule;
+            while (buffered.DurationSampleCount < SpellTimingLearner.MinDurationSamplesToApply &&
+                   odiumDurs.Length > 0)
+                SpellTimingLearner.TryApplyDuration(buffered, odiumDurs[^1], out buffered);
+            Check("Odium baseline after 3 samples ~30s",
+                buffered.DurationSource == SpellTimingSource.Learned &&
+                buffered.DurationSeconds is >= 28 and <= 40,
+                buffered.DurationSeconds.ToString());
+        }
+    }
+
+    private static string MakeSpellLine(int id, string name, int castMs, int formula, int duration, int icon)
+    {
+        var fields = new string[76];
+        for (var index = 0; index < fields.Length; index++) fields[index] = string.Empty;
+        fields[0] = id.ToString(CultureInfo.InvariantCulture);
+        fields[1] = name;
+        fields[8] = castMs.ToString(CultureInfo.InvariantCulture);
+        fields[11] = formula.ToString(CultureInfo.InvariantCulture);
+        fields[12] = duration.ToString(CultureInfo.InvariantCulture);
+        fields[75] = icon.ToString(CultureInfo.InvariantCulture);
+        return string.Join('^', fields);
     }
 
     private static BuffRuleSettings Rule(string name, SpellTrackerCategory category,

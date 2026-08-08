@@ -770,7 +770,7 @@ internal static class Program
                 Entry = entry,
                 Casts = casts,
                 Rule = new BuffRuleSettings(Guid.NewGuid(), entry.Name, 600, 3, true, true,
-                    BuffAlertMode.Both, BuffSoundKind.Chime, string.Empty,
+                    BuffAlertMode.Sound, BuffSoundKind.Chime, string.Empty,
                     TrackSelf: true, TrackOthers: true)
             });
             if (probes.Count >= 20) break;

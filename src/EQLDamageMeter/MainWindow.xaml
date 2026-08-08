@@ -1087,12 +1087,23 @@
                             <Grid Grid.Row="2" Margin="0,12,0,0">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="Duration (m:ss)" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
+                                    <Grid Margin="0,0,0,5">
+                                        <TextBlock Text="Duration (m:ss)" Style="{StaticResource MetricLabel}" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding SelectedBuffRule.DurationSourceHint}" Foreground="#7FA3B8"
+                                                   FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                    </Grid>
                                     <TextBox Style="{StaticResource BuffInput}" Text="{Binding SelectedBuffRule.DurationText, UpdateSourceTrigger=PropertyChanged}" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="2">
-                                    <TextBlock Text="Cast Time (seconds)" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
+                                    <Grid Margin="0,0,0,5">
+                                        <TextBlock Text="Cast Time (seconds)" Style="{StaticResource MetricLabel}" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding SelectedBuffRule.CastSourceHint}" Foreground="#7FA3B8"
+                                                   FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                    </Grid>
                                     <TextBox Style="{StaticResource BuffInput}" Text="{Binding SelectedBuffRule.CastTimeText, UpdateSourceTrigger=PropertyChanged}" />
+                                    <Button Content="Reset to spell data" Margin="0,6,0,0" Padding="8,4" HorizontalAlignment="Right"
+                                            Click="ResetBuffTimings_Click"
+                                            ToolTip="Re-fill cast time and duration from EverQuest spell data and resume learning" />
                                 </StackPanel>
                             </Grid>
 
@@ -1147,7 +1158,7 @@
                                     <TextBlock Text="Alert Type" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
                                     <ComboBox Style="{StaticResource BuffCombo}" ItemsSource="{Binding BuffAlertModes}"
                                               SelectedItem="{Binding SelectedBuffRule.AlertMode, Mode=TwoWay}"
-                                              ToolTip="Choose Sound or TextToSpeech (not both)" />
+                                              ToolTip="Alert type (sound only)" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="2"
                                             Visibility="{Binding SelectedBuffRule.SoundPickerVisibility}">
@@ -1740,7 +1751,7 @@
                                                                       ItemsSource="{Binding DataContext.AlertModeChoices, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                                       SelectedItem="{Binding AlertMode}" Width="120" Margin="10,0,0,0"
                                                                       VerticalAlignment="Center"
-                                                                      ToolTip="Sound or TextToSpeech" />
+                                                                      ToolTip="Alert type (sound only)" />
                                                             <ComboBox Style="{StaticResource BuffCombo}"
                                                                       ItemsSource="{Binding DataContext.SoundChoices, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                                       SelectedItem="{Binding Sound}" Width="110" Margin="8,0,0,0"
@@ -2005,7 +2016,7 @@
                                                                 <ComboBox Style="{StaticResource BuffCombo}"
                                                                           ItemsSource="{Binding DataContext.AlertModeChoices, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                                           SelectedItem="{Binding AlertMode}" Width="120"
-                                                                          ToolTip="Sound or TextToSpeech" />
+                                                                          ToolTip="Alert type (sound only)" />
                                                                 <ComboBox Style="{StaticResource BuffCombo}"
                                                                           ItemsSource="{Binding DataContext.SoundChoices, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                                           SelectedItem="{Binding Sound}" Width="110" Margin="8,0,0,0"
@@ -2155,7 +2166,7 @@
                                                                           ItemsSource="{Binding DataContext.AlertModeChoices, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                                           SelectedItem="{Binding AlertMode}" Width="120"
                                                                           Margin="10,0,0,0" VerticalAlignment="Center"
-                                                                          ToolTip="Sound or TextToSpeech" />
+                                                                          ToolTip="Alert type (sound only)" />
                                                                 <ComboBox Style="{StaticResource BuffCombo}"
                                                                           ItemsSource="{Binding DataContext.SoundChoices, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                                           SelectedItem="{Binding Sound}" Width="110"

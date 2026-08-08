@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
 using EQLDamageMeter.Models;
+using EQLDamageMeter.Services;
 
 namespace EQLDamageMeter.ViewModels;
 
@@ -26,6 +27,13 @@ public sealed class BuffRuleViewModel : ObservableObject
     private bool _isOverdue;
     private string _spellValidationText = string.Empty;
     private ImageSource? _icon;
+    private SpellTimingSource _castSource;
+    private SpellTimingSource _durationSource;
+    private int _castSampleCount;
+    private int _durationSampleCount;
+    private double _castSampleSum;
+    private double _durationSampleSum;
+    private bool _suppressManualMark;
 
     public BuffRuleViewModel(BuffRuleSettings settings)
     {
@@ -42,6 +50,12 @@ public sealed class BuffRuleViewModel : ObservableObject
         _alertMode = BuffAlertModeOptions.Normalize(settings.AlertMode);
         _sound = settings.Sound;
         _voiceText = settings.VoiceText;
+        _castSource = settings.CastSource;
+        _durationSource = settings.DurationSource;
+        _castSampleCount = settings.CastSampleCount;
+        _durationSampleCount = settings.DurationSampleCount;
+        _castSampleSum = settings.CastSampleSum;
+        _durationSampleSum = settings.DurationSampleSum;
     }
 
     public Guid Id { get; }
@@ -58,8 +72,46 @@ public sealed class BuffRuleViewModel : ObservableObject
     public ImageSource? Icon { get => _icon; private set => SetProperty(ref _icon, value); }
 
     public void SetIcon(ImageSource? icon) => Icon = icon;
-    public string DurationText { get => _durationText; set => SetProperty(ref _durationText, value); }
-    public string CastTimeText { get => _castTimeText; set => SetProperty(ref _castTimeText, value); }
+    public string DurationText
+    {
+        get => _durationText;
+        set
+        {
+            if (!SetProperty(ref _durationText, value)) return;
+            if (!_suppressManualMark) DurationSource = SpellTimingSource.Manual;
+            RaisePropertyChanged(nameof(DurationSourceHint));
+        }
+    }
+    public string CastTimeText
+    {
+        get => _castTimeText;
+        set
+        {
+            if (!SetProperty(ref _castTimeText, value)) return;
+            if (!_suppressManualMark) CastSource = SpellTimingSource.Manual;
+            RaisePropertyChanged(nameof(CastSourceHint));
+        }
+    }
+    public SpellTimingSource CastSource
+    {
+        get => _castSource;
+        private set
+        {
+            if (!SetProperty(ref _castSource, value)) return;
+            RaisePropertyChanged(nameof(CastSourceHint));
+        }
+    }
+    public SpellTimingSource DurationSource
+    {
+        get => _durationSource;
+        private set
+        {
+            if (!SetProperty(ref _durationSource, value)) return;
+            RaisePropertyChanged(nameof(DurationSourceHint));
+        }
+    }
+    public string CastSourceHint => SourceHint(CastSource);
+    public string DurationSourceHint => SourceHint(DurationSource);
     public bool IsEnabled
     {
         get => _isEnabled;
@@ -173,6 +225,75 @@ public sealed class BuffRuleViewModel : ObservableObject
 
     public void SetSpellValidation(string? error) => SpellValidationText = error ?? string.Empty;
 
+    public void ApplyCatalogTimings(SpellDataEntry spell, bool force = false,
+        int casterLevel = SpellDataCatalog.DefaultCasterLevel)
+    {
+        if (force)
+        {
+            CastSource = SpellTimingSource.Catalog;
+            DurationSource = SpellTimingSource.Catalog;
+            _castSampleCount = 0;
+            _durationSampleCount = 0;
+            _castSampleSum = 0;
+            _durationSampleSum = 0;
+        }
+
+        var fillCast = force || CastSource == SpellTimingSource.Catalog;
+        var fillDuration = force || DurationSource == SpellTimingSource.Catalog;
+        var durationSeconds = spell.DurationSecondsFor(casterLevel);
+
+        _suppressManualMark = true;
+        try
+        {
+            if (fillCast && spell.CastTimeSeconds >= 0)
+            {
+                CastTimeText = spell.CastTimeSeconds.ToString("0.0#", CultureInfo.InvariantCulture);
+                CastSource = SpellTimingSource.Catalog;
+                // Preserve buffered sample counts/sums across catalog text refreshes.
+                // Only force/reset clears them (see force block above).
+            }
+            if (fillDuration && durationSeconds > 0)
+            {
+                DurationText = FormatDuration(TimeSpan.FromSeconds(durationSeconds));
+                DurationSource = SpellTimingSource.Catalog;
+            }
+        }
+        finally
+        {
+            _suppressManualMark = false;
+        }
+    }
+
+    /// <summary>
+    /// Applies only the timing side that was updated. Updating cast must not clobber
+    /// duration learning (and vice versa) when samples are applied concurrently.
+    /// </summary>
+    public void ApplyLearnedSettings(BuffRuleSettings settings, SpellTimingSampleKind kind)
+    {
+        _suppressManualMark = true;
+        try
+        {
+            if (kind == SpellTimingSampleKind.Cast)
+            {
+                CastTimeText = settings.CastTimeSeconds.ToString("0.0#", CultureInfo.InvariantCulture);
+                CastSource = settings.CastSource;
+                _castSampleCount = settings.CastSampleCount;
+                _castSampleSum = settings.CastSampleSum;
+            }
+            else
+            {
+                DurationText = FormatDuration(TimeSpan.FromSeconds(settings.DurationSeconds));
+                DurationSource = settings.DurationSource;
+                _durationSampleCount = settings.DurationSampleCount;
+                _durationSampleSum = settings.DurationSampleSum;
+            }
+        }
+        finally
+        {
+            _suppressManualMark = false;
+        }
+    }
+
     public bool TryCreateSettings(out BuffRuleSettings? settings, out string error)
     {
         settings = null;
@@ -204,7 +325,8 @@ public sealed class BuffRuleViewModel : ObservableObject
             : VoiceText.Trim();
         settings = new BuffRuleSettings(Id, SpellName.Trim(), checked((int)duration.TotalSeconds), castTime,
             IsEnabled, ShowInOverlay, BuffAlertModeOptions.Normalize(AlertMode), Sound, voice, TrackSelf,
-            TrackOthers, Category, ControlType);
+            TrackOthers, Category, ControlType, CastSource, DurationSource, _castSampleCount,
+            _durationSampleCount, _castSampleSum, _durationSampleSum);
         error = string.Empty;
         return true;
     }
@@ -261,6 +383,13 @@ public sealed class BuffRuleViewModel : ObservableObject
         }
         RaisePropertyChanged(nameof(AlertSummary));
     }
+
+    private static string SourceHint(SpellTimingSource source) => source switch
+    {
+        SpellTimingSource.Learned => "Learned",
+        SpellTimingSource.Manual => "Manual",
+        _ => "From spell data"
+    };
 
     private static bool TryParseDuration(string text, out TimeSpan duration)
     {

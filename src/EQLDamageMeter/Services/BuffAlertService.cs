@@ -25,14 +25,27 @@ public sealed class BuffAlertService
 
     private static void PlayCore(BuffAlertMode mode, BuffSoundKind sound, string voiceText, string spellName)
     {
-        mode = BuffAlertModeOptions.Normalize(mode);
-        if (mode == BuffAlertMode.Sound)
+        try
         {
-            PlayBuiltInSound(sound);
-            return;
-        }
+            mode = BuffAlertModeOptions.Normalize(mode);
+            if (mode == BuffAlertMode.Sound)
+            {
+                PlayBuiltInSound(sound);
+                return;
+            }
 
-        Speak(string.IsNullOrWhiteSpace(voiceText) ? $"{spellName} has expired" : voiceText.Trim());
+            var spoken = string.IsNullOrWhiteSpace(voiceText) ? $"{spellName} has expired" : voiceText.Trim();
+            if (!TrySpeak(spoken))
+                PlayBuiltInSound(sound);
+        }
+        catch (Exception)
+        {
+            try { PlayBuiltInSound(sound); }
+            catch (Exception)
+            {
+                // Alert playback is best-effort.
+            }
+        }
     }
 
     private static void PlayBuiltInSound(BuffSoundKind kind)
@@ -157,23 +170,33 @@ public sealed class BuffAlertService
         return frequencies[slot];
     }
 
-    private static void Speak(string text)
+    private static bool TrySpeak(string text)
     {
         object? voice = null;
         try
         {
             var voiceType = Type.GetTypeFromProgID("SAPI.SpVoice");
-            if (voiceType is null) return;
+            if (voiceType is null) return false;
             voice = Activator.CreateInstance(voiceType);
+            if (voice is null) return false;
             voiceType.InvokeMember("Speak", BindingFlags.InvokeMethod, null, voice, [text, 0]);
+            return true;
         }
         catch (COMException)
         {
-            // Speech is optional; sound alerts continue to work if SAPI is unavailable.
+            return false;
         }
         catch (TargetInvocationException)
         {
-            // Installed Windows voices can fail independently of the tracker.
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (MissingMethodException)
+        {
+            return false;
         }
         finally
         {

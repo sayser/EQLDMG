@@ -4,7 +4,7 @@ public enum BuffAlertMode
 {
     Sound = 0,
     TextToSpeech = 1,
-    /// <summary>Legacy persisted value; treated as Sound.</summary>
+    /// <summary>Obsolete persisted value from older builds; normalized to Sound.</summary>
     Both = 2
 }
 
@@ -16,6 +16,7 @@ public static class BuffAlertModeOptions
         BuffAlertMode.TextToSpeech
     ];
 
+    /// <summary>UI/runtime only allow Sound or TextToSpeech; legacy Both → Sound.</summary>
     public static BuffAlertMode Normalize(BuffAlertMode mode) =>
         mode == BuffAlertMode.TextToSpeech ? BuffAlertMode.TextToSpeech : BuffAlertMode.Sound;
 }
@@ -74,6 +75,13 @@ public enum SpellIconStyle
     Classic
 }
 
+public enum SpellTimingSource
+{
+    Catalog,
+    Learned,
+    Manual
+}
+
 public sealed record BuffRuleSettings(
     Guid Id,
     string SpellName,
@@ -87,7 +95,13 @@ public sealed record BuffRuleSettings(
     bool TrackSelf = true,
     bool TrackOthers = false,
     SpellTrackerCategory Category = SpellTrackerCategory.Buff,
-    ControlEffectType ControlType = ControlEffectType.Other);
+    ControlEffectType ControlType = ControlEffectType.Other,
+    SpellTimingSource CastSource = SpellTimingSource.Catalog,
+    SpellTimingSource DurationSource = SpellTimingSource.Catalog,
+    int CastSampleCount = 0,
+    int DurationSampleCount = 0,
+    double CastSampleSum = 0,
+    double DurationSampleSum = 0);
 
 public sealed record BuffRuntimeSnapshot(
     Guid RuleId,

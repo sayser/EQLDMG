@@ -31,6 +31,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly BuffTracker _buffTracker = new();
     private readonly BuffAlertService _buffAlertService = new();
+    private readonly SemaphoreSlim _buffTimingLearnGate = new(1, 1);
     private readonly SessionTracker _sessionTracker = new();
     private readonly List<SessionRecord> _sessionHistory = [];
     private DateTime _lastSessionPersistUtc = DateTime.MinValue;
@@ -63,6 +64,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private string _buffSearchText = string.Empty;
     private string _buffFilterMode = "All";
     private SpellIconStyle _spellIconStyle = SpellIconStyle.Modern;
+    private int _characterLevel = SpellDataCatalog.DefaultCasterLevel;
     private int _parseGeneration;
     private int _drainScheduled;
     private bool _disposed;
@@ -78,12 +80,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             BuffRules.Add(new BuffRuleViewModel(settings));
         DotSpellTracker = new SpellRuleSetViewModel(SpellTrackerCategory.DamageOverTime,
             SpellTrackerStore.TryLoadDotRules(), () => _spellDataCatalog,
-            SpellTrackerStore.TrySaveDotRulesAsync, _buffAlertService);
+            SpellTrackerStore.TrySaveDotRulesAsync, _buffAlertService, () => _characterLevel);
         ControlSpellTracker = new SpellRuleSetViewModel(SpellTrackerCategory.Control,
             SpellTrackerStore.TryLoadControlRules(), () => _spellDataCatalog,
-            SpellTrackerStore.TrySaveControlRulesAsync, _buffAlertService);
+            SpellTrackerStore.TrySaveControlRulesAsync, _buffAlertService, () => _characterLevel);
         _buffTracker.PreserveBuffTargetOnDeath = (target, timestamp) =>
             ControlSpellTracker.HasActiveCharmTarget(target, timestamp);
+        _buffTracker.OnTimingSample = sample => _ = ApplyBuffTimingSampleAsync(sample);
         BuffRulesView = CollectionViewSource.GetDefaultView(BuffRules);
         BuffRulesView.Filter = FilterBuffRule;
         ApplyBuffConfiguration();
@@ -310,9 +313,19 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 rule.SetSpellValidation(error);
                 return error;
             }
+            var previousFamily = SpellNameNormalizer.GetFamilyName(rule.SpellName);
             rule.SpellName = spell!.Name;
             rule.SetSpellValidation(null);
             rule.SetIcon(_spellDataCatalog?.GetIcon(spell));
+            rule.ApplyCatalogTimings(spell,
+                force: !previousFamily.Equals(spell.Name, StringComparison.OrdinalIgnoreCase),
+                casterLevel: _characterLevel);
+            if (!rule.TryCreateSettings(out configured, out error))
+            {
+                SelectedBuffRule = rule;
+                var displayName = string.IsNullOrWhiteSpace(rule.SpellName) ? "New buff" : rule.SpellName;
+                return $"{displayName}: {error}";
+            }
             settings.Add(configured! with { SpellName = spell.Name });
         }
 
@@ -353,10 +366,123 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             rule.SetSpellValidation(error);
             return error;
         }
+        var previousFamily = SpellNameNormalizer.GetFamilyName(rule.SpellName);
         rule.SpellName = spell!.Name;
         rule.SetSpellValidation(null);
         rule.SetIcon(_spellDataCatalog?.GetIcon(spell));
+        rule.ApplyCatalogTimings(spell,
+            force: string.IsNullOrWhiteSpace(previousFamily) ||
+                   !previousFamily.Equals(spell.Name, StringComparison.OrdinalIgnoreCase),
+            casterLevel: _characterLevel);
         return null;
+    }
+
+    public string? ResetSelectedBuffTimingsToCatalog()
+    {
+        if (SelectedBuffRule is null) return "Select a buff first.";
+        if (!TryResolveSpell(SelectedBuffRule.SpellName, out var spell, out var error))
+        {
+            SelectedBuffRule.SetSpellValidation(error);
+            return error;
+        }
+        SelectedBuffRule.SpellName = spell!.Name;
+        SelectedBuffRule.SetSpellValidation(null);
+        SelectedBuffRule.SetIcon(_spellDataCatalog?.GetIcon(spell));
+        SelectedBuffRule.ApplyCatalogTimings(spell, force: true, casterLevel: _characterLevel);
+        return null;
+    }
+
+    private async Task ApplyBuffTimingSampleAsync(SpellTimingSample sample)
+    {
+        await _buffTimingLearnGate.WaitAsync();
+        try
+        {
+            if (_dispatcher.CheckAccess())
+                await ApplyBuffTimingSampleCoreAsync(sample);
+            else
+                await _dispatcher.InvokeAsync(() => ApplyBuffTimingSampleCoreAsync(sample),
+                    DispatcherPriority.Background).Task.Unwrap();
+        }
+        finally
+        {
+            _buffTimingLearnGate.Release();
+        }
+    }
+
+    private async Task ApplyBuffTimingSampleCoreAsync(SpellTimingSample sample)
+    {
+        var rule = BuffRules.FirstOrDefault(item => item.Id == sample.RuleId);
+        if (rule is null || !rule.TryCreateSettings(out var current, out _)) return;
+        if (!SpellTimingLearner.TryApplySample(current!, sample, out var updated)) return;
+        rule.ApplyLearnedSettings(updated, sample.Kind);
+        ApplyBuffConfiguration(pruneMissing: false);
+        var previous = SpellTrackerStore.TryLoadBuffRules().ToDictionary(item => item.Id);
+        var settings = new List<BuffRuleSettings>(BuffRules.Count);
+        foreach (var item in BuffRules)
+        {
+            if (item.TryCreateSettings(out var configured, out _))
+                settings.Add(configured!);
+            else if (previous.TryGetValue(item.Id, out var prior))
+                settings.Add(prior);
+        }
+        if (settings.Count == 0) return;
+        _ = await SpellTrackerStore.TrySaveBuffRulesAsync(settings);
+    }
+
+    private async Task ReseedCatalogTimingsFromCharacterLevelAsync()
+    {
+        var catalog = _spellDataCatalog;
+        if (catalog is null || _characterLevel <= 0) return;
+
+        var buffChanged = false;
+        await _buffTimingLearnGate.WaitAsync();
+        try
+        {
+            foreach (var rule in BuffRules)
+            {
+                if (rule.CastSource != SpellTimingSource.Catalog &&
+                    rule.DurationSource != SpellTimingSource.Catalog) continue;
+                if (!catalog.TryResolveFamily(rule.SpellName, out var spell) || spell is null) continue;
+                var beforeCast = rule.CastTimeText;
+                var beforeDuration = rule.DurationText;
+                rule.ApplyCatalogTimings(spell, force: false, casterLevel: _characterLevel);
+                if (!string.Equals(beforeCast, rule.CastTimeText, StringComparison.Ordinal) ||
+                    !string.Equals(beforeDuration, rule.DurationText, StringComparison.Ordinal))
+                    buffChanged = true;
+            }
+            if (buffChanged) ApplyBuffConfiguration(pruneMissing: false);
+        }
+        finally
+        {
+            _buffTimingLearnGate.Release();
+        }
+
+        var dotChanged = await DotSpellTracker.ReseedCatalogTimingsAsync(_characterLevel);
+        var controlChanged = await ControlSpellTracker.ReseedCatalogTimingsAsync(_characterLevel);
+        if (buffChanged) _ = await PersistBuffRulesQuietAsync();
+        if (dotChanged) _ = await DotSpellTracker.SaveAsync();
+        if (controlChanged) _ = await ControlSpellTracker.SaveAsync();
+    }
+
+    private async Task<bool> PersistBuffRulesQuietAsync()
+    {
+        var previous = SpellTrackerStore.TryLoadBuffRules().ToDictionary(item => item.Id);
+        var settings = new List<BuffRuleSettings>(BuffRules.Count);
+        foreach (var item in BuffRules)
+        {
+            if (item.TryCreateSettings(out var configured, out _))
+                settings.Add(configured!);
+            else if (previous.TryGetValue(item.Id, out var prior))
+                settings.Add(prior);
+        }
+        return settings.Count > 0 && await SpellTrackerStore.TrySaveBuffRulesAsync(settings);
+    }
+
+    private void NoteCharacterLevelFromMessage(string message)
+    {
+        if (!SpellDataCatalog.TryParseLevelUp(message, out var level) || level == _characterLevel) return;
+        _characterLevel = level;
+        _ = ReseedCatalogTimingsFromCharacterLevelAsync();
     }
 
     private void SetBreakdownMode(BreakdownMode mode)
@@ -430,17 +556,20 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var spellCatalogTask = Task.Run(() => SpellDataCatalog.TryLoadForLog(path, _spellIconStyle),
                 cancellationToken);
+            var levelTask = Task.Run(() => SpellDataCatalog.TryReadLatestCharacterLevel(path), cancellationToken);
             liveStart = await LogFileMonitor.CaptureLiveStartAsync(path, cancellationToken);
             var groupRestoreTask = Task.Run(() => GroupContextRestorer.RestoreAsync(path, liveStart.ResumePosition,
                 parser, group, cancellationToken), cancellationToken);
             var backfillTask = Task.Run(
                 () => SessionLogBackfill.TryBuild(path, identity.Character, identity.Server, TimeSpan.FromHours(3)),
                 cancellationToken);
-            await Task.WhenAll(spellCatalogTask, groupRestoreTask, backfillTask);
+            await Task.WhenAll(spellCatalogTask, groupRestoreTask, backfillTask, levelTask);
             _spellDataCatalog = await spellCatalogTask;
+            if (await levelTask is { } level) _characterLevel = level;
             RaisePropertyChanged(nameof(SpellCatalog));
             DotSpellTracker.NotifyCatalogChanged();
             ControlSpellTracker.NotifyCatalogChanged();
+            await ReseedCatalogTimingsFromCharacterLevelAsync();
             ApplyBuffConfiguration();
             DotSpellTracker.RefreshConfiguration();
             ControlSpellTracker.RefreshConfiguration();
@@ -633,6 +762,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         QuestTracker.ObserveLootMessage(parsed.Message);
         SkyTracker.ObserveLootMessage(parsed.Message);
+        NoteCharacterLevelFromMessage(parsed.Message);
 
         _buffTracker.Observe(parsed.Timestamp, parsed.Message);
         DotSpellTracker.Observe(parsed.Timestamp, parsed.Message);
@@ -796,14 +926,15 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         };
     }
 
-    private void ApplyBuffConfiguration()
+    private void ApplyBuffConfiguration(bool pruneMissing = true)
     {
         var settings = BuffRules.Select(rule => rule.TryCreateSettings(out var configured, out _)
             ? configured
             : null).OfType<BuffRuleSettings>().ToArray();
         _buffTracker.Configure(settings, ResolveFadeMessages, ResolveSelfAppliedMessages,
             ResolveOtherAppliedMessages,
-            suffix => _spellDataCatalog?.IsAmbiguousOtherAppliedSuffix(suffix) == true);
+            suffix => _spellDataCatalog?.IsAmbiguousOtherAppliedSuffix(suffix) == true,
+            pruneMissing: pruneMissing);
         RefreshBuffRuleIcons();
         RefreshOverlayEntries(DateTime.Now);
     }

@@ -268,6 +268,9 @@ public partial class MainWindow : Window, IAsyncDisposable
     private void TestBuffAlert_Click(object sender, RoutedEventArgs e) =>
         ShowBuffError(_viewModel.TestSelectedBuffAlert());
 
+    private void ResetBuffTimings_Click(object sender, RoutedEventArgs e) =>
+        ShowBuffError(_viewModel.ResetSelectedBuffTimingsToCatalog());
+
     private void BuffSpellName_LostFocus(object sender, RoutedEventArgs e)
     {
         if (sender is Controls.SpellNameSearchBox { Tag: BuffRuleViewModel rule })
