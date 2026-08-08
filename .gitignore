@@ -12,6 +12,7 @@ publish/
 
 # Portable runtime data
 settings.json
+spelltracker.json
 Diagnostics/
 *.log
 

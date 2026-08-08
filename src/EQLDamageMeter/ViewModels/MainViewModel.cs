@@ -70,14 +70,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             (_, _) => OnRefreshTimer(), _dispatcher);
         _spellIconStyle = AppSettingsStore.TryLoadSpellIconStyle();
 
-        foreach (var settings in AppSettingsStore.TryLoadBuffRules())
+        foreach (var settings in SpellTrackerStore.TryLoadBuffRules())
             BuffRules.Add(new BuffRuleViewModel(settings));
         DotSpellTracker = new SpellRuleSetViewModel(SpellTrackerCategory.DamageOverTime,
-            AppSettingsStore.TryLoadDotRules(), () => _spellDataCatalog,
-            AppSettingsStore.TrySaveDotRulesAsync, _buffAlertService);
+            SpellTrackerStore.TryLoadDotRules(), () => _spellDataCatalog,
+            SpellTrackerStore.TrySaveDotRulesAsync, _buffAlertService);
         ControlSpellTracker = new SpellRuleSetViewModel(SpellTrackerCategory.Control,
-            AppSettingsStore.TryLoadControlRules(), () => _spellDataCatalog,
-            AppSettingsStore.TrySaveControlRulesAsync, _buffAlertService);
+            SpellTrackerStore.TryLoadControlRules(), () => _spellDataCatalog,
+            SpellTrackerStore.TrySaveControlRulesAsync, _buffAlertService);
         _buffTracker.PreserveBuffTargetOnDeath = (target, timestamp) =>
             ControlSpellTracker.HasActiveCharmTarget(target, timestamp);
         BuffRulesView = CollectionViewSource.GetDefaultView(BuffRules);
@@ -94,6 +94,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public IReadOnlyList<BuffSoundKind> BuffSoundChoices { get; } = Enum.GetValues<BuffSoundKind>();
     public SpellRuleSetViewModel DotSpellTracker { get; }
     public SpellRuleSetViewModel ControlSpellTracker { get; }
+    public SpellDataCatalog? SpellCatalog => _spellDataCatalog;
 
     public bool UseModernSpellIcons
     {
@@ -108,6 +109,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             _ = AppSettingsStore.TrySaveSpellIconStyleAsync(style);
         }
     }
+
+    public string AppVersionText => $"v {AppUpdateService.CurrentVersionText}";
 
     public string UpdateButtonToolTip =>
         $"Check for EQDM updates (current version {AppUpdateService.CurrentVersionText})";
@@ -309,9 +312,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RefreshBuffRuleIcons();
         RefreshOverlayEntries(DateTime.Now);
         BuffRulesView.Refresh();
-        return await AppSettingsStore.TrySaveBuffRulesAsync(settings)
+        return await SpellTrackerStore.TrySaveBuffRulesAsync(settings)
             ? null
-            : "Buff rules could not be saved beside the app. Check that the app folder is writable.";
+            : "Buff rules could not be saved to spelltracker.json. Check that the app folder is writable.";
     }
 
     public string? TestSelectedBuffAlert()
@@ -415,6 +418,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 parser, group, cancellationToken), cancellationToken);
             await Task.WhenAll(spellCatalogTask, groupRestoreTask);
             _spellDataCatalog = await spellCatalogTask;
+            RaisePropertyChanged(nameof(SpellCatalog));
+            DotSpellTracker.NotifyCatalogChanged();
+            ControlSpellTracker.NotifyCatalogChanged();
             ApplyBuffConfiguration();
             DotSpellTracker.RefreshConfiguration();
             ControlSpellTracker.RefreshConfiguration();
@@ -766,11 +772,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             return true;
         }
 
-        var suggestions = _spellDataCatalog.FindSuggestions(spellName);
-        var suggestionText = suggestions.Count == 0
-            ? string.Empty
-            : $" Did you mean {string.Join(", ", suggestions)}?";
-        error = $"Spell '{spellName.Trim()}' was not found in the installed EverQuest Legends spell data.{suggestionText}";
+        error = "Spell not found";
         return false;
     }
 

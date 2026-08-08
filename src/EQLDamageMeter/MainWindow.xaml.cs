@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using EQLDamageMeter.Services;
 using EQLDamageMeter.ViewModels;
 using Microsoft.Win32;
@@ -36,6 +37,14 @@ public partial class MainWindow : Window, IAsyncDisposable
 
     private void CheckUpdates_Click(object sender, RoutedEventArgs e) =>
         AppUpdateService.CheckForUpdates(this, reportNoUpdate: true);
+
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { ContextMenu: { } menu } button) return;
+        menu.PlacementTarget = button;
+        menu.Placement = PlacementMode.Bottom;
+        menu.IsOpen = true;
+    }
 
     private async void ChooseLogs_Click(object sender, RoutedEventArgs e)
     {
@@ -129,7 +138,8 @@ public partial class MainWindow : Window, IAsyncDisposable
 
     private void BuffSpellName_LostFocus(object sender, RoutedEventArgs e)
     {
-        if (sender is TextBox { Tag: BuffRuleViewModel rule }) _viewModel.ValidateBuffSpell(rule);
+        if (sender is Controls.SpellNameSearchBox { Tag: BuffRuleViewModel rule })
+            _viewModel.ValidateBuffSpell(rule);
     }
 
     private void ShowAllBuffs_Checked(object sender, RoutedEventArgs e) => _viewModel.SetBuffFilter("All");

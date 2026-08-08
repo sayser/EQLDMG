@@ -1,6 +1,7 @@
 <UserControl x:Class="EQLDamageMeter.Controls.SpellRuleEditor"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:EQLDamageMeter.Controls"
         xmlns:models="clr-namespace:EQLDamageMeter.Models">
     <Grid>
         <Grid.ColumnDefinitions>
@@ -163,9 +164,12 @@
                                 <Image Source="{Binding SelectedRule.Icon}" Width="28" Height="28"
                                        RenderOptions.BitmapScalingMode="NearestNeighbor" SnapsToDevicePixels="True" />
                             </Border>
-                            <TextBox Grid.Column="1" Style="{DynamicResource BuffInput}"
-                                     Text="{Binding SelectedRule.SpellName, UpdateSourceTrigger=PropertyChanged}"
-                                     Tag="{Binding SelectedRule}" LostFocus="SpellName_LostFocus" />
+                            <local:SpellNameSearchBox Grid.Column="1"
+                                     Text="{Binding SelectedRule.SpellName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     Catalog="{Binding SpellCatalog}"
+                                     Tag="{Binding SelectedRule}"
+                                     LostFocus="SpellName_LostFocus"
+                                     ToolTip="Type to search spell names (not case sensitive)." />
                         </Grid>
                         <TextBlock Text="{Binding SelectedRule.SpellValidationText}" Foreground="#FF8B91" FontSize="10" Margin="0,4,0,0" TextWrapping="Wrap" />
                     </StackPanel>

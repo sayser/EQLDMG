@@ -33,7 +33,8 @@ public partial class SpellRuleEditor : UserControl
     private void TestAlert_Click(object sender, RoutedEventArgs e) => ShowError(Rules?.TestAlert());
     private void SpellName_LostFocus(object sender, RoutedEventArgs e)
     {
-        if (sender is TextBox { Tag: BuffRuleViewModel rule }) ShowError(Rules?.ValidateSpell(rule));
+        if (sender is SpellNameSearchBox { Tag: BuffRuleViewModel rule })
+            ShowError(Rules?.ValidateSpell(rule));
     }
     private void All_Checked(object sender, RoutedEventArgs e) => Rules?.SetFilter("All");
     private void Enabled_Checked(object sender, RoutedEventArgs e) => Rules?.SetFilter("Enabled");

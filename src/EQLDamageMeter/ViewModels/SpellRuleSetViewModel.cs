@@ -49,6 +49,7 @@ public sealed class SpellRuleSetViewModel : ObservableObject
         ? "Select a control spell or click + Add Control to view details."
         : "Select a DoT or click + Add DoT to view details.";
     public bool IsControl => _category == SpellTrackerCategory.Control;
+    public SpellDataCatalog? SpellCatalog => _catalog();
     public ObservableCollection<BuffRuleViewModel> Rules { get; } = [];
     public ObservableCollection<BuffOverlayEntryViewModel> OverlayEntries { get; } = [];
     public ICollectionView RulesView { get; }
@@ -140,7 +141,7 @@ public sealed class SpellRuleSetViewModel : ObservableObject
         RulesView.Refresh();
         return await _save(settings, cancellationToken)
             ? null
-            : $"{_category} rules could not be saved beside the app. Check that the app folder is writable.";
+            : $"{_category} rules could not be saved to spelltracker.json. Check that the app folder is writable.";
     }
 
     public string? ValidateSpell(BuffRuleViewModel? rule)
@@ -202,6 +203,8 @@ public sealed class SpellRuleSetViewModel : ObservableObject
         RefreshOverlay(DateTime.Now);
     }
 
+    public void NotifyCatalogChanged() => RaisePropertyChanged(nameof(SpellCatalog));
+
     private void Configure(IReadOnlyCollection<BuffRuleSettings> settings) =>
         _tracker.Configure(settings, ResolveFadeMessages, _ => [], ResolveOtherAppliedMessages,
             suffix => _catalog()?.IsAmbiguousOtherAppliedSuffix(suffix) == true);
@@ -242,9 +245,7 @@ public sealed class SpellRuleSetViewModel : ObservableObject
             error = string.Empty;
             return true;
         }
-        var suggestions = catalog.FindSuggestions(spellName);
-        var suggestionText = suggestions.Count == 0 ? string.Empty : $" Did you mean {string.Join(", ", suggestions)}?";
-        error = $"Spell '{spellName.Trim()}' was not found in the installed EverQuest Legends spell data.{suggestionText}";
+        error = "Spell not found";
         return false;
     }
 

@@ -17,6 +17,7 @@ public sealed class SpellDataCatalog
     private const int IconFieldIndex = 75;
     private readonly Dictionary<string, SpellDataEntry> _byName;
     private readonly HashSet<string> _ambiguousOtherSuffixes;
+    private string[]? _familyNames;
     private SpellIconAtlas? _icons;
 
     private SpellDataCatalog(string sourceDirectory, Dictionary<string, SpellDataEntry> byName,
@@ -97,24 +98,38 @@ public sealed class SpellDataCatalog
     public void SetIconStyle(SpellIconStyle style) =>
         _icons = SpellIconAtlas.TryCreate(SourceDirectory, style);
 
-    public IReadOnlyList<string> FindSuggestions(string spellName, int limit = 3)
-    {
-        var search = spellName.Trim();
-        if (search.Length == 0) return [];
-        var familySearch = SpellNameNormalizer.GetFamilyName(search);
-
-        return _byName.Values
-            .Where(entry => entry.Name.StartsWith(search, StringComparison.OrdinalIgnoreCase) ||
-                            SpellNameNormalizer.GetFamilyName(entry.Name)
-                                .StartsWith(familySearch, StringComparison.OrdinalIgnoreCase))
-            .Concat(_byName.Values.Where(entry =>
-                !entry.Name.StartsWith(search, StringComparison.OrdinalIgnoreCase) &&
-                entry.Name.Contains(search, StringComparison.OrdinalIgnoreCase)))
+    public IReadOnlyList<string> GetFamilyNames() =>
+        _familyNames ??= _byName.Values
             .Select(entry => SpellNameNormalizer.GetFamilyName(entry.Name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(Math.Max(0, limit))
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+    /// <summary>
+    /// Case-insensitive contains search over unranked family names for autocomplete.
+    /// Starts-with matches are listed first.
+    /// </summary>
+    public IReadOnlyList<string> FindMatches(string spellName, int limit = 40)
+    {
+        var search = spellName.Trim();
+        if (search.Length == 0 || limit <= 0) return [];
+
+        var families = GetFamilyNames();
+        var startsWith = new List<string>();
+        var contains = new List<string>();
+        foreach (var name in families)
+        {
+            if (name.StartsWith(search, StringComparison.OrdinalIgnoreCase))
+                startsWith.Add(name);
+            else if (name.Contains(search, StringComparison.OrdinalIgnoreCase))
+                contains.Add(name);
+        }
+
+        return startsWith.Concat(contains).Take(limit).ToArray();
     }
+
+    public IReadOnlyList<string> FindSuggestions(string spellName, int limit = 3) =>
+        FindMatches(spellName, limit);
 
     private static SpellDataEntry AggregateFamily(string familyName, int preferredIconId,
         IReadOnlyList<SpellDataEntry> members)

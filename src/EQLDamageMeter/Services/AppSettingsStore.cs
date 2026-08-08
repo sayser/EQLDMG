@@ -11,9 +11,6 @@ public static class AppSettingsStore
     {
         public string? LogFolder { get; set; }
         public SpellIconStyle SpellIconStyle { get; set; } = SpellIconStyle.Modern;
-        public List<BuffRuleSettings> BuffRules { get; set; } = [];
-        public List<BuffRuleSettings> DotRules { get; set; } = [];
-        public List<BuffRuleSettings> ControlRules { get; set; } = [];
     }
 
     private static readonly string SettingsPath = Path.Combine(AppContext.BaseDirectory, "settings.json");
@@ -33,15 +30,6 @@ public static class AppSettingsStore
     public static SpellIconStyle TryLoadSpellIconStyle() =>
         TryLoad()?.SpellIconStyle ?? SpellIconStyle.Modern;
 
-    public static IReadOnlyList<BuffRuleSettings> TryLoadBuffRules() =>
-        TryLoad()?.BuffRules ?? [];
-
-    public static IReadOnlyList<BuffRuleSettings> TryLoadDotRules() =>
-        TryLoad()?.DotRules ?? [];
-
-    public static IReadOnlyList<BuffRuleSettings> TryLoadControlRules() =>
-        TryLoad()?.ControlRules ?? [];
-
     public static Task<bool> TrySaveLogFolderAsync(string folder,
         CancellationToken cancellationToken = default) =>
         UpdateAsync(settings => settings.LogFolder = Path.GetFullPath(folder), cancellationToken);
@@ -50,25 +38,33 @@ public static class AppSettingsStore
         CancellationToken cancellationToken = default) =>
         UpdateAsync(settings => settings.SpellIconStyle = style, cancellationToken);
 
-    public static Task<bool> TrySaveBuffRulesAsync(IEnumerable<BuffRuleSettings> rules,
-        CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Rewrites settings.json without legacy Buff/DoT/Control rule lists after those
+    /// rules have been moved to spelltracker.json.
+    /// </summary>
+    internal static bool TryStripLegacySpellRules()
     {
-        var snapshot = rules.ToList();
-        return UpdateAsync(settings => settings.BuffRules = snapshot, cancellationToken);
-    }
-
-    public static Task<bool> TrySaveDotRulesAsync(IEnumerable<BuffRuleSettings> rules,
-        CancellationToken cancellationToken = default)
-    {
-        var snapshot = rules.ToList();
-        return UpdateAsync(settings => settings.DotRules = snapshot, cancellationToken);
-    }
-
-    public static Task<bool> TrySaveControlRulesAsync(IEnumerable<BuffRuleSettings> rules,
-        CancellationToken cancellationToken = default)
-    {
-        var snapshot = rules.ToList();
-        return UpdateAsync(settings => settings.ControlRules = snapshot, cancellationToken);
+        SettingsGate.Wait();
+        try
+        {
+            var settings = TryLoad() ?? new AppSettings();
+            var temporaryPath = SettingsPath + ".tmp";
+            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(settings, JsonOptions));
+            File.Move(temporaryPath, SettingsPath, true);
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        finally
+        {
+            SettingsGate.Release();
+        }
     }
 
     private static AppSettings? TryLoad()
