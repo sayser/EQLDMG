@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using EQLDamageMeter.Services;
 using EQLDamageMeter.ViewModels;
 using Microsoft.Win32;
 
@@ -12,17 +13,29 @@ public partial class MainWindow : Window, IAsyncDisposable
     private BuffOverlayWindow? _buffOverlay;
     private SpellEffectOverlayWindow? _dotOverlay;
     private SpellEffectOverlayWindow? _controlOverlay;
+    private bool _startupUpdateChecked;
 
     public MainWindow()
     {
         InitializeComponent();
         DataContext = _viewModel;
-        Loaded += async (_, _) => await _viewModel.InitializeAsync();
+        Loaded += MainWindow_Loaded;
         Closed += async (_, _) =>
         {
             await DisposeAsync();
         };
     }
+
+    private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        await _viewModel.InitializeAsync();
+        if (_startupUpdateChecked) return;
+        _startupUpdateChecked = true;
+        AppUpdateService.CheckForUpdates(this);
+    }
+
+    private void CheckUpdates_Click(object sender, RoutedEventArgs e) =>
+        AppUpdateService.CheckForUpdates(this, reportNoUpdate: true);
 
     private async void ChooseLogs_Click(object sender, RoutedEventArgs e)
     {

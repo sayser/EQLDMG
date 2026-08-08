@@ -109,6 +109,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    public string UpdateButtonToolTip =>
+        $"Check for EQDM updates (current version {AppUpdateService.CurrentVersionText})";
+
     public BuffRuleViewModel? SelectedBuffRule
     {
         get => _selectedBuffRule;

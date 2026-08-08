@@ -350,7 +350,9 @@
                                 </StackPanel>
                             </Border>
                         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center">
-                            <Button Content="Logs" Padding="12,6" Click="ChooseLogs_Click" />
+                            <Button Content="Logs" Padding="10,6" Margin="0,0,6,0" Click="ChooseLogs_Click" />
+                            <Button Content="Updates" Padding="10,6" Click="CheckUpdates_Click"
+                                    ToolTip="{Binding UpdateButtonToolTip}" />
                         </StackPanel>
                     </Grid>
 
