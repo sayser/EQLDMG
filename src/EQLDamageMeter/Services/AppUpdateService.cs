@@ -89,6 +89,8 @@ public static class AppUpdateService
             AutoUpdater.CheckForUpdateEvent += Handler;
         }
 
-        AutoUpdater.Start(UpdateFeedUrl);
+        // Bust GitHub raw CDN / local HTTP caches so the latest update.xml is fetched.
+        var feedUrl = $"{UpdateFeedUrl}?t={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+        AutoUpdater.Start(feedUrl);
     }
 }
