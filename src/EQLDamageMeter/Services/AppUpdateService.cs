@@ -7,9 +7,9 @@ namespace EQLDamageMeter.Services;
 
 /// <summary>
 /// Checks GitHub-hosted update.xml and applies zip updates into the portable
-/// app folder. Runtime files such as settings.json and spelltracker.json are
-/// not shipped in the release zip, so user preferences and spell rules survive
-/// updates.
+/// app folder. Runtime files such as settings.json, spelltracker.json, and
+/// session_info.json are not shipped in the release zip, so user preferences,
+/// spell rules, and session history survive updates.
 /// </summary>
 public static class AppUpdateService
 {

@@ -475,6 +475,8 @@
                                          IsChecked="True" Style="{StaticResource ModuleNavigationButton}" />
                             <RadioButton x:Name="SpellTrackerButton" Content="Spell Tracker" GroupName="PrimaryModule"
                                          Style="{StaticResource ModuleNavigationButton}" />
+                            <RadioButton x:Name="SessionTrackerButton" Content="Session Tracker" GroupName="PrimaryModule"
+                                         Style="{StaticResource ModuleNavigationButton}" MinWidth="148" />
                             <RadioButton Content="Loot Tracker" GroupName="PrimaryModule"
                                          Style="{StaticResource ModuleNavigationButton}" />
                         </StackPanel>
@@ -503,7 +505,7 @@
                                           VerticalAlignment="Center"
                                           Foreground="#C8DEEA" FontSize="11" Margin="0,0,12,0"
                                           ToolTip="Combine regular and charmed pet damage into the owner's DPS row" />
-                                <Button Content="Overlay" Padding="10,6" Margin="0,0,6,0" Click="ToggleOverlay_Click"
+                                <Button Content="DPS Overlay" Padding="10,6" Margin="0,0,6,0" Click="ToggleOverlay_Click"
                                         ToolTip="Open the DPS ranking overlay window" />
                                 <Button Content="Reset" Padding="12,6" Click="ResetEncounter_Click"
                                         ToolTip="Reset the current DPS encounter" />
@@ -1179,16 +1181,173 @@
                         Visibility="{Binding IsChecked, ElementName=ControlSpellTab, Converter={StaticResource BooleanToVisibility}}" />
             </Grid>
 
+            <!-- Session tracker workspace -->
+            <Grid Grid.Row="2" Grid.RowSpan="3"
+                  Visibility="{Binding IsChecked, ElementName=SessionTrackerButton, Converter={StaticResource BooleanToVisibility}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="0.95*" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="1.65*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource GlassCard}" Padding="14,12">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <StackPanel Margin="0,0,0,10">
+                            <TextBlock Text="SESSIONS" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="Current session tracks until EQDM closes" Foreground="#66879D"
+                                       FontSize="10" Margin="0,4,0,0" />
+                        </StackPanel>
+                        <ListBox Grid.Row="1" ItemsSource="{Binding SessionHistory.Sessions}"
+                                 SelectedItem="{Binding SessionHistory.SelectedSession}"
+                                 Background="Transparent" BorderThickness="0"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="Margin" Value="0,0,0,8" />
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border x:Name="Chrome" Background="#6A0E2A3E" BorderBrush="#31566E"
+                                                        BorderThickness="1" CornerRadius="12" Padding="12,10">
+                                                    <ContentPresenter />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="Chrome" Property="BorderBrush" Value="#50CFC5" />
+                                                        <Setter TargetName="Chrome" Property="Background" Value="#9A103249" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Chrome" Property="Background" Value="#A5163A50" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <Grid>
+                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            <Border HorizontalAlignment="Right" Padding="7,2" CornerRadius="8"
+                                                    Visibility="{Binding IsLive, Converter={StaticResource BooleanToVisibility}}"
+                                                    Background="#193E3D" BorderBrush="#2B7A70" BorderThickness="1">
+                                                <TextBlock Text="LIVE" FontSize="9" FontWeight="Bold" Foreground="#91F2E6" />
+                                            </Border>
+                                        </Grid>
+                                        <TextBlock Text="{Binding Subtitle}" Foreground="#8BA9BD" FontSize="11" Margin="0,4,0,0" />
+                                        <TextBlock Text="{Binding CharacterText}" Foreground="#66879D" FontSize="10" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Column="2" Style="{StaticResource GlassCard}" Padding="16,14">
+                    <Grid DataContext="{Binding SessionHistory.SelectedSession}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel>
+                            <TextBlock Text="SESSION DETAILS" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="{Binding Title}" FontSize="22" FontWeight="SemiBold" Margin="0,8,0,0" />
+                            <TextBlock Text="{Binding Subtitle}" Foreground="#8BA9BD" FontSize="12" Margin="0,4,0,0" />
+                            <TextBlock Text="{Binding CharacterText}" Foreground="#66879D" FontSize="11" Margin="0,2,0,0" />
+                        </StackPanel>
+
+                        <UniformGrid Grid.Row="1" Columns="2" Rows="2" Margin="0,18,0,0">
+                            <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="0,0,8,8">
+                                <StackPanel>
+                                    <TextBlock Text="Level XP gained" Style="{StaticResource MetricLabel}" />
+                                    <TextBlock Text="{Binding LevelXpText}" FontSize="26" FontWeight="SemiBold"
+                                               Foreground="#2ED9C7" Margin="0,4,0,0" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="8,0,0,8">
+                                <StackPanel>
+                                    <TextBlock Text="Levels gained" Style="{StaticResource MetricLabel}" />
+                                    <TextBlock Text="{Binding LevelsText}" FontSize="26" FontWeight="SemiBold"
+                                               Foreground="#E8F8FF" Margin="0,4,0,0" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="0,8,8,0">
+                                <StackPanel>
+                                    <TextBlock Text="AA points gained" Style="{StaticResource MetricLabel}" />
+                                    <TextBlock Text="{Binding AaPointsText}" FontSize="26" FontWeight="SemiBold"
+                                               Foreground="#A98BFF" Margin="0,4,0,0" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="8,8,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="Motes of Potential" Style="{StaticResource MetricLabel}" />
+                                    <TextBlock Text="{Binding MotesText}" FontSize="26" FontWeight="SemiBold"
+                                               Foreground="#F2FAFF" Margin="0,4,0,0" />
+                                </StackPanel>
+                            </Border>
+                        </UniformGrid>
+
+                        <Border Grid.Row="2" Style="{StaticResource InnerCard}" Padding="12,10" Margin="0,16,0,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="MOTE BREAKDOWN" Style="{StaticResource SectionLabel}" Margin="2,0,0,8" />
+                                <ListBox Grid.Row="1" ItemsSource="{Binding MoteRows}"
+                                         Background="Transparent" BorderThickness="0">
+                                    <ListBox.ItemContainerStyle>
+                                        <Style TargetType="ListBoxItem">
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                            <Setter Property="Padding" Value="0" />
+                                            <Setter Property="Margin" Value="0,0,0,6" />
+                                            <Setter Property="Focusable" Value="False" />
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="ListBoxItem">
+                                                        <ContentPresenter />
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </ListBox.ItemContainerStyle>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="2,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Count}" FontWeight="SemiBold"
+                                                           Foreground="#A98BFF" Margin="12,0,0,0" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
+
             <!-- Horizontal encounter history -->
             <Border Grid.Row="4" Style="{StaticResource GlassCard}" Padding="14,10,14,6"
                     Visibility="{Binding IsChecked, ElementName=DpsParserButton, Converter={StaticResource BooleanToVisibility}}">
                 <Grid>
                     <Grid.RowDefinitions><RowDefinition Height="26" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                    <Grid>
-                        <TextBlock Text="ENCOUNTER HISTORY" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
-                        <TextBlock Text="Choose a completed fight · Live returns to the current encounter" Foreground="#66879D"
-                                   FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                    </Grid>
+                    <TextBlock Text="ENCOUNTER HISTORY" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
                     <ListBox Grid.Row="1" ItemsSource="{Binding EncounterHistory}" SelectedItem="{Binding SelectedHistory}"
                              Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Auto"
                              ScrollViewer.VerticalScrollBarVisibility="Disabled" Padding="0,0,0,18">
@@ -1196,7 +1355,30 @@
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem">
                                 <Setter Property="Padding" Value="0" /><Setter Property="Margin" Value="0,4,9,0" />
-                                <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="HistoryCard" Width="215" Height="76" VerticalAlignment="Top" Background="#76102A3E" BorderBrush="#31566E" BorderThickness="1" CornerRadius="10" Padding="10,7"><ContentPresenter /></Border><ControlTemplate.Triggers><Trigger Property="IsSelected" Value="True"><Setter TargetName="HistoryCard" Property="BorderBrush" Value="#9C7CFF" /><Setter TargetName="HistoryCard" Property="Background" Value="#A51A3152" /></Trigger><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="HistoryCard" Property="Background" Value="#A5163A50" /></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="HistoryCard" Width="215" Height="76" VerticalAlignment="Top"
+                                                    Background="#76102A3E" BorderBrush="#31566E" BorderThickness="1"
+                                                    CornerRadius="10" Padding="10,7">
+                                                <ContentPresenter />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <DataTrigger Binding="{Binding IsLive}" Value="True">
+                                                    <Setter TargetName="HistoryCard" Property="BorderBrush" Value="#2B7A70" />
+                                                    <Setter TargetName="HistoryCard" Property="Background" Value="#193E3D" />
+                                                </DataTrigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="HistoryCard" Property="BorderBrush" Value="#9C7CFF" />
+                                                    <Setter TargetName="HistoryCard" Property="Background" Value="#A51A3152" />
+                                                </Trigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="HistoryCard" Property="Background" Value="#A5163A50" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
                             </Style>
                         </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
@@ -1205,7 +1387,7 @@
                                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                     <TextBlock Text="{Binding TargetNames}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                     <Grid Grid.Row="1" Margin="0,4,0,0"><TextBlock Text="{Binding Damage, StringFormat={}{0:N0} damage}" Foreground="#A8C3D4" FontSize="11" /><TextBlock Text="{Binding Dps, StringFormat={}{0:0.0} DPS}" Foreground="#A98BFF" FontWeight="Bold" HorizontalAlignment="Right" /></Grid>
-                                    <Grid Grid.Row="2" Margin="0,4,0,0"><TextBlock Text="{Binding Mode}" Foreground="#2FD8C7" FontSize="10" /><TextBlock Text="{Binding StartedAt, StringFormat={}{0:t}}" Foreground="#64879D" FontSize="10" HorizontalAlignment="Right" /></Grid>
+                                    <Grid Grid.Row="2" Margin="0,4,0,0"><TextBlock Text="{Binding Mode}" Foreground="#2FD8C7" FontSize="10" /><TextBlock Text="{Binding TimeLabel}" Foreground="#64879D" FontSize="10" HorizontalAlignment="Right" /></Grid>
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>

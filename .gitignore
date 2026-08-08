@@ -13,6 +13,7 @@ publish/
 # Portable runtime data
 settings.json
 spelltracker.json
+session_info.json
 Diagnostics/
 *.log
 

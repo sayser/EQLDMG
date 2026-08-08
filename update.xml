@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <item>
-  <version>1.2.3.0</version>
-  <url>https://github.com/sayser/EQLDMG/releases/download/v1.2.3/EQDM1.2.3.zip</url>
-  <changelog>https://github.com/sayser/EQLDMG/releases/tag/v1.2.3</changelog>
+  <version>1.2.4.0</version>
+  <url>https://github.com/sayser/EQLDMG/releases/download/v1.2.4/EQDM1.2.4.zip</url>
+  <changelog>https://github.com/sayser/EQLDMG/releases/tag/v1.2.4</changelog>
   <mandatory>false</mandatory>
-  <!-- feed revision: 2026-08-08T04:00Z -->
 </item>

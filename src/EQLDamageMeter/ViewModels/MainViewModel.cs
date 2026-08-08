@@ -17,7 +17,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private enum BreakdownMode { Offense, Defense, Healing }
     private sealed record QueuedParsedLine(int Generation, ParsedLogLine Parsed);
     public const string DefaultLogFolder = @"C:\Users\Public\Daybreak Game Company\Installed Games\EverQuest Legends\Logs";
-    private const int HistoryLimit = 5;
+    private const int HistoryLimit = 25;
     private const int ParsedLineBatchSize = 1_000;
     private const int MaxQueuedParsedLines = 20_000;
     private static readonly Brush[] ChartBrushes = CreateChartBrushes();
@@ -31,6 +31,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly BuffTracker _buffTracker = new();
     private readonly BuffAlertService _buffAlertService = new();
+    private readonly SessionTracker _sessionTracker = new();
+    private readonly List<SessionRecord> _sessionHistory = [];
+    private DateTime _lastSessionPersistUtc = DateTime.MinValue;
+    private bool _sessionDirty;
     private SpellDataCatalog? _spellDataCatalog;
     private LogFileMonitor? _monitor;
     private LogLineParser? _parser;
@@ -83,12 +87,17 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         BuffRulesView = CollectionViewSource.GetDefaultView(BuffRules);
         BuffRulesView.Filter = FilterBuffRule;
         ApplyBuffConfiguration();
+        _sessionHistory.AddRange(SessionInfoStore.TryLoadSessions()
+            .Where(item => item.EndedAt.HasValue)
+            .OrderByDescending(item => item.StartedAt));
+        SessionHistory.LoadHistory(_sessionHistory, current: null);
     }
 
     public ObservableCollection<CombatantViewModel> Combatants { get; } = [];
     public ObservableCollection<EncounterHistoryViewModel> EncounterHistory { get; } = [];
     public ObservableCollection<BuffRuleViewModel> BuffRules { get; } = [];
     public ObservableCollection<BuffOverlayEntryViewModel> OverlayBuffEntries { get; } = [];
+    public SessionHistoryViewModel SessionHistory { get; } = new();
     public ICollectionView BuffRulesView { get; }
     public IReadOnlyList<BuffAlertMode> BuffAlertModes { get; } = Enum.GetValues<BuffAlertMode>();
     public IReadOnlyList<BuffSoundKind> BuffSoundChoices { get; } = Enum.GetValues<BuffSoundKind>();
@@ -156,6 +165,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         get => _selectedHistory;
         set
         {
+            EnsureLiveHistoryCard();
+            value ??= EncounterHistory[0];
             if (!SetProperty(ref _selectedHistory, value)) return;
             RefreshDisplay(force: true);
         }
@@ -250,7 +261,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         _encounter?.Reset();
         _dataVersion++;
-        SelectedHistory = null;
+        SelectLiveHistory();
         RefreshDisplay(force: true);
     }
 
@@ -390,6 +401,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _activeLogPath = path;
         CharacterName = identity.Character;
         ServerName = identity.Server;
+        EnsurePlaySession(identity.Character, identity.Server);
         var parser = new LogLineParser(identity.Character);
         var group = new GroupStateTracker(identity.Character);
         _parser = parser;
@@ -404,7 +416,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _renderedDataVersion = -1;
         _lastRenderedSecond = -1;
         _renderedHistory = null;
-        SelectedHistory = null;
+        EnsureLiveHistoryCard();
+        SelectLiveHistory();
         StatusText = "Preparing live monitoring…";
         RaisePropertyChanged(nameof(LogFolderText));
 
@@ -564,6 +577,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_group is null || _encounter is null) return;
 
+        if (_sessionTracker.Observe(parsed.Timestamp, parsed.Message))
+        {
+            _sessionDirty = true;
+            RefreshSessionHistoryUi();
+            PersistSessionHistoryIfNeeded(force: false);
+        }
+
         _buffTracker.Observe(parsed.Timestamp, parsed.Message);
         DotSpellTracker.Observe(parsed.Timestamp, parsed.Message);
         ControlSpellTracker.Observe(parsed.Timestamp, parsed.Message);
@@ -611,8 +631,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         if (priorStart.HasValue && _encounter.StartedAt != priorStart && priorSnapshot is not null)
             Archive(priorSnapshot, priorMode);
-        if (_encounter.StartedAt.HasValue && _encounter.StartedAt != priorStart && SelectedHistory is not null)
-            SelectedHistory = null;
+        if (_encounter.StartedAt.HasValue && _encounter.StartedAt != priorStart &&
+            SelectedHistory is { IsLive: false })
+            SelectLiveHistory();
 
         if (parsed.Damage is not null || parsed.Healing is not null || parsed.Outcome is not null ||
             change.Kind != GroupChangeKind.None || priorStart != _encounter.StartedAt ||
@@ -635,14 +656,22 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             _dataVersion++;
         }
 
+        EnsureLiveHistoryCard();
         var history = SelectedHistory;
-        if (!force && history is not null && ReferenceEquals(_renderedHistory, history)) return;
-        var snapshot = history?.Snapshot;
+        var viewingArchive = history is { IsLive: false, Snapshot: not null };
+        var snapshot = viewingArchive ? history!.Snapshot : null;
         var seconds = snapshot is null ? _encounter.GetElapsedSeconds(now) : history!.Seconds;
         var renderedSecond = (long)Math.Floor(seconds);
+        if (!force && viewingArchive && ReferenceEquals(_renderedHistory, history) &&
+            _renderedDataVersion == _dataVersion)
+        {
+            UpdateLiveHistoryCard(now);
+            return;
+        }
         if (!force && _renderedDataVersion == _dataVersion && _lastRenderedSecond == renderedSecond &&
             ReferenceEquals(_renderedHistory, history))
         {
+            UpdateLiveHistoryCard(now);
             return;
         }
 
@@ -657,7 +686,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var hasEncounter = snapshot is not null || _encounter.StartedAt.HasValue;
         var isWarmingUp = snapshot is null && hasEncounter && !_encounter.IsFinalized && seconds < 3;
 
-        ModeText = history?.Mode ?? (_group.IsGrouped ? "GROUP" : "SOLO");
+        ModeText = viewingArchive ? history!.Mode : (_group.IsGrouped ? "GROUP" : "SOLO");
         EncounterTime = TimeSpan.FromSeconds(seconds).ToString(@"m\:ss", CultureInfo.InvariantCulture);
         var localSources = aggregates.Where(item =>
             item.Name.Equals(CharacterName, StringComparison.OrdinalIgnoreCase) ||
@@ -670,7 +699,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         EncounterDps = localPlayer is null || !hasEncounter ? "—" : isWarmingUp ? "Calculating…" :
             (localPlayer.Damage / Math.Max(1, seconds)).ToString("N1", CultureInfo.CurrentCulture);
 
-        if (history is not null) CurrentDps = "—";
+        if (viewingArchive) CurrentDps = "—";
         else
         {
             var rollingWindow = TimeSpan.FromSeconds(10);
@@ -683,6 +712,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         PopulateCombatants(aggregates, seconds, isWarmingUp);
         MaxDamage = Math.Max(1, Combatants.FirstOrDefault()?.Damage ?? 1);
+        UpdateLiveHistoryCard(now, localPlayer?.Damage ?? 0,
+            localPlayer is null || !hasEncounter || isWarmingUp ? 0 : localPlayer.Damage / Math.Max(1, seconds));
         _renderedDataVersion = _dataVersion;
         _lastRenderedSecond = renderedSecond;
         _renderedHistory = history;
@@ -697,6 +728,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RefreshOverlayEntries(now);
         DotSpellTracker.Tick(now);
         ControlSpellTracker.Tick(now);
+        if (_sessionTracker.Current is not null)
+            RefreshSessionHistoryUi();
+        PersistSessionHistoryIfNeeded(force: false);
     }
 
     private bool FilterBuffRule(object item)
@@ -1007,16 +1041,63 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private bool Archive(EncounterSnapshot snapshot, string mode)
     {
         if (snapshot.Combatants.Count == 0 || !_archivedStarts.Add(snapshot.StartedAt)) return false;
-        EncounterHistory.Insert(0, new EncounterHistoryViewModel
+        EnsureLiveHistoryCard();
+        EncounterHistory.Insert(1, EncounterHistoryViewModel.CreateArchived(snapshot, mode, CharacterName));
+        while (EncounterHistory.Count(item => !item.IsLive) > HistoryLimit)
         {
-            Snapshot = snapshot, Mode = mode, CharacterName = CharacterName
-        });
-        while (EncounterHistory.Count > HistoryLimit)
-        {
-            _archivedStarts.Remove(EncounterHistory[^1].StartedAt);
+            var oldest = EncounterHistory[^1];
+            if (oldest.IsLive) break;
+            _archivedStarts.Remove(oldest.StartedAt);
             EncounterHistory.RemoveAt(EncounterHistory.Count - 1);
         }
         return true;
+    }
+
+    private void EnsureLiveHistoryCard()
+    {
+        if (EncounterHistory.FirstOrDefault()?.IsLive == true) return;
+        var existing = EncounterHistory.FirstOrDefault(item => item.IsLive);
+        if (existing is not null)
+        {
+            EncounterHistory.Remove(existing);
+            EncounterHistory.Insert(0, existing);
+            return;
+        }
+
+        EncounterHistory.Insert(0, EncounterHistoryViewModel.CreateLive(CharacterName));
+    }
+
+    private void SelectLiveHistory()
+    {
+        EnsureLiveHistoryCard();
+        var live = EncounterHistory[0];
+        if (!ReferenceEquals(_selectedHistory, live))
+            SelectedHistory = live;
+    }
+
+    private void UpdateLiveHistoryCard(DateTime now, long? damage = null, double? dps = null)
+    {
+        EnsureLiveHistoryCard();
+        var live = EncounterHistory[0];
+        if (!live.IsLive || _encounter is null || _group is null) return;
+
+        var mode = _group.IsGrouped ? "GROUP" : "SOLO";
+        if (damage is null || dps is null)
+        {
+            var seconds = Math.Max(1, _encounter.GetElapsedSeconds(now));
+            var aggregates = CombinePetDamage
+                ? CombinePetAggregates(_encounter.CreateCombatantArray())
+                : _encounter.CreateCombatantArray();
+            var localDamage = aggregates.Where(item =>
+                    item.Name.Equals(CharacterName, StringComparison.OrdinalIgnoreCase) ||
+                    (CombinePetDamage &&
+                     item.OwnerName?.Equals(CharacterName, StringComparison.OrdinalIgnoreCase) == true))
+                .Sum(item => item.Damage);
+            damage ??= localDamage;
+            dps ??= _encounter.StartedAt.HasValue ? localDamage / seconds : 0;
+        }
+
+        live.UpdateLive(mode, damage.Value, dps.Value, _encounter.StartedAt);
     }
 
     private void RaiseBreakdownProperties()
@@ -1039,9 +1120,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         if (_disposed) return;
         _disposed = true;
         _refreshTimer.Stop();
-        _lifetimeCancellation.Cancel();
         Interlocked.Increment(ref _parseGeneration);
         ClearParsedLines();
+        EndPlaySession();
+        await PersistSessionHistoryAsync(force: true);
+        _lifetimeCancellation.Cancel();
         await _loadGate.WaitAsync();
         try
         {
@@ -1053,5 +1136,81 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             _lifetimeCancellation.Dispose();
             _loadGate.Dispose();
         }
+    }
+
+    private void EnsurePlaySession(string character, string server)
+    {
+        if (_sessionTracker.Current is null)
+        {
+            _sessionTracker.StartSession(character, server, DateTime.Now);
+            _sessionDirty = true;
+            RefreshSessionHistoryUi();
+            PersistSessionHistoryIfNeeded(force: true);
+            return;
+        }
+
+        _sessionTracker.UpdateIdentity(character, server);
+        RefreshSessionHistoryUi();
+    }
+
+    private void EndPlaySession()
+    {
+        var finished = _sessionTracker.EndSession(DateTime.Now);
+        if (finished is null) return;
+        _sessionHistory.RemoveAll(item =>
+            string.Equals(item.Id, finished.Id, StringComparison.Ordinal));
+        _sessionHistory.Insert(0, finished);
+        _sessionDirty = true;
+        SessionHistory.LoadHistory(_sessionHistory, current: null);
+    }
+
+    private void RefreshSessionHistoryUi()
+    {
+        var current = _sessionTracker.CreateSnapshot();
+        if (current is null)
+        {
+            SessionHistory.LoadHistory(_sessionHistory, current: null);
+            return;
+        }
+
+        SessionHistory.UpsertCurrent(current);
+    }
+
+    private void PersistSessionHistoryIfNeeded(bool force)
+    {
+        if (!_sessionDirty && !force) return;
+        var elapsed = DateTime.UtcNow - _lastSessionPersistUtc;
+        if (!force && elapsed < TimeSpan.FromSeconds(5)) return;
+        _ = PersistSessionHistoryAsync(force);
+    }
+
+    private async Task PersistSessionHistoryAsync(bool force)
+    {
+        if (!_sessionDirty && !force) return;
+        var records = BuildPersistableSessions();
+        _sessionDirty = false;
+        _lastSessionPersistUtc = DateTime.UtcNow;
+        try
+        {
+            await SessionInfoStore.TrySaveSessionsAsync(records, CancellationToken.None);
+        }
+        catch (OperationCanceledException)
+        {
+            // Final flush uses CancellationToken.None; ignore unexpected cancels.
+        }
+    }
+
+    private List<SessionRecord> BuildPersistableSessions()
+    {
+        var records = _sessionHistory
+            .Select(SessionTracker.Clone)
+            .ToList();
+        if (_sessionTracker.CreateSnapshot() is { } current)
+        {
+            records.RemoveAll(item => string.Equals(item.Id, current.Id, StringComparison.Ordinal));
+            records.Insert(0, current);
+        }
+
+        return records;
     }
 }
