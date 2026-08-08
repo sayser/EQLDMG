@@ -19,7 +19,7 @@ public static class AppUpdateService
     private static bool _configured;
 
     public static Version CurrentVersion { get; } =
-        Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 2, 7, 0);
+        Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 2, 8, 0);
 
     public static string CurrentVersionText
     {
@@ -58,13 +58,19 @@ public static class AppUpdateService
 
     /// <summary>
     /// AutoUpdater.NET's ZipExtractor blocks on "Waiting for application to exit...".
-    /// Never sync-over-async Dispose on the UI thread here — that deadlocks WPF and
-    /// leaves the updater hung forever. Flush best-effort, backup, then kill the process.
+    /// Contract for every build from 1.2.7 onward:
+    /// 1) Install/update into <see cref="AppPaths.AppDirectory"/> (folder of the .exe), never %TEMP%\.net
+    /// 2) Backup user JSON beside the exe before exit
+    /// 3) Always <see cref="Environment.Exit"/> so ZipExtractor can replace the exe
+    /// Never sync-over-async Dispose on the UI thread — that deadlocks WPF and hangs the updater.
     /// </summary>
     private static void OnApplicationExitForUpdate()
     {
         try
         {
+            // Capture what is already on disk next to the exe first.
+            UserDataGuard.BackupBeforeUpdate();
+
             global::EQLDamageMeter.MainWindow? mainWindow = null;
             if (Application.Current is { } app)
             {
@@ -80,20 +86,21 @@ public static class AppUpdateService
 
             if (mainWindow is not null)
             {
-                // Run dispose off the UI thread with a hard timeout so a stuck
-                // log/monitor flush cannot block the updater.
+                // Off UI thread + hard timeout: dispose must never block process exit.
                 var flush = Task.Run(() => mainWindow.DisposeAsync().AsTask());
-                flush.Wait(TimeSpan.FromSeconds(4));
+                flush.Wait(TimeSpan.FromSeconds(3));
+                // Refresh backup if flush wrote newer JSON.
+                UserDataGuard.BackupBeforeUpdate();
             }
-
-            UserDataGuard.BackupBeforeUpdate();
         }
         catch (Exception)
         {
             // Prefer exiting so the zip extractor can replace the exe.
         }
-
-        Environment.Exit(0);
+        finally
+        {
+            Environment.Exit(0);
+        }
     }
 
     public static void CheckForUpdates(Window? owner = null, bool reportNoUpdate = false)
