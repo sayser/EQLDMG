@@ -48,7 +48,8 @@ public enum BuffStopReason
 {
     None,
     Dispelled,
-    Death
+    Death,
+    Zone
 }
 
 public enum SpellTrackerCategory

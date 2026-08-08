@@ -62,6 +62,12 @@ public sealed class BuffTracker
     private static readonly Regex LocalTargetDeath = new(
         @"^You have slain (?<target>.+?)!$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ZoneLoading = new(
+        @"^LOADING, PLEASE WAIT\.\.\.$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ZoneEntered = new(
+        @"^You have entered .+\.$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private readonly Dictionary<Guid, BuffRuleSettings> _rules = [];
     private readonly Dictionary<Guid, RuleRuntime> _states = [];
@@ -133,6 +139,13 @@ public sealed class BuffTracker
 
     public void Observe(DateTime timestamp, string message)
     {
+        // Gate / zone / evac ends enemy control and DoTs immediately (charm included).
+        if (ZoneLoading.IsMatch(message) || ZoneEntered.IsMatch(message))
+        {
+            ClearEnemyEffectsOnZone();
+            return;
+        }
+
         if (LocalDeath.IsMatch(message))
         {
             StopAll(BuffStopReason.Death);
@@ -285,11 +298,14 @@ public sealed class BuffTracker
             state.PendingConfirmationEndsAt = null;
             state.PendingTargetKeys.Clear();
             state.PendingTargetOccurrences.Clear();
-            // Only unique land text can prove the spell landed. Shared lines like
-            // "yawns." are used later to rename the target, not to gate the timer.
+            // Buffs: only unique land text can prove a land (shared lines like "yawns."
+            // only rename a cast-timed instance). DoT/Control: shared land text during
+            // our cast window is enough to open a per-target timer (e.g. poison DoTs).
             state.PendingRequiresConfirmation =
                 _selfAppliedMessages.GetValueOrDefault(rule.Id)?.Count > 0 ||
-                _uniqueOtherSuffixes.GetValueOrDefault(rule.Id)?.Length > 0;
+                _uniqueOtherSuffixes.GetValueOrDefault(rule.Id)?.Length > 0 ||
+                (IsEnemyEffectCategory(rule) &&
+                 _ambiguousOtherSuffixes.GetValueOrDefault(rule.Id)?.Length > 0);
             state.StopReason = BuffStopReason.None;
         }
     }
@@ -341,7 +357,7 @@ public sealed class BuffTracker
                 state.Instances.Remove(UnconfirmedTargetKey);
                 Activate(state, rule, targetKey, target, false, timestamp, clearPending: false,
                     clearsOnTargetDeath: true);
-                state.PendingConfirmationEndsAt ??= timestamp.AddSeconds(1);
+                NoteLandConfirmation(state, rule, timestamp);
                 continue;
             }
 
@@ -351,8 +367,22 @@ public sealed class BuffTracker
             var ambiguousTarget = message[..^ambiguousSuffix.Length].Trim();
             if (ambiguousTarget.Length == 0) continue;
 
-            // Shared land text can only rename an already-running / pending timer. It
-            // must not create a new authoritative instance that dies with a bystander mob.
+            // DoT / Control: during our cast window, treat shared land text as a real
+            // per-target confirmation so multi-DoT / AE mez overlays work and mob death
+            // clears the matching timer (Venom / Mesmerization).
+            if (isPending && IsEnemyEffectCategory(rule))
+            {
+                matched = true;
+                var targetKey = ResolvePendingTargetKey(state, ambiguousTarget);
+                state.Instances.Remove(UnconfirmedTargetKey);
+                Activate(state, rule, targetKey, ambiguousTarget, false, timestamp,
+                    clearPending: false, clearsOnTargetDeath: true);
+                NoteLandConfirmation(state, rule, timestamp);
+                continue;
+            }
+
+            // Buffs (and non-pending): shared land text can only rename a cast-timed
+            // placeholder. It must not create a death-linked instance for a bystander.
             if (isPending || state.Instances.ContainsKey(UnconfirmedTargetKey))
             {
                 matched = true;
@@ -361,7 +391,7 @@ public sealed class BuffTracker
                     var startedAt = state.PendingStart ?? timestamp;
                     Activate(state, rule, UnconfirmedTargetKey, ambiguousTarget, false, startedAt,
                         clearPending: false, clearsOnTargetDeath: false);
-                    state.PendingConfirmationEndsAt ??= timestamp.AddSeconds(1);
+                    NoteLandConfirmation(state, rule, timestamp);
                 }
                 else state.Instances[UnconfirmedTargetKey].TargetName = ambiguousTarget;
             }
@@ -498,6 +528,33 @@ public sealed class BuffTracker
     private IEnumerable<BuffRuleSettings> MatchingEnabledRules(string spell) =>
         _rules.Values.Where(rule => rule.IsEnabled &&
             SpellNameNormalizer.BelongsToFamily(spell, rule.SpellName));
+
+    private static bool IsEnemyEffectCategory(BuffRuleSettings rule) =>
+        rule.Category is SpellTrackerCategory.DamageOverTime or SpellTrackerCategory.Control;
+
+    /// <summary>
+    /// Buffs clamp the pending window to 1s after the first land (bystander spam).
+    /// DoT / Control / AE mez must keep the full cast grace so every land in the
+    /// burst can open its own target instance.
+    /// </summary>
+    private static void NoteLandConfirmation(RuleRuntime state, BuffRuleSettings rule, DateTime timestamp)
+    {
+        if (IsEnemyEffectCategory(rule)) return;
+        state.PendingConfirmationEndsAt ??= timestamp.AddSeconds(1);
+    }
+
+    private void ClearEnemyEffectsOnZone()
+    {
+        foreach (var rule in _rules.Values)
+        {
+            if (!IsEnemyEffectCategory(rule)) continue;
+            var state = _states[rule.Id];
+            var hadInstances = state.Instances.Count > 0;
+            ClearPendingCast(state);
+            state.Instances.Clear();
+            if (hadInstances) state.StopReason = BuffStopReason.Zone;
+        }
+    }
 
     private static void ResetState(RuleRuntime state)
     {

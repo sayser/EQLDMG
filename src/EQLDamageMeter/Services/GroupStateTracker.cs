@@ -76,6 +76,12 @@ public sealed class GroupStateTracker(string localPlayerName)
     private static readonly Regex TargetSlain = new(
         @"^(?<name>.+?) (?:has been slain by .+!?|(?:has )?died\.)$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ZoneLoading = new(
+        @"^LOADING, PLEASE WAIT\.\.\.$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ZoneEntered = new(
+        @"^You have entered .+\.$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private string? _pendingInviter;
     private readonly Dictionary<string, PendingHealCast> _pendingHealCasts =
@@ -242,6 +248,13 @@ public sealed class GroupStateTracker(string localPlayerName)
 
     public GroupChange Process(string message, DateTime? timestamp = null)
     {
+        // Gate / zone ends charm and companion control instantly.
+        if (ZoneLoading.IsMatch(message) || ZoneEntered.IsMatch(message))
+        {
+            ClearLocalControlledPets();
+            return new GroupChange(GroupChangeKind.None);
+        }
+
         if (timestamp.HasValue)
         {
             if (_pendingCharmCasts.Count > 0)
@@ -581,6 +594,15 @@ public sealed class GroupStateTracker(string localPlayerName)
         if (!_memberConfirmedAt.TryGetValue(member, out var current) || timestamp < current)
             _memberConfirmedAt[member] = timestamp;
         return added;
+    }
+
+    private void ClearLocalControlledPets()
+    {
+        foreach (var pet in _controlledPetOwners
+                     .Where(pair => pair.Value.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase))
+                     .Select(pair => pair.Key)
+                     .ToArray())
+            RemoveControlledPet(pet);
     }
 
     private bool RemoveControlledPet(string pet)

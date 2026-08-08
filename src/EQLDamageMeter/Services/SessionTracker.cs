@@ -148,9 +148,21 @@ public sealed partial class SessionTracker
     {
         moteName = string.Empty;
         var match = MoteLootRegex().Match(message);
-        if (!match.Success) return false;
-        moteName = match.Groups[1].Value.Trim();
-        return moteName.Length > 0;
+        if (match.Success)
+        {
+            moteName = match.Groups[1].Value.Trim();
+            return moteName.Length > 0;
+        }
+
+        // Auto-store / sold / plain kept lines (no -- brackets).
+        if (SessionLootParser.TryReadLootedItemName(message, out var itemName) &&
+            MoteNameRegex().IsMatch(itemName))
+        {
+            moteName = itemName;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool IsLocalPlayerDeath(string message) => LocalDeathRegex().IsMatch(message);
@@ -170,6 +182,9 @@ public sealed partial class SessionTracker
 
     [GeneratedRegex(@"^--You have looted a (Mote of .+? Potential) from .+--$", RegexOptions.CultureInvariant)]
     private static partial Regex MoteLootRegex();
+
+    [GeneratedRegex(@"^Mote of .+ Potential$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex MoteNameRegex();
 
     [GeneratedRegex(@"^(?:You died\.|You have been slain by .+?!)$", RegexOptions.CultureInvariant)]
     private static partial Regex LocalDeathRegex();

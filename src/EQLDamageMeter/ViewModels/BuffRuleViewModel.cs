@@ -249,6 +249,11 @@ public sealed class BuffRuleViewModel : ObservableObject
             RemainingText = "Stopped";
             StatusText = "Cleared on death";
         }
+        else if (snapshot.StopReason == BuffStopReason.Zone)
+        {
+            RemainingText = "Stopped";
+            StatusText = "Cleared on zone";
+        }
         else
         {
             RemainingText = "Waiting";
