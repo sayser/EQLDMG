@@ -19,7 +19,7 @@ public static class AppUpdateService
     private static bool _configured;
 
     public static Version CurrentVersion { get; } =
-        Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 2, 6, 0);
+        Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 2, 7, 0);
 
     public static string CurrentVersionText
     {
@@ -44,32 +44,10 @@ public static class AppUpdateService
             AutoUpdater.ShowRemindLaterButton = true;
             AutoUpdater.InstallationPath = AppPaths.AppDirectory;
             AutoUpdater.DownloadPath = Path.Combine(Path.GetTempPath(), "EQDMUpdates");
-            AutoUpdater.ExecutablePath = AppPaths.Combine("EQLDamageMeter.exe");
+            // Relative to InstallationPath; ZipExtractor relaunches this after extract.
+            AutoUpdater.ExecutablePath = "EQLDamageMeter.exe";
             AutoUpdater.HttpUserAgent = $"EQDM/{CurrentVersionText}";
-            AutoUpdater.ApplicationExitEvent += () =>
-            {
-                // Flush portable JSON before backing up, so the backup includes the
-                // latest session/tracker state rather than a stale pre-close snapshot.
-                foreach (Window window in Application.Current.Windows)
-                {
-                    if (window is global::EQLDamageMeter.MainWindow mainWindow)
-                    {
-                        try
-                        {
-                            mainWindow.DisposeAsync().AsTask().GetAwaiter().GetResult();
-                        }
-                        catch (Exception)
-                        {
-                            // Still attempt backup/shutdown even if flush fails.
-                        }
-                    }
-                }
-
-                UserDataGuard.BackupBeforeUpdate();
-                foreach (Window window in Application.Current.Windows)
-                    window.Close();
-                Application.Current.Shutdown();
-            };
+            AutoUpdater.ApplicationExitEvent += OnApplicationExitForUpdate;
         }
 
         if (owner is not null) AutoUpdater.SetOwner(owner);
@@ -77,6 +55,46 @@ public static class AppUpdateService
 
     public static void InitializeUserDataProtection() =>
         UserDataGuard.RestoreAfterUpdateIfNeeded();
+
+    /// <summary>
+    /// AutoUpdater.NET's ZipExtractor blocks on "Waiting for application to exit...".
+    /// Never sync-over-async Dispose on the UI thread here — that deadlocks WPF and
+    /// leaves the updater hung forever. Flush best-effort, backup, then kill the process.
+    /// </summary>
+    private static void OnApplicationExitForUpdate()
+    {
+        try
+        {
+            global::EQLDamageMeter.MainWindow? mainWindow = null;
+            if (Application.Current is { } app)
+            {
+                foreach (Window window in app.Windows)
+                {
+                    if (window is global::EQLDamageMeter.MainWindow candidate)
+                    {
+                        mainWindow = candidate;
+                        break;
+                    }
+                }
+            }
+
+            if (mainWindow is not null)
+            {
+                // Run dispose off the UI thread with a hard timeout so a stuck
+                // log/monitor flush cannot block the updater.
+                var flush = Task.Run(() => mainWindow.DisposeAsync().AsTask());
+                flush.Wait(TimeSpan.FromSeconds(4));
+            }
+
+            UserDataGuard.BackupBeforeUpdate();
+        }
+        catch (Exception)
+        {
+            // Prefer exiting so the zip extractor can replace the exe.
+        }
+
+        Environment.Exit(0);
+    }
 
     public static void CheckForUpdates(Window? owner = null, bool reportNoUpdate = false)
     {
