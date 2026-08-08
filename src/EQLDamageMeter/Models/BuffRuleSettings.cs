@@ -49,7 +49,8 @@ public enum BuffStopReason
     None,
     Dispelled,
     Death,
-    Zone
+    Zone,
+    Expired
 }
 
 public enum SpellTrackerCategory

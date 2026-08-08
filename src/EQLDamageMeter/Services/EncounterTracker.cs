@@ -116,14 +116,28 @@ public sealed class EncounterTracker(string localPlayerName)
 
         // A charm break turns a controlled pet on the group before the log reports the
         // break, so a known contributor damaging another known contributor is hostile
-        // damage taken, never group output.
+        // damage taken, never group output. Includes local player hitting a grouped ally.
         var friendlyFire = sourceIsKnownMember && targetIsKnownMember &&
                            !damage.Source.Equals(damage.Target, StringComparison.OrdinalIgnoreCase);
+        if (friendlyFire)
+        {
+            // Only a controlled/owned pet should become an encounter hostile. Player
+            // members hitting allies must not extend fight timers or kill-grace state.
+            if (group.TryGetControlledPetOwner(damage.Source, out _) ||
+                group.TryGetPetOwner(damage.Source, out _))
+            {
+                _hostileSources.Add(damage.Source);
+                _hostileTargets.Add(damage.Source);
+                _activeHostileTargets.Add(damage.Source);
+            }
+            AddIncomingDamage(damage, group);
+            return;
+        }
 
         // A non-player source damaging the local player is always incoming damage.
         // This remains true when another living NPC shares a controlled pet's name.
         if (!isLocal && (damage.Target.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase) ||
-                         targetIsKnownMember && !sourceIsKnownMember || friendlyFire))
+                         targetIsKnownMember && !sourceIsKnownMember))
         {
             if (!damage.Source.Equals(LogLineParser.UnattributedNonMeleeSource,
                     StringComparison.OrdinalIgnoreCase) &&
@@ -231,10 +245,14 @@ public sealed class EncounterTracker(string localPlayerName)
                 Reset();
             }
 
-            _hostileSources.Add(outcome.Source);
-            _hostileTargets.Add(outcome.Source);
-            _activeHostileTargets.Add(outcome.Source);
-            TouchEncounter(outcome.Timestamp);
+            if (!friendlyFire || group.TryGetControlledPetOwner(outcome.Source, out _) ||
+                group.TryGetPetOwner(outcome.Source, out _))
+            {
+                _hostileSources.Add(outcome.Source);
+                _hostileTargets.Add(outcome.Source);
+                _activeHostileTargets.Add(outcome.Source);
+                TouchEncounter(outcome.Timestamp);
+            }
             AddDefensiveOutcome(outcome.Target, outcome, group);
             return;
         }
@@ -412,36 +430,20 @@ public sealed class EncounterTracker(string localPlayerName)
         return Math.Max(1, (endpoint - StartedAt.Value).TotalSeconds);
     }
 
-    public long GetRollingDamage(string source, DateTime now, TimeSpan window)
-    {
-        if (IsFinalized || CompletionCandidateAt.HasValue) return 0;
-        var cutoff = now - window;
-        PruneRollingEvents(now);
-        return _rollingEvents.Where(item =>
-                item.Source.Equals(source, StringComparison.OrdinalIgnoreCase) && item.Timestamp > cutoff)
-            .Sum(item => (long)item.Amount);
-    }
-
-    public long GetRollingDamage(IEnumerable<string> sources, DateTime now, TimeSpan window)
-    {
-        if (IsFinalized || CompletionCandidateAt.HasValue) return 0;
-        var sourceSet = sources.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var cutoff = now - window;
-        PruneRollingEvents(now);
-        return _rollingEvents.Where(item => sourceSet.Contains(item.Source) && item.Timestamp > cutoff)
-            .Sum(item => (long)item.Amount);
-    }
-
     public long GetRollingDamageForOwner(string owner, bool includePets, DateTime now, TimeSpan window)
     {
         if (IsFinalized || CompletionCandidateAt.HasValue) return 0;
         var cutoff = now - window;
         PruneRollingEvents(now);
-        return _rollingEvents.Where(item => item.Timestamp > cutoff &&
-                                            (item.Source.Equals(owner, StringComparison.OrdinalIgnoreCase) ||
-                                             includePets && item.OwnerName?.Equals(owner,
-                                                 StringComparison.OrdinalIgnoreCase) == true))
-            .Sum(item => (long)item.Amount);
+        long total = 0;
+        foreach (var item in _rollingEvents)
+        {
+            if (item.Timestamp <= cutoff) continue;
+            if (item.Source.Equals(owner, StringComparison.OrdinalIgnoreCase) ||
+                includePets && item.OwnerName?.Equals(owner, StringComparison.OrdinalIgnoreCase) == true)
+                total += item.Amount;
+        }
+        return total;
     }
 
     public EncounterSnapshot? CreateSnapshot(DateTime now)

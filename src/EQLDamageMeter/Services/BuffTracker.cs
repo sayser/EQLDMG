@@ -241,6 +241,8 @@ public sealed class BuffTracker
                 if (rule.Category == SpellTrackerCategory.Control &&
                     rule.ControlType == ControlEffectType.Charm) continue;
                 state.Instances.Remove(pair.Key);
+                if (state.Instances.Count == 0 && state.StopReason == BuffStopReason.None)
+                    state.StopReason = BuffStopReason.Expired;
             }
         }
         return alerts ?? [];
@@ -258,8 +260,8 @@ public sealed class BuffTracker
             .OrderBy(instance => instance.ExpiresAt).ToArray();
         var isCasting = state.PendingStart is { } pending && now < pending + ConfirmationGrace;
         if (active.Length == 0)
-            return new BuffRuntimeSnapshot(ruleId, null, null, TimeSpan.Zero, isCasting, false, false, false,
-                false, state.StopReason);
+            return new BuffRuntimeSnapshot(ruleId, null, null, TimeSpan.Zero, isCasting, false,
+                state.StopReason == BuffStopReason.Expired, false, false, state.StopReason);
 
         var next = active[0];
         var isOverdue = isCharm && now >= next.ExpiresAt;
@@ -332,6 +334,10 @@ public sealed class BuffTracker
     private bool ConfirmOtherApplication(DateTime timestamp, string message)
     {
         var matched = false;
+        BuffRuleSettings? bestAmbiguousEnemy = null;
+        DateTime bestAmbiguousPending = DateTime.MinValue;
+        string? bestAmbiguousTarget = null;
+
         foreach (var rule in _rules.Values.Where(rule => rule.IsEnabled && rule.TrackOthers).ToArray())
         {
             var state = _states[rule.Id];
@@ -367,23 +373,22 @@ public sealed class BuffTracker
             var ambiguousTarget = message[..^ambiguousSuffix.Length].Trim();
             if (ambiguousTarget.Length == 0) continue;
 
-            // DoT / Control: during our cast window, treat shared land text as a real
-            // per-target confirmation so multi-DoT / AE mez overlays work and mob death
-            // clears the matching timer (Venom / Mesmerization).
-            if (isPending && IsEnemyEffectCategory(rule))
+            // Shared land text can match multiple pending DoT/Control rules. Confirm only
+            // the cast that finished most recently so one poison line cannot arm every
+            // overlapping poison DoT.
+            if (isPending && IsEnemyEffectCategory(rule) &&
+                state.PendingStart is { } pendingStart && pendingStart >= bestAmbiguousPending)
             {
-                matched = true;
-                var targetKey = ResolvePendingTargetKey(state, ambiguousTarget);
-                state.Instances.Remove(UnconfirmedTargetKey);
-                Activate(state, rule, targetKey, ambiguousTarget, false, timestamp,
-                    clearPending: false, clearsOnTargetDeath: true);
-                NoteLandConfirmation(state, rule, timestamp);
+                bestAmbiguousPending = pendingStart;
+                bestAmbiguousEnemy = rule;
+                bestAmbiguousTarget = ambiguousTarget;
                 continue;
             }
 
             // Buffs (and non-pending): shared land text can only rename a cast-timed
             // placeholder. It must not create a death-linked instance for a bystander.
-            if (isPending || state.Instances.ContainsKey(UnconfirmedTargetKey))
+            if (!IsEnemyEffectCategory(rule) &&
+                (isPending || state.Instances.ContainsKey(UnconfirmedTargetKey)))
             {
                 matched = true;
                 if (!state.Instances.ContainsKey(UnconfirmedTargetKey))
@@ -396,7 +401,36 @@ public sealed class BuffTracker
                 else state.Instances[UnconfirmedTargetKey].TargetName = ambiguousTarget;
             }
         }
+
+        if (bestAmbiguousEnemy is not null && bestAmbiguousTarget is not null)
+        {
+            var state = _states[bestAmbiguousEnemy.Id];
+            var targetKey = ResolvePendingTargetKey(state, bestAmbiguousTarget);
+            state.Instances.Remove(UnconfirmedTargetKey);
+            Activate(state, bestAmbiguousEnemy, targetKey, bestAmbiguousTarget, false, timestamp,
+                clearPending: false, clearsOnTargetDeath: true);
+            NoteLandConfirmation(state, bestAmbiguousEnemy, timestamp);
+            // Drop overlapping pending casts that shared this land text so they cannot
+            // steal later AE lands or sit armed forever without a timer.
+            ClearOtherPendingAmbiguousEnemyCasts(bestAmbiguousEnemy.Id, bestAmbiguousTarget, message);
+            matched = true;
+        }
+
         return matched;
+    }
+
+    private void ClearOtherPendingAmbiguousEnemyCasts(Guid confirmedRuleId, string target, string message)
+    {
+        foreach (var rule in _rules.Values)
+        {
+            if (rule.Id == confirmedRuleId || !rule.IsEnabled || !IsEnemyEffectCategory(rule)) continue;
+            var suffix = _ambiguousOtherSuffixes.GetValueOrDefault(rule.Id)?
+                .FirstOrDefault(value => message.EndsWith(value, StringComparison.OrdinalIgnoreCase));
+            if (suffix is null) continue;
+            var landTarget = message[..^suffix.Length].Trim();
+            if (!landTarget.Equals(target, StringComparison.OrdinalIgnoreCase)) continue;
+            ClearPendingCast(_states[rule.Id]);
+        }
     }
 
     private bool ExpireByFadeMessage(DateTime timestamp, string message)
@@ -417,8 +451,11 @@ public sealed class BuffTracker
             var state = _states[rule.Id];
             ClearPendingCast(state);
             var key = FindTargetInstanceKey(state, target);
-            if (key is not null && state.Instances.Remove(key) && rule.Category == SpellTrackerCategory.Control)
+            if (key is null || !state.Instances.Remove(key)) continue;
+            if (rule.Category == SpellTrackerCategory.Control)
                 _queuedAlerts.Enqueue(new BuffExpirationAlert(rule));
+            if (state.Instances.Count == 0 && state.StopReason == BuffStopReason.None)
+                state.StopReason = BuffStopReason.Expired;
         }
     }
 

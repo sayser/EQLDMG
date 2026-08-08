@@ -896,6 +896,17 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private static CombatantAggregate[] CombinePetAggregates(CombatantAggregate[] aggregates)
     {
+        var hasPets = false;
+        for (var i = 0; i < aggregates.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(aggregates[i].OwnerName))
+            {
+                hasPets = true;
+                break;
+            }
+        }
+        if (!hasPets) return aggregates;
+
         var owners = aggregates.Where(item => string.IsNullOrWhiteSpace(item.OwnerName))
             .ToDictionary(item => item.Name, StringComparer.OrdinalIgnoreCase);
         var petsByOwner = aggregates.Where(item => !string.IsNullOrWhiteSpace(item.OwnerName))
@@ -904,38 +915,78 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         foreach (var ownerName in petsByOwner.Keys) owners.TryAdd(ownerName, new CombatantAggregate(ownerName));
 
-        return owners.Values.Select(owner =>
+        var combinedOwners = new CombatantAggregate[owners.Count];
+        var index = 0;
+        foreach (var owner in owners.Values)
         {
             var pets = petsByOwner.GetValueOrDefault(owner.Name) ?? [];
+            long petDamage = 0, petHits = 0, petMeleeHits = 0, petSpellHits = 0;
+            long petMeleeCrit = 0, petSpellCrit = 0, petMisses = 0, petFizzles = 0, petResists = 0;
+            long petTaken = 0, petInHits = 0, petInMelee = 0, petInMisses = 0;
+            long petDodges = 0, petParries = 0, petBlocks = 0, petRipostes = 0;
+            long petAbsorbed = 0, petSpellAbsorbs = 0, petInSpellResists = 0;
+            long petStunsLanded = 0, petStunsTaken = 0, petHealing = 0, petPotential = 0;
+            long petDirectHeals = 0, petHots = 0, petCritHeals = 0;
+            foreach (var pet in pets)
+            {
+                petDamage += pet.Damage;
+                petHits += pet.Hits;
+                petMeleeHits += pet.MeleeHits;
+                petSpellHits += pet.SpellHits;
+                petMeleeCrit += pet.MeleeCriticalHits;
+                petSpellCrit += pet.SpellCriticalHits;
+                petMisses += pet.Misses;
+                petFizzles += pet.SpellFizzles;
+                petResists += pet.SpellResists;
+                petTaken += pet.DamageTaken;
+                petInHits += pet.IncomingHits;
+                petInMelee += pet.IncomingMeleeHits;
+                petInMisses += pet.IncomingMisses;
+                petDodges += pet.Dodges;
+                petParries += pet.Parries;
+                petBlocks += pet.Blocks;
+                petRipostes += pet.Ripostes;
+                petAbsorbed += pet.Absorbed;
+                petSpellAbsorbs += pet.SpellAbsorbs;
+                petInSpellResists += pet.IncomingSpellResists;
+                petStunsLanded += pet.StunsLanded;
+                petStunsTaken += pet.StunsTaken;
+                petHealing += pet.Healing;
+                petPotential += pet.PotentialHealing;
+                petDirectHeals += pet.DirectHeals;
+                petHots += pet.HealOverTimeTicks;
+                petCritHeals += pet.CriticalHeals;
+            }
+
             var combined = new CombatantAggregate(owner.Name)
             {
-                Damage = owner.Damage + pets.Sum(pet => pet.Damage),
-                Hits = owner.Hits + pets.Sum(pet => pet.Hits),
-                MeleeHits = owner.MeleeHits + pets.Sum(pet => pet.MeleeHits),
-                SpellHits = owner.SpellHits + pets.Sum(pet => pet.SpellHits),
-                MeleeCriticalHits = owner.MeleeCriticalHits + pets.Sum(pet => pet.MeleeCriticalHits),
-                SpellCriticalHits = owner.SpellCriticalHits + pets.Sum(pet => pet.SpellCriticalHits),
-                Misses = owner.Misses + pets.Sum(pet => pet.Misses),
-                SpellFizzles = owner.SpellFizzles + pets.Sum(pet => pet.SpellFizzles),
-                SpellResists = owner.SpellResists + pets.Sum(pet => pet.SpellResists),
-                DamageTaken = owner.DamageTaken + pets.Sum(pet => pet.DamageTaken),
-                IncomingHits = owner.IncomingHits + pets.Sum(pet => pet.IncomingHits),
-                IncomingMeleeHits = owner.IncomingMeleeHits + pets.Sum(pet => pet.IncomingMeleeHits),
-                IncomingMisses = owner.IncomingMisses + pets.Sum(pet => pet.IncomingMisses),
-                Dodges = owner.Dodges + pets.Sum(pet => pet.Dodges),
-                Parries = owner.Parries + pets.Sum(pet => pet.Parries),
-                Blocks = owner.Blocks + pets.Sum(pet => pet.Blocks),
-                Ripostes = owner.Ripostes + pets.Sum(pet => pet.Ripostes),
-                Absorbed = owner.Absorbed + pets.Sum(pet => pet.Absorbed),
-                SpellAbsorbs = owner.SpellAbsorbs + pets.Sum(pet => pet.SpellAbsorbs),
-                IncomingSpellResists = owner.IncomingSpellResists + pets.Sum(pet => pet.IncomingSpellResists),
-                StunsLanded = owner.StunsLanded + pets.Sum(pet => pet.StunsLanded),
-                StunsTaken = owner.StunsTaken + pets.Sum(pet => pet.StunsTaken),
-                Healing = owner.Healing + pets.Sum(pet => pet.Healing),
-                PotentialHealing = owner.PotentialHealing + pets.Sum(pet => pet.PotentialHealing),
-                DirectHeals = owner.DirectHeals + pets.Sum(pet => pet.DirectHeals),
-                HealOverTimeTicks = owner.HealOverTimeTicks + pets.Sum(pet => pet.HealOverTimeTicks),
-                CriticalHeals = owner.CriticalHeals + pets.Sum(pet => pet.CriticalHeals)
+                Damage = owner.Damage + petDamage,
+                Hits = owner.Hits + (int)petHits,
+                MeleeHits = owner.MeleeHits + (int)petMeleeHits,
+                SpellHits = owner.SpellHits + (int)petSpellHits,
+                MeleeCriticalHits = owner.MeleeCriticalHits + (int)petMeleeCrit,
+                SpellCriticalHits = owner.SpellCriticalHits + (int)petSpellCrit,
+                Misses = owner.Misses + (int)petMisses,
+                SpellFizzles = owner.SpellFizzles + (int)petFizzles,
+                SpellResists = owner.SpellResists + (int)petResists,
+                DamageTaken = owner.DamageTaken + petTaken,
+                IncomingHits = owner.IncomingHits + (int)petInHits,
+                IncomingMeleeHits = owner.IncomingMeleeHits + (int)petInMelee,
+                IncomingMisses = owner.IncomingMisses + (int)petInMisses,
+                Dodges = owner.Dodges + (int)petDodges,
+                Parries = owner.Parries + (int)petParries,
+                Blocks = owner.Blocks + (int)petBlocks,
+                Ripostes = owner.Ripostes + (int)petRipostes,
+                Absorbed = owner.Absorbed + (int)petAbsorbed,
+                SpellAbsorbs = owner.SpellAbsorbs + (int)petSpellAbsorbs,
+                IncomingSpellResists = owner.IncomingSpellResists + (int)petInSpellResists,
+                StunsLanded = owner.StunsLanded + (int)petStunsLanded,
+                StunsTaken = owner.StunsTaken + (int)petStunsTaken,
+                Healing = owner.Healing + petHealing,
+                PotentialHealing = owner.PotentialHealing + petPotential,
+                DirectHeals = owner.DirectHeals + (int)petDirectHeals,
+                HealOverTimeTicks = owner.HealOverTimeTicks + (int)petHots,
+                CriticalHeals = owner.CriticalHeals + (int)petCritHeals
             };
 
             MergeAbilities(combined.Abilities, owner.Abilities.Values);
@@ -945,13 +996,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 pets.Prepend(owner).SelectMany(combatant => combatant.HealingAbilities.Values));
             MergeTargets(combined.Targets, pets.Prepend(owner).SelectMany(combatant => combatant.Targets.Values));
 
-            var petDamage = pets.Sum(pet => pet.Damage);
             if (petDamage > 0)
             {
-                var petSummary = new AbilityAggregate("PET DMG")
-                {
-                    Damage = petDamage
-                };
+                var petSummary = new AbilityAggregate("PET DMG") { Damage = petDamage };
                 foreach (var abilityGroup in pets.SelectMany(pet => pet.Abilities.Values)
                              .GroupBy(ability => ability.Name, StringComparer.OrdinalIgnoreCase))
                 {
@@ -962,8 +1009,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 }
                 combined.Abilities[petSummary.Name] = petSummary;
             }
-            return combined;
-        }).ToArray();
+            combinedOwners[index++] = combined;
+        }
+        return combinedOwners;
     }
 
     private static void MergeAbilities(Dictionary<string, AbilityAggregate> destination,

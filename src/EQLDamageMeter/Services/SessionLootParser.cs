@@ -10,6 +10,7 @@ public static partial class SessionLootParser
     private static readonly Dictionary<string, DateTime> MobActivity = new(StringComparer.OrdinalIgnoreCase);
     private static long _pendingCoinCopper;
     private static DateTime _pendingCoinAt;
+    private static DateTime _lastItemLootAt;
 
     public static void ResetRuntime()
     {
@@ -18,6 +19,7 @@ public static partial class SessionLootParser
             MobActivity.Clear();
             _pendingCoinCopper = 0;
             _pendingCoinAt = default;
+            _lastItemLootAt = default;
         }
     }
 
@@ -137,6 +139,7 @@ public static partial class SessionLootParser
         var kill = GetOrStartKill(mob, timestamp);
         TouchMob(mob.Name, timestamp);
         session.Loot.LastMobName = mob.Name;
+        _lastItemLootAt = timestamp;
         ApplyPendingCoin(mob, kill, timestamp);
 
         AddOrStackItem(kill.Items, itemName, disposition, count, valueCopper, note);
@@ -150,19 +153,24 @@ public static partial class SessionLootParser
         _pendingCoinCopper += copper;
         _pendingCoinAt = timestamp;
 
-        // Coin often logs before the loot line that names the mob. Keep it pending
-        // unless this corpse window is already open for the last known mob.
+        // Coin lines do not name the mob. Default: keep pending for the next RecordItem.
+        // Only attach immediately when loot items for this corpse just landed (typical
+        // "item then coin" order). A tight 2s window prevents the next corpse's early
+        // coin line from crediting the previous mob.
         var mobName = session.Loot.LastMobName;
-        if (string.IsNullOrWhiteSpace(mobName)) return true;
-
-        var key = NormalizeMobKey(mobName);
-        if (!MobActivity.TryGetValue(key, out var last) || timestamp - last > TimeSpan.FromSeconds(20))
+        if (string.IsNullOrWhiteSpace(mobName) || _lastItemLootAt == default ||
+            timestamp - _lastItemLootAt > TimeSpan.FromSeconds(2))
             return true;
 
-        var mob = GetOrCreateMob(session, mobName);
-        var kill = GetOrStartKill(mob, timestamp);
-        TouchMob(mob.Name, timestamp);
+        var key = NormalizeMobKey(mobName);
+        var mob = session.Loot.Mobs.FirstOrDefault(item =>
+            NormalizeMobKey(item.Name).Equals(key, StringComparison.OrdinalIgnoreCase));
+        if (mob is null || mob.Kills.Count == 0) return true;
+        var kill = mob.Kills[^1];
+        if (kill.Items.Count == 0) return true;
+
         ApplyPendingCoin(mob, kill, timestamp);
+        TouchMob(mob.Name, timestamp);
         return true;
     }
 
@@ -231,8 +239,16 @@ public static partial class SessionLootParser
         return kill;
     }
 
-    private static void TouchMob(string mobName, DateTime timestamp) =>
+    private static void TouchMob(string mobName, DateTime timestamp)
+    {
         MobActivity[NormalizeMobKey(mobName)] = timestamp;
+        if (MobActivity.Count < 32) return;
+        foreach (var stale in MobActivity
+                     .Where(pair => timestamp - pair.Value > TimeSpan.FromMinutes(2))
+                     .Select(pair => pair.Key)
+                     .ToArray())
+            MobActivity.Remove(stale);
+    }
 
     private static string NormalizeMobKey(string mobName)
     {
@@ -348,10 +364,10 @@ public static partial class SessionLootParser
             var amount = long.Parse(match.Groups["n"].Value, CultureInfo.InvariantCulture);
             total += match.Groups["unit"].Value.ToLowerInvariant() switch
             {
-                "platinum" or "platinums" => amount * 1000,
-                "gold" or "golds" => amount * 100,
-                "silver" or "silvers" => amount * 10,
-                "copper" or "coppers" => amount,
+                "p" or "platinum" or "platinums" => amount * 1000,
+                "g" or "gold" or "golds" => amount * 100,
+                "s" or "silver" or "silvers" => amount * 10,
+                "c" or "copper" or "coppers" => amount,
                 _ => 0
             };
         }
@@ -382,7 +398,8 @@ public static partial class SessionLootParser
     [GeneratedRegex(@"^You receive (?<coin>.+?) from the corpse\.?$", RegexOptions.CultureInvariant)]
     private static partial Regex CoinRegex();
 
-    [GeneratedRegex(@"(?<n>\d+)\s+(?<unit>platinum|platinums|gold|golds|silver|silvers|copper|coppers)",
+    // EQ logs use either full words ("2 platinum") or compact Form ("2p 3g 4s 5c").
+    [GeneratedRegex(@"(?<n>\d+)\s*(?<unit>platinum|platinums|gold|golds|silver|silvers|copper|coppers|[pgsc])\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex CoinPartRegex();
 

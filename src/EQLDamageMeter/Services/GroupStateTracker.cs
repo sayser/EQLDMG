@@ -252,6 +252,8 @@ public sealed class GroupStateTracker(string localPlayerName)
         if (ZoneLoading.IsMatch(message) || ZoneEntered.IsMatch(message))
         {
             ClearLocalControlledPets();
+            _pendingCharmCasts.Clear();
+            _pendingCompanionSummons.Clear();
             return new GroupChange(GroupChangeKind.None);
         }
 
