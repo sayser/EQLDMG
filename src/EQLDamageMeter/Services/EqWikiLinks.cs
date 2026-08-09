@@ -9,9 +9,12 @@ public static partial class EqWikiLinks
 
     public static string ForMob(string mobName)
     {
-        var cleaned = NormalizeMobTitle(mobName);
-        if (cleaned.Length == 0) return BaseUrl;
-        return BaseUrl + cleaned;
+        // Prefer the log name with article kept ("a spite golem" → "A_spite_golem");
+        // eqlwiki redirects handle capitalization. Stripping the article often 404s.
+        var name = WhitespaceRegex().Replace(mobName.Trim().Replace('`', '\''), " ").Trim();
+        if (name.Length == 0) return BaseUrl;
+        var title = char.ToUpper(name[0], CultureInfo.InvariantCulture) + name[1..];
+        return BaseUrl + title.Replace(' ', '_');
     }
 
     public static string NormalizeMobTitle(string mobName)

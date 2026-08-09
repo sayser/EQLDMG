@@ -31,7 +31,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly BuffTracker _buffTracker = new();
     private readonly BuffAlertService _buffAlertService = new();
-    private readonly SemaphoreSlim _buffTimingLearnGate = new(1, 1);
+    private readonly SemaphoreSlim _buffTimingGate = new(1, 1);
     private readonly SessionTracker _sessionTracker = new();
     private readonly List<SessionRecord> _sessionHistory = [];
     private DateTime _lastSessionPersistUtc = DateTime.MinValue;
@@ -86,7 +86,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             SpellTrackerStore.TrySaveControlRulesAsync, _buffAlertService, () => _characterLevel);
         _buffTracker.PreserveBuffTargetOnDeath = (target, timestamp) =>
             ControlSpellTracker.HasActiveCharmTarget(target, timestamp);
-        _buffTracker.OnTimingSample = sample => _ = ApplyBuffTimingSampleAsync(sample);
         BuffRulesView = CollectionViewSource.GetDefaultView(BuffRules);
         BuffRulesView.Filter = FilterBuffRule;
         ApplyBuffConfiguration();
@@ -392,50 +391,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         return null;
     }
 
-    private async Task ApplyBuffTimingSampleAsync(SpellTimingSample sample)
-    {
-        await _buffTimingLearnGate.WaitAsync();
-        try
-        {
-            if (_dispatcher.CheckAccess())
-                await ApplyBuffTimingSampleCoreAsync(sample);
-            else
-                await _dispatcher.InvokeAsync(() => ApplyBuffTimingSampleCoreAsync(sample),
-                    DispatcherPriority.Background).Task.Unwrap();
-        }
-        finally
-        {
-            _buffTimingLearnGate.Release();
-        }
-    }
-
-    private async Task ApplyBuffTimingSampleCoreAsync(SpellTimingSample sample)
-    {
-        var rule = BuffRules.FirstOrDefault(item => item.Id == sample.RuleId);
-        if (rule is null || !rule.TryCreateSettings(out var current, out _)) return;
-        if (!SpellTimingLearner.TryApplySample(current!, sample, out var updated)) return;
-        rule.ApplyLearnedSettings(updated, sample.Kind);
-        ApplyBuffConfiguration(pruneMissing: false);
-        var previous = SpellTrackerStore.TryLoadBuffRules().ToDictionary(item => item.Id);
-        var settings = new List<BuffRuleSettings>(BuffRules.Count);
-        foreach (var item in BuffRules)
-        {
-            if (item.TryCreateSettings(out var configured, out _))
-                settings.Add(configured!);
-            else if (previous.TryGetValue(item.Id, out var prior))
-                settings.Add(prior);
-        }
-        if (settings.Count == 0) return;
-        _ = await SpellTrackerStore.TrySaveBuffRulesAsync(settings);
-    }
-
     private async Task ReseedCatalogTimingsFromCharacterLevelAsync()
     {
         var catalog = _spellDataCatalog;
         if (catalog is null || _characterLevel <= 0) return;
 
         var buffChanged = false;
-        await _buffTimingLearnGate.WaitAsync();
+        await _buffTimingGate.WaitAsync();
         try
         {
             foreach (var rule in BuffRules)
@@ -454,7 +416,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         finally
         {
-            _buffTimingLearnGate.Release();
+            _buffTimingGate.Release();
         }
 
         var dotChanged = await DotSpellTracker.ReseedCatalogTimingsAsync(_characterLevel);

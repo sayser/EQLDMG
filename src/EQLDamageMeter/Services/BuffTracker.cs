@@ -16,8 +16,6 @@ public sealed class BuffTracker
         public required bool IsSelf { get; init; }
         public required DateTime StartedAt { get; set; }
         public required DateTime ExpiresAt { get; set; }
-        /// <summary>Begin-cast time for this application; used to dedupe AE duration samples.</summary>
-        public DateTime? CastStartedAt { get; set; }
         public bool Alerted { get; set; }
         /// <summary>
         /// False when the land message is shared by many spells (e.g. "yawns.") or the
@@ -33,19 +31,12 @@ public sealed class BuffTracker
         public DateTime? PendingStart { get; set; }
         public DateTime? PendingConfirmationEndsAt { get; set; }
         public bool PendingRequiresConfirmation { get; set; }
-        /// <summary>True after the first successful land emits a cast-time sample for this cast.</summary>
-        public bool CastSampleEmitted { get; set; }
         public BuffStopReason StopReason { get; set; }
         public Dictionary<string, List<string>> PendingTargetKeys { get; } =
             new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, int> PendingTargetOccurrences { get; } =
             new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, ActiveInstance> Instances { get; } =
-            new(StringComparer.OrdinalIgnoreCase);
-        /// <summary>Cast-wave keys that already emitted a duration sample (AE dedupe).</summary>
-        public HashSet<DateTime> DurationSampleWaves { get; } = [];
-        /// <summary>Death-cleared instances kept briefly so a later worn-off can still train.</summary>
-        public Dictionary<string, (DateTime StartedAt, DateTime? CastStartedAt, DateTime DiedAt)> DurationTombstones { get; } =
             new(StringComparer.OrdinalIgnoreCase);
     }
 
@@ -88,7 +79,6 @@ public sealed class BuffTracker
     private DateTime? _lastSpecificFadeAt;
 
     public Func<string, DateTime, bool>? PreserveBuffTargetOnDeath { get; set; }
-    public Action<SpellTimingSample>? OnTimingSample { get; set; }
 
     public void Configure(IEnumerable<BuffRuleSettings> rules,
         Func<string, IReadOnlyList<string>>? fadeMessageResolver = null,
@@ -167,7 +157,6 @@ public sealed class BuffTracker
         }
 
         // Natural worn-off / fade before target-death clears so a same-second
-        // "worn off" + "slain" pair still yields a duration sample.
         if (ConfirmSelfApplication(timestamp, message)) return;
         if (ConfirmOtherApplication(timestamp, message)) return;
         if (ExpireByFadeMessage(timestamp, message)) return;
@@ -256,12 +245,6 @@ public sealed class BuffTracker
                 }
                 if (rule.Category == SpellTrackerCategory.Control &&
                     rule.ControlType == ControlEffectType.Charm) continue;
-                // Keep DoT/Control instances past UI expiry so a late worn-off
-                // (common when catalog duration is short) can still train.
-                if (IsEnemyEffectCategory(rule) &&
-                    now <= instance.ExpiresAt + DurationLearnGrace(rule))
-                    continue;
-                PruneTombstones(state, now);
                 state.Instances.Remove(pair.Key);
                 if (state.Instances.Count == 0 && state.StopReason == BuffStopReason.None)
                     state.StopReason = BuffStopReason.Expired;
@@ -320,7 +303,6 @@ public sealed class BuffTracker
             state.PendingCastStartedAt = timestamp;
             state.PendingStart = timestamp.AddSeconds(rule.CastTimeSeconds);
             state.PendingConfirmationEndsAt = null;
-            state.CastSampleEmitted = false;
             state.PendingTargetKeys.Clear();
             state.PendingTargetOccurrences.Clear();
             // Buffs: only unique land text can prove a land (shared lines like "yawns."
@@ -348,7 +330,6 @@ public sealed class BuffTracker
         foreach (var rule in matches)
         {
             var state = _states[rule.Id];
-            EmitCastSample(rule.Id, state, timestamp);
             ClearPendingCast(state);
             if (rule.TrackSelf) Activate(state, rule, SelfTargetKey, "Self", true, timestamp);
         }
@@ -383,7 +364,6 @@ public sealed class BuffTracker
                                  item.ControlType == ControlEffectType.Charm))
                         _states[charmRule.Id].Instances.Clear();
                 }
-                EmitCastSample(rule.Id, state, timestamp);
                 var targetKey = ResolvePendingTargetKey(state, target);
                 state.Instances.Remove(UnconfirmedTargetKey);
                 Activate(state, rule, targetKey, target, false, timestamp, clearPending: false,
@@ -410,28 +390,33 @@ public sealed class BuffTracker
                 continue;
             }
 
-            // Buffs (and non-pending): shared land text can only rename a cast-timed
-            // placeholder. It must not create a death-linked instance for a bystander.
+            // Buffs: shared land text (e.g. "begins to regenerate.") proves our pending
+            // cast landed and must refresh the timer. Without a pending cast it may only
+            // rename the cast-timed placeholder — never invent a death-linked bystander.
             if (!IsEnemyEffectCategory(rule) &&
                 (isPending || state.Instances.ContainsKey(UnconfirmedTargetKey)))
             {
                 matched = true;
-                if (!state.Instances.ContainsKey(UnconfirmedTargetKey))
+                if (isPending)
                 {
-                    EmitCastSample(rule.Id, state, timestamp);
                     var startedAt = state.PendingStart ?? timestamp;
-                    Activate(state, rule, UnconfirmedTargetKey, ambiguousTarget, false, startedAt,
+                    // Prefer refreshing an existing named entry for this target (recast
+                    // on a charmed pet). Fall back to the unconfirmed placeholder.
+                    var key = FindTargetInstanceKey(state, ambiguousTarget) ?? UnconfirmedTargetKey;
+                    if (key != UnconfirmedTargetKey)
+                        state.Instances.Remove(UnconfirmedTargetKey);
+                    Activate(state, rule, key, ambiguousTarget, false, startedAt,
                         clearPending: false, clearsOnTargetDeath: false);
                     NoteLandConfirmation(state, rule, timestamp);
                 }
-                else state.Instances[UnconfirmedTargetKey].TargetName = ambiguousTarget;
+                else if (state.Instances.ContainsKey(UnconfirmedTargetKey))
+                    state.Instances[UnconfirmedTargetKey].TargetName = ambiguousTarget;
             }
         }
 
         if (bestAmbiguousEnemy is not null && bestAmbiguousTarget is not null)
         {
             var state = _states[bestAmbiguousEnemy.Id];
-            EmitCastSample(bestAmbiguousEnemy.Id, state, timestamp);
             var targetKey = ResolvePendingTargetKey(state, bestAmbiguousTarget);
             state.Instances.Remove(UnconfirmedTargetKey);
             Activate(state, bestAmbiguousEnemy, targetKey, bestAmbiguousTarget, false, timestamp,
@@ -476,9 +461,6 @@ public sealed class BuffTracker
         var rule = attributable[0];
         var state = _states[rule.Id];
         var instance = state.Instances.Values.First();
-        var elapsed = (timestamp - instance.StartedAt).TotalSeconds;
-        if (SpellTimingLearner.IsPlausibleFullDurationSample(rule, elapsed))
-            EmitDurationSample(rule.Id, state, instance.StartedAt, instance.CastStartedAt, timestamp);
         if (instance.IsSelf)
             StopSelf(rule.Id, BuffStopReason.Expired, preserveNewerPending: true);
         else
@@ -501,84 +483,26 @@ public sealed class BuffTracker
             var state = _states[rule.Id];
             // Do not ClearPendingCast here — worn-off on target A must not cancel a
             // recast already pending for target B.
-            DateTime startedAt;
-            DateTime? castStartedAt;
             var key = FindTargetInstanceKey(state, target);
-            if (key is not null && state.Instances.TryGetValue(key, out var instance))
-            {
-                startedAt = instance.StartedAt;
-                castStartedAt = instance.CastStartedAt;
-                state.Instances.Remove(key);
-                if (rule.Category == SpellTrackerCategory.Control)
-                    _queuedAlerts.Enqueue(new BuffExpirationAlert(rule));
-                if (state.Instances.Count == 0 && state.StopReason == BuffStopReason.None)
-                    state.StopReason = BuffStopReason.Expired;
-            }
-            else if (state.DurationTombstones.TryGetValue(target.Trim(), out var tomb) &&
-                     timestamp - tomb.DiedAt <= DurationLearnGrace(rule))
-            {
-                startedAt = tomb.StartedAt;
-                castStartedAt = tomb.CastStartedAt;
-                state.DurationTombstones.Remove(target.Trim());
-            }
-            else continue;
-
-            var elapsed = (timestamp - startedAt).TotalSeconds;
-            if (SpellTimingLearner.IsPlausibleFullDurationSample(rule, elapsed))
-                EmitDurationSample(rule.Id, state, startedAt, castStartedAt, timestamp);
+            if (key is null) continue;
+            state.Instances.Remove(key);
+            if (rule.Category == SpellTrackerCategory.Control)
+                _queuedAlerts.Enqueue(new BuffExpirationAlert(rule));
+            if (state.Instances.Count == 0 && state.StopReason == BuffStopReason.None)
+                state.StopReason = BuffStopReason.Expired;
         }
-    }
-
-    private void EmitCastSample(Guid ruleId, RuleRuntime state, DateTime landAt)
-    {
-        // One sample per begin-cast. AE multi-lands must not spam the learner.
-        if (state.CastSampleEmitted) return;
-        if (state.PendingCastStartedAt is not { } castStarted) return;
-        var seconds = (landAt - castStarted).TotalSeconds;
-        if (!SpellTimingLearner.IsSaneCastSample(seconds)) return;
-        state.CastSampleEmitted = true;
-        OnTimingSample?.Invoke(new SpellTimingSample(ruleId, SpellTimingSampleKind.Cast, seconds));
-    }
-
-    private void EmitDurationSample(Guid ruleId, RuleRuntime state, DateTime startedAt,
-        DateTime? castStartedAt, DateTime endedAt)
-    {
-        var seconds = (endedAt - startedAt).TotalSeconds;
-        if (!SpellTimingLearner.IsSaneDurationSample(seconds)) return;
-        // One duration sample per begin-cast wave — AE multi-target worn-offs must not
-        // satisfy the 3-sample baseline from a single cast.
-        var waveKey = castStartedAt ?? startedAt;
-        if (!state.DurationSampleWaves.Add(waveKey)) return;
-        OnTimingSample?.Invoke(new SpellTimingSample(ruleId, SpellTimingSampleKind.Duration, seconds));
-    }
-
-    /// <summary>
-    /// Wall-clock Tick often clears the timer before the worn-off log line arrives.
-    /// Hold long enough for short catalog seeds with longer true durations.
-    /// </summary>
-    private static TimeSpan DurationLearnGrace(BuffRuleSettings rule) =>
-        TimeSpan.FromSeconds(Math.Clamp(Math.Max(rule.DurationSeconds * 2.0, 180), 60, 600));
-
-    private static void PruneTombstones(RuleRuntime state, DateTime now)
-    {
-        foreach (var key in state.DurationTombstones
-                     .Where(pair => now - pair.Value.DiedAt > TimeSpan.FromMinutes(8))
-                     .Select(pair => pair.Key).ToArray())
-            state.DurationTombstones.Remove(key);
     }
 
     private static void Activate(RuleRuntime state, BuffRuleSettings rule, string targetKey,
         string targetName, bool isSelf, DateTime startedAt, bool clearPending = true,
         bool clearsOnTargetDeath = true)
     {
-        var castStartedAt = state.PendingCastStartedAt;
         if (clearPending) ClearPendingCast(state);
         state.Instances[targetKey] = new ActiveInstance
         {
             TargetName = targetName,
             IsSelf = isSelf,
             StartedAt = startedAt,
-            CastStartedAt = castStartedAt,
             ExpiresAt = startedAt.AddSeconds(rule.DurationSeconds),
             ClearsOnTargetDeath = clearsOnTargetDeath
         };
@@ -596,7 +520,6 @@ public sealed class BuffTracker
         state.PendingCastStartedAt = null;
         state.PendingStart = null;
         state.PendingConfirmationEndsAt = null;
-        state.CastSampleEmitted = false;
         state.PendingTargetKeys.Clear();
         state.PendingTargetOccurrences.Clear();
         state.PendingRequiresConfirmation = false;
@@ -645,13 +568,7 @@ public sealed class BuffTracker
                          .Where(item => item.Value.ClearsOnTargetDeath &&
                                         item.Value.TargetName.Equals(normalized, StringComparison.OrdinalIgnoreCase))
                          .ToArray())
-            {
-                // Death clears the UI timer but must not train duration. Keep a short
-                // tombstone so a same-second (or slightly later) worn-off can still sample.
-                state.DurationTombstones[normalized] =
-                    (pair.Value.StartedAt, pair.Value.CastStartedAt, timestamp);
                 state.Instances.Remove(pair.Key);
-            }
         }
     }
 
@@ -720,8 +637,6 @@ public sealed class BuffTracker
     {
         ClearPendingCast(state);
         state.Instances.Clear();
-        state.DurationTombstones.Clear();
-        state.DurationSampleWaves.Clear();
         state.StopReason = BuffStopReason.None;
     }
 

@@ -199,6 +199,15 @@ public partial class MainWindow : Window, IAsyncDisposable
 
     private void ResetEncounter_Click(object sender, RoutedEventArgs e) => _viewModel.ResetEncounter();
 
+    private void ToggleAllOverlays_Click(object sender, RoutedEventArgs e)
+    {
+        if (AnyOverlayOpen())
+            CloseAllOverlays();
+        else
+            OpenAllOverlays();
+        RefreshOverlaysToggleButton();
+    }
+
     private void ToggleOverlay_Click(object sender, RoutedEventArgs e)
     {
         if (_overlay is { IsVisible: true })
@@ -207,10 +216,7 @@ public partial class MainWindow : Window, IAsyncDisposable
             return;
         }
 
-        _overlay = new OverlayWindow { DataContext = _viewModel, Owner = this };
-        OverlayWindowPlacement.Attach(_overlay, OverlayWindowPlacement.DpsKey);
-        _overlay.Closed += (_, _) => _overlay = null;
-        _overlay.Show();
+        ShowDpsOverlay();
     }
 
     private void ToggleBuffOverlay_Click(object sender, RoutedEventArgs e)
@@ -221,10 +227,7 @@ public partial class MainWindow : Window, IAsyncDisposable
             return;
         }
 
-        _buffOverlay = new BuffOverlayWindow { DataContext = _viewModel, Owner = this };
-        OverlayWindowPlacement.Attach(_buffOverlay, OverlayWindowPlacement.BuffKey);
-        _buffOverlay.Closed += (_, _) => _buffOverlay = null;
-        _buffOverlay.Show();
+        ShowBuffOverlay();
     }
 
     private void DotOverlay_Requested(object sender, RoutedEventArgs e) =>
@@ -234,6 +237,77 @@ public partial class MainWindow : Window, IAsyncDisposable
         ToggleSpellOverlay(ref _controlOverlay, _viewModel.ControlSpellTracker,
             OverlayWindowPlacement.ControlKey);
 
+    private void OpenAllOverlays()
+    {
+        ShowDpsOverlay();
+        ShowBuffOverlay();
+        ShowSpellOverlay(ref _dotOverlay, _viewModel.DotSpellTracker, OverlayWindowPlacement.DotKey);
+        ShowSpellOverlay(ref _controlOverlay, _viewModel.ControlSpellTracker,
+            OverlayWindowPlacement.ControlKey);
+    }
+
+    private void CloseAllOverlays()
+    {
+        _overlay?.Close();
+        _buffOverlay?.Close();
+        _dotOverlay?.Close();
+        _controlOverlay?.Close();
+    }
+
+    private bool AnyOverlayOpen() =>
+        _overlay is { IsVisible: true } ||
+        _buffOverlay is { IsVisible: true } ||
+        _dotOverlay is { IsVisible: true } ||
+        _controlOverlay is { IsVisible: true };
+
+    private void RefreshOverlaysToggleButton()
+    {
+        if (OverlaysToggleButton is null) return;
+        var open = AnyOverlayOpen();
+        OverlaysToggleButton.Content = open ? "Close all overlays" : "Open all overlays";
+        OverlaysToggleButton.ToolTip = open
+            ? "Close DPS, Buff, DoT, and Control overlays"
+            : "Open DPS, Buff, DoT, and Control overlays";
+    }
+
+    private void ShowDpsOverlay()
+    {
+        if (_overlay is { IsVisible: true })
+        {
+            _overlay.Activate();
+            return;
+        }
+
+        _overlay = new OverlayWindow { DataContext = _viewModel, Owner = this };
+        OverlayWindowPlacement.Attach(_overlay, OverlayWindowPlacement.DpsKey);
+        _overlay.Closed += (_, _) =>
+        {
+            _overlay = null;
+            RefreshOverlaysToggleButton();
+        };
+        _overlay.Show();
+        RefreshOverlaysToggleButton();
+    }
+
+    private void ShowBuffOverlay()
+    {
+        if (_buffOverlay is { IsVisible: true })
+        {
+            _buffOverlay.Activate();
+            return;
+        }
+
+        _buffOverlay = new BuffOverlayWindow { DataContext = _viewModel, Owner = this };
+        OverlayWindowPlacement.Attach(_buffOverlay, OverlayWindowPlacement.BuffKey);
+        _buffOverlay.Closed += (_, _) =>
+        {
+            _buffOverlay = null;
+            RefreshOverlaysToggleButton();
+        };
+        _buffOverlay.Show();
+        RefreshOverlaysToggleButton();
+    }
+
     private void ToggleSpellOverlay(ref SpellEffectOverlayWindow? overlay, object dataContext,
         string placementKey)
     {
@@ -242,6 +316,19 @@ public partial class MainWindow : Window, IAsyncDisposable
             overlay.Close();
             return;
         }
+
+        ShowSpellOverlay(ref overlay, dataContext, placementKey);
+    }
+
+    private void ShowSpellOverlay(ref SpellEffectOverlayWindow? overlay, object dataContext,
+        string placementKey)
+    {
+        if (overlay is { IsVisible: true })
+        {
+            overlay.Activate();
+            return;
+        }
+
         var window = new SpellEffectOverlayWindow { DataContext = dataContext, Owner = this };
         OverlayWindowPlacement.Attach(window, placementKey);
         overlay = window;
@@ -249,8 +336,10 @@ public partial class MainWindow : Window, IAsyncDisposable
         {
             if (ReferenceEquals(_dotOverlay, window)) _dotOverlay = null;
             if (ReferenceEquals(_controlOverlay, window)) _controlOverlay = null;
+            RefreshOverlaysToggleButton();
         };
         window.Show();
+        RefreshOverlaysToggleButton();
     }
 
     private void AddBuffRule_Click(object sender, RoutedEventArgs e) => _viewModel.AddBuffRule();

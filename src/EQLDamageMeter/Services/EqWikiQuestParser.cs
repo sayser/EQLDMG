@@ -401,7 +401,7 @@ public static partial class EqWikiQuestParser
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "EQDM/1.3.1 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
+            "EQDM/1.3.2 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
         return client;
     }
 

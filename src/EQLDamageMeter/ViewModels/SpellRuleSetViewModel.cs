@@ -1,8 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Windows;
 using System.Windows.Data;
-using System.Windows.Threading;
 using EQLDamageMeter.Models;
 using EQLDamageMeter.Services;
 
@@ -16,7 +14,7 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     private readonly Func<IEnumerable<BuffRuleSettings>, CancellationToken, Task<bool>> _save;
     private readonly BuffAlertService _alerts;
     private readonly BuffTracker _tracker = new();
-    private readonly SemaphoreSlim _timingLearnGate = new(1, 1);
+    private readonly SemaphoreSlim _timingGate = new(1, 1);
     private BuffRuleViewModel? _selectedRule;
     private string _searchText = string.Empty;
     private string _filterMode = "All";
@@ -42,7 +40,6 @@ public sealed class SpellRuleSetViewModel : ObservableObject
             }));
         RulesView = CollectionViewSource.GetDefaultView(Rules);
         RulesView.Filter = FilterRule;
-        _tracker.OnTimingSample = sample => _ = ApplyTimingSampleAsync(sample);
         RefreshConfiguration();
     }
 
@@ -197,27 +194,27 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     /// <summary>Re-seeds Catalog-sourced cast/duration using the current caster level.</summary>
     public bool ReseedCatalogTimings(int casterLevel)
     {
-        _timingLearnGate.Wait();
+        _timingGate.Wait();
         try
         {
             return ReseedCatalogTimingsCore(casterLevel);
         }
         finally
         {
-            _timingLearnGate.Release();
+            _timingGate.Release();
         }
     }
 
     public async Task<bool> ReseedCatalogTimingsAsync(int casterLevel)
     {
-        await _timingLearnGate.WaitAsync();
+        await _timingGate.WaitAsync();
         try
         {
             return ReseedCatalogTimingsCore(casterLevel);
         }
         finally
         {
-            _timingLearnGate.Release();
+            _timingGate.Release();
         }
     }
 
@@ -367,80 +364,6 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     private bool FilterRule(object item) => item is BuffRuleViewModel rule &&
         (string.IsNullOrWhiteSpace(SearchText) || rule.SpellName.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase)) &&
         (_filterMode == "All" || (_filterMode == "Enabled" ? rule.IsEnabled : !rule.IsEnabled));
-
-    private async Task ApplyTimingSampleAsync(SpellTimingSample sample)
-    {
-        await _timingLearnGate.WaitAsync();
-        try
-        {
-            var dispatcher = Application.Current?.Dispatcher;
-            if (dispatcher is null || dispatcher.CheckAccess())
-                await ApplyTimingSampleCore(sample);
-            else
-                await dispatcher.InvokeAsync(() => ApplyTimingSampleCore(sample),
-                    DispatcherPriority.Background).Task.Unwrap();
-        }
-        finally
-        {
-            _timingLearnGate.Release();
-        }
-    }
-
-    private async Task ApplyTimingSampleCore(SpellTimingSample sample)
-    {
-        var rule = Rules.FirstOrDefault(item => item.Id == sample.RuleId);
-        if (rule is null || !rule.TryCreateSettings(out var current, out _)) return;
-        current = current! with
-        {
-            Category = _category,
-            TrackSelf = false,
-            TrackOthers = true
-        };
-        if (!SpellTimingLearner.TryApplySample(current, sample, out var updated)) return;
-        rule.ApplyLearnedSettings(updated, sample.Kind);
-        RefreshConfiguration();
-        // Persist without re-seeding catalog timings (that can fight learning).
-        _ = await PersistRulesAsync();
-    }
-
-    private async Task<string?> PersistRulesAsync()
-    {
-        var previous = (_category == SpellTrackerCategory.DamageOverTime
-                ? SpellTrackerStore.TryLoadDotRules()
-                : SpellTrackerStore.TryLoadControlRules())
-            .ToDictionary(rule => rule.Id);
-        var settings = new List<BuffRuleSettings>(Rules.Count);
-        foreach (var rule in Rules)
-        {
-            rule.Category = _category;
-            rule.TrackSelf = false;
-            rule.TrackOthers = true;
-            if (rule.TryCreateSettings(out var configured, out _))
-            {
-                settings.Add(configured! with
-                {
-                    Category = _category,
-                    TrackSelf = false,
-                    TrackOthers = true
-                });
-            }
-            else if (previous.TryGetValue(rule.Id, out var prior))
-            {
-                // Keep last-good disk copy for incomplete drafts so learning on siblings
-                // can still persist.
-                settings.Add(prior with
-                {
-                    Category = _category,
-                    TrackSelf = false,
-                    TrackOthers = true
-                });
-            }
-        }
-        Configure(settings, pruneMissing: false);
-        return await _save(settings, CancellationToken.None)
-            ? null
-            : $"{_category} rules could not be saved to spelltracker.json.";
-    }
 
     private static string DisplayName(BuffRuleViewModel rule) =>
         string.IsNullOrWhiteSpace(rule.SpellName) ? "New spell" : rule.SpellName;

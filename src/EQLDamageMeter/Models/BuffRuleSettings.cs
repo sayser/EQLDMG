@@ -78,6 +78,7 @@ public enum SpellIconStyle
 public enum SpellTimingSource
 {
     Catalog,
+    /// <summary>Obsolete persisted value from older builds; treated as Manual.</summary>
     Learned,
     Manual
 }

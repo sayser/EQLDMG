@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
+using System.Windows.Threading;
 using EQLDamageMeter.Models;
 using EQLDamageMeter.Services;
 
@@ -35,13 +36,23 @@ public sealed class SessionHistoryViewModel : ObservableObject
         set
         {
             var previous = _selectedMob;
+            if (ReferenceEquals(previous, value)) return;
+            var sameMobName = previous is not null && value is not null &&
+                              previous.Name.Equals(value.Name, StringComparison.OrdinalIgnoreCase);
             if (!SetProperty(ref _selectedMob, value)) return;
+            // Live session upserts recreate mob rows; only cancel/reload wiki when the mob changes.
+            if (!sameMobName)
+                previous?.CancelWikiLoot();
             if (previous is not null) previous.IsSelected = false;
             if (_selectedMob is not null) _selectedMob.IsSelected = true;
             RaisePropertyChanged(nameof(ShowMobDetails));
             RaisePropertyChanged(nameof(ShowSessionDetails));
             RaisePropertyChanged(nameof(MobDetailsVisibility));
             RaisePropertyChanged(nameof(SessionDetailsVisibility));
+            if (!sameMobName)
+                _selectedMob?.EnsureWikiLootLoaded();
+            else if (previous is not null && _selectedMob is not null)
+                _selectedMob.AdoptWikiLootFrom(previous);
         }
     }
 
@@ -126,8 +137,10 @@ public sealed class SessionHistoryViewModel : ObservableObject
             return;
         }
 
-        SelectedMob = SelectedSession.Mobs.FirstOrDefault(item =>
+        var match = SelectedSession.Mobs.FirstOrDefault(item =>
             item.Name.Equals(mobName, StringComparison.OrdinalIgnoreCase));
+        if (ReferenceEquals(SelectedMob, match)) return;
+        SelectedMob = match;
     }
 }
 
@@ -270,12 +283,23 @@ public sealed class SessionEntryViewModel : ObservableObject
         _loot = SessionLootParser.Clone(record.Loot);
         MoneyText = SessionLootParser.FormatCopper(CalculateMoneyEarned(_loot));
 
+        // Reuse existing mob rows so an open wiki loot table is not cancelled/reloaded
+        // on every live session upsert.
+        var previous = Mobs.ToDictionary(item => item.Name, StringComparer.OrdinalIgnoreCase);
         Mobs.Clear();
         foreach (var mob in _loot.Mobs
                      .OrderByDescending(item => item.Items.Sum(x => x.Count))
                      .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
         {
-            Mobs.Add(SessionMobLootRowViewModel.From(mob));
+            if (previous.TryGetValue(mob.Name, out var existing))
+            {
+                existing.UpdateFrom(mob);
+                Mobs.Add(existing);
+            }
+            else
+            {
+                Mobs.Add(SessionMobLootRowViewModel.From(mob));
+            }
         }
     }
 
@@ -318,19 +342,96 @@ public sealed class SessionEntryViewModel : ObservableObject
 public sealed class SessionMobLootRowViewModel : ObservableObject
 {
     private bool _isSelected;
+    private string _wikiUrl = string.Empty;
+    private string _wikiLootStatus = string.Empty;
+    private bool _wikiLootLoaded;
+    private bool _wikiLootInFlight;
+    private CancellationTokenSource? _wikiLootCts;
+
+    private string _summary = string.Empty;
+    private string _historyCoinText = "0c";
+    private string _historyItemCountText = "0";
+    private string _historySoldText = "0";
+    private string _historyKeptStoredText = "0";
+    private string _historyMergedText = "0";
+    private string _corpsesText = "0";
+    private SessionMobKillViewModel? _latestKill;
+    private IReadOnlyList<SessionMobKillViewModel> _killHistory = [];
+    private IReadOnlyList<SessionLootItemRowViewModel> _historyItems = [];
 
     public string Name { get; private init; } = string.Empty;
-    public string WikiUrl { get; private init; } = string.Empty;
-    public string Summary { get; private init; } = string.Empty;
-    public string HistoryCoinText { get; private init; } = "0c";
-    public string HistoryItemCountText { get; private init; } = "0";
-    public string HistorySoldText { get; private init; } = "0";
-    public string HistoryKeptStoredText { get; private init; } = "0";
-    public string HistoryMergedText { get; private init; } = "0";
-    public string CorpsesText { get; private init; } = "0";
-    public SessionMobKillViewModel? LatestKill { get; private init; }
-    public IReadOnlyList<SessionMobKillViewModel> KillHistory { get; private init; } = [];
-    public IReadOnlyList<SessionLootItemRowViewModel> HistoryItems { get; private init; } = [];
+    public string WikiUrl
+    {
+        get => _wikiUrl;
+        private set => SetProperty(ref _wikiUrl, value);
+    }
+    public string Summary
+    {
+        get => _summary;
+        private set => SetProperty(ref _summary, value);
+    }
+    public string HistoryCoinText
+    {
+        get => _historyCoinText;
+        private set => SetProperty(ref _historyCoinText, value);
+    }
+    public string HistoryItemCountText
+    {
+        get => _historyItemCountText;
+        private set => SetProperty(ref _historyItemCountText, value);
+    }
+    public string HistorySoldText
+    {
+        get => _historySoldText;
+        private set => SetProperty(ref _historySoldText, value);
+    }
+    public string HistoryKeptStoredText
+    {
+        get => _historyKeptStoredText;
+        private set => SetProperty(ref _historyKeptStoredText, value);
+    }
+    public string HistoryMergedText
+    {
+        get => _historyMergedText;
+        private set => SetProperty(ref _historyMergedText, value);
+    }
+    public string CorpsesText
+    {
+        get => _corpsesText;
+        private set => SetProperty(ref _corpsesText, value);
+    }
+    public SessionMobKillViewModel? LatestKill
+    {
+        get => _latestKill;
+        private set => SetProperty(ref _latestKill, value);
+    }
+    public IReadOnlyList<SessionMobKillViewModel> KillHistory
+    {
+        get => _killHistory;
+        private set => SetProperty(ref _killHistory, value);
+    }
+    public IReadOnlyList<SessionLootItemRowViewModel> HistoryItems
+    {
+        get => _historyItems;
+        private set => SetProperty(ref _historyItems, value);
+    }
+    public ObservableCollection<WikiLootItemViewModel> WikiLootItems { get; } = [];
+
+    public string WikiLootStatus
+    {
+        get => _wikiLootStatus;
+        private set
+        {
+            if (!SetProperty(ref _wikiLootStatus, value)) return;
+            RaisePropertyChanged(nameof(WikiLootStatusVisibility));
+            RaisePropertyChanged(nameof(WikiLootItemsVisibility));
+        }
+    }
+
+    public Visibility WikiLootStatusVisibility =>
+        string.IsNullOrWhiteSpace(WikiLootStatus) ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility WikiLootItemsVisibility =>
+        WikiLootItems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     public bool IsSelected
     {
@@ -338,7 +439,117 @@ public sealed class SessionMobLootRowViewModel : ObservableObject
         set => SetProperty(ref _isSelected, value);
     }
 
+    public void EnsureWikiLootLoaded()
+    {
+        if (_wikiLootLoaded || _wikiLootInFlight) return;
+        _ = LoadWikiLootAsync();
+    }
+
+    public void CancelWikiLoot()
+    {
+        _wikiLootCts?.Cancel();
+        _wikiLootCts = null;
+        _wikiLootInFlight = false;
+    }
+
+    private async Task LoadWikiLootAsync()
+    {
+        var cts = new CancellationTokenSource();
+        _wikiLootCts?.Cancel();
+        _wikiLootCts = cts;
+        _wikiLootInFlight = true;
+        await SetWikiLootStatusAsync("Loading loot table from eqlwiki…", cts.Token);
+        try
+        {
+            var (table, error) = await EqWikiMobLoot.FetchAsync(Name, cts.Token);
+            if (cts.IsCancellationRequested) return;
+            if (table is null)
+            {
+                _wikiLootInFlight = false;
+                await SetWikiLootStatusAsync(error ?? "No loot table found on the wiki.", cts.Token);
+                return;
+            }
+
+            var dropCount = 0;
+            await DispatchAsync(() =>
+            {
+                if (cts.IsCancellationRequested) return;
+                WikiUrl = table.WikiUrl;
+                WikiLootItems.Clear();
+                foreach (var drop in table.Drops)
+                    WikiLootItems.Add(new WikiLootItemViewModel(drop.ItemName, drop.DropChance));
+                dropCount = table.Drops.Count;
+                _wikiLootLoaded = true;
+                _wikiLootInFlight = false;
+                WikiLootStatus = dropCount == 0
+                    ? $"Wiki page found ({table.ResolvedTitle}), but no known loot was listed."
+                    : $"{dropCount} possible drops · {table.ResolvedTitle}";
+                RaisePropertyChanged(nameof(WikiLootItemsVisibility));
+            }, cts.Token);
+
+            if (cts.IsCancellationRequested || dropCount == 0) return;
+            await LoadItemStatsAsync(cts.Token);
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            // Selection changed.
+        }
+        catch
+        {
+            _wikiLootInFlight = false;
+            await SetWikiLootStatusAsync("Could not load this mob's loot table.", cts.Token);
+        }
+    }
+
+    private async Task LoadItemStatsAsync(CancellationToken cancellationToken)
+    {
+        var items = WikiLootItems.Where(item => string.IsNullOrWhiteSpace(item.Stats)).ToArray();
+        if (items.Length == 0) return;
+        using var gate = new SemaphoreSlim(4, 4);
+        var tasks = items.Select(async item =>
+        {
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                var (stats, error) = await EqWikiItemStats.FetchStatsAsync(item.Name, cancellationToken);
+                await DispatchAsync(() => item.ApplyStats(stats, error), cancellationToken);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        });
+        await Task.WhenAll(tasks);
+    }
+
+    private async Task SetWikiLootStatusAsync(string status, CancellationToken cancellationToken) =>
+        await DispatchAsync(() =>
+        {
+            if (!cancellationToken.IsCancellationRequested)
+                WikiLootStatus = status;
+        }, cancellationToken);
+
+    private static Task DispatchAsync(Action action, CancellationToken cancellationToken)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            action();
+            return Task.CompletedTask;
+        }
+
+        return dispatcher.InvokeAsync(action, DispatcherPriority.Background, cancellationToken).Task;
+    }
+
     public static SessionMobLootRowViewModel From(SessionMobLoot mob)
+    {
+        var row = new SessionMobLootRowViewModel { Name = mob.Name };
+        row.WikiUrl = EqWikiLinks.ForMob(mob.Name);
+        row.UpdateFrom(mob);
+        return row;
+    }
+
+    public void UpdateFrom(SessionMobLoot mob)
     {
         var historyItems = ToItemRows(mob.Items);
         var historyItemCount = historyItems.Sum(item => item.Count);
@@ -367,28 +578,64 @@ public sealed class SessionMobLootRowViewModel : ObservableObject
             ];
         }
 
-        var latest = kills.Length > 0 ? kills[^1] : null;
-        var historyNewestFirst = kills.Length > 0
-            ? kills.Reverse().ToArray()
-            : [];
+        Summary =
+            $"{mob.CorpsesLooted} corpses · {SessionLootParser.FormatCopper(mob.CoinCopper)} · {historyItemCount} items";
+        HistoryCoinText = SessionLootParser.FormatCopper(mob.CoinCopper);
+        HistoryItemCountText = historyItemCount.ToString(CultureInfo.CurrentCulture);
+        HistorySoldText = CountDisposition(historyItems, "Sold").ToString(CultureInfo.CurrentCulture);
+        HistoryKeptStoredText = (CountDisposition(historyItems, "Kept") + CountDisposition(historyItems, "Stored"))
+            .ToString(CultureInfo.CurrentCulture);
+        HistoryMergedText = CountDisposition(historyItems, "Merged").ToString(CultureInfo.CurrentCulture);
+        CorpsesText = mob.CorpsesLooted.ToString(CultureInfo.CurrentCulture);
+        LatestKill = kills.Length > 0 ? kills[^1] : null;
+        KillHistory = kills.Length > 0 ? kills.Reverse().ToArray() : [];
+        HistoryItems = historyItems;
+    }
 
-        return new SessionMobLootRowViewModel
+    /// <summary>
+    /// Moves wiki loot UI state onto a replacement row for the same mob (e.g. full history reload).
+    /// Live session upserts reuse the same instance and never need this.
+    /// </summary>
+    public void AdoptWikiLootFrom(SessionMobLootRowViewModel previous)
+    {
+        if (ReferenceEquals(this, previous)) return;
+        previous.CancelWikiLoot();
+        WikiUrl = previous.WikiUrl;
+        WikiLootStatus = previous.WikiLootStatus;
+        WikiLootItems.Clear();
+        foreach (var item in previous.WikiLootItems)
+            WikiLootItems.Add(item);
+        _wikiLootLoaded = previous._wikiLootLoaded || WikiLootItems.Count > 0;
+        _wikiLootInFlight = false;
+        RaisePropertyChanged(nameof(WikiLootItemsVisibility));
+        if (!_wikiLootLoaded)
         {
-            Name = mob.Name,
-            WikiUrl = EqWikiLinks.ForMob(mob.Name),
-            Summary =
-                $"{mob.CorpsesLooted} corpses · {SessionLootParser.FormatCopper(mob.CoinCopper)} · {historyItemCount} items",
-            HistoryCoinText = SessionLootParser.FormatCopper(mob.CoinCopper),
-            HistoryItemCountText = historyItemCount.ToString(CultureInfo.CurrentCulture),
-            HistorySoldText = CountDisposition(historyItems, "Sold").ToString(CultureInfo.CurrentCulture),
-            HistoryKeptStoredText = (CountDisposition(historyItems, "Kept") + CountDisposition(historyItems, "Stored"))
-                .ToString(CultureInfo.CurrentCulture),
-            HistoryMergedText = CountDisposition(historyItems, "Merged").ToString(CultureInfo.CurrentCulture),
-            CorpsesText = mob.CorpsesLooted.ToString(CultureInfo.CurrentCulture),
-            LatestKill = latest,
-            KillHistory = historyNewestFirst,
-            HistoryItems = historyItems
-        };
+            EnsureWikiLootLoaded();
+            return;
+        }
+
+        if (WikiLootItems.Any(item => string.IsNullOrWhiteSpace(item.Stats)))
+            _ = ResumeItemStatsAsync();
+    }
+
+    private async Task ResumeItemStatsAsync()
+    {
+        var cts = new CancellationTokenSource();
+        _wikiLootCts?.Cancel();
+        _wikiLootCts = cts;
+        _wikiLootInFlight = true;
+        try
+        {
+            await LoadItemStatsAsync(cts.Token);
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            if (!cts.IsCancellationRequested)
+                _wikiLootInFlight = false;
+        }
     }
 
     public void OpenWiki()
@@ -470,6 +717,59 @@ public sealed class SessionLootItemRowViewModel
             _ => "—"
         }
     };
+}
+
+public sealed class WikiLootItemViewModel : ObservableObject
+{
+    private string _stats = string.Empty;
+    private string _statsStatus = "Loading item info…";
+
+    public WikiLootItemViewModel(string name, string dropChance)
+    {
+        Name = name;
+        DropChanceText = string.IsNullOrWhiteSpace(dropChance) ? "—" : dropChance;
+    }
+
+    public string Name { get; }
+    public string DropChanceText { get; }
+
+    public string Stats
+    {
+        get => _stats;
+        private set
+        {
+            if (!SetProperty(ref _stats, value)) return;
+            RaisePropertyChanged(nameof(StatsVisibility));
+        }
+    }
+
+    public string StatsStatus
+    {
+        get => _statsStatus;
+        private set
+        {
+            if (!SetProperty(ref _statsStatus, value)) return;
+            RaisePropertyChanged(nameof(StatsStatusVisibility));
+        }
+    }
+
+    public Visibility StatsVisibility =>
+        string.IsNullOrWhiteSpace(Stats) ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility StatsStatusVisibility =>
+        string.IsNullOrWhiteSpace(StatsStatus) ? Visibility.Collapsed : Visibility.Visible;
+
+    public void ApplyStats(string stats, string? error)
+    {
+        if (!string.IsNullOrWhiteSpace(stats))
+        {
+            Stats = stats;
+            StatsStatus = string.Empty;
+            return;
+        }
+
+        Stats = string.Empty;
+        StatsStatus = string.IsNullOrWhiteSpace(error) ? "No item stats on wiki." : error;
+    }
 }
 
 public sealed record MoteCountRow(string Name, int Count);

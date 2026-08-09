@@ -50,12 +50,17 @@ public sealed class BuffRuleViewModel : ObservableObject
         _alertMode = BuffAlertModeOptions.Normalize(settings.AlertMode);
         _sound = settings.Sound;
         _voiceText = settings.VoiceText;
-        _castSource = settings.CastSource;
-        _durationSource = settings.DurationSource;
-        _castSampleCount = settings.CastSampleCount;
-        _durationSampleCount = settings.DurationSampleCount;
-        _castSampleSum = settings.CastSampleSum;
-        _durationSampleSum = settings.DurationSampleSum;
+        // Legacy "Learned" values are treated as manual edits going forward.
+        _castSource = settings.CastSource == SpellTimingSource.Learned
+            ? SpellTimingSource.Manual
+            : settings.CastSource;
+        _durationSource = settings.DurationSource == SpellTimingSource.Learned
+            ? SpellTimingSource.Manual
+            : settings.DurationSource;
+        _castSampleCount = 0;
+        _durationSampleCount = 0;
+        _castSampleSum = 0;
+        _durationSampleSum = 0;
     }
 
     public Guid Id { get; }
@@ -249,43 +254,11 @@ public sealed class BuffRuleViewModel : ObservableObject
             {
                 CastTimeText = spell.CastTimeSeconds.ToString("0.0#", CultureInfo.InvariantCulture);
                 CastSource = SpellTimingSource.Catalog;
-                // Preserve buffered sample counts/sums across catalog text refreshes.
-                // Only force/reset clears them (see force block above).
             }
             if (fillDuration && durationSeconds > 0)
             {
                 DurationText = FormatDuration(TimeSpan.FromSeconds(durationSeconds));
                 DurationSource = SpellTimingSource.Catalog;
-            }
-        }
-        finally
-        {
-            _suppressManualMark = false;
-        }
-    }
-
-    /// <summary>
-    /// Applies only the timing side that was updated. Updating cast must not clobber
-    /// duration learning (and vice versa) when samples are applied concurrently.
-    /// </summary>
-    public void ApplyLearnedSettings(BuffRuleSettings settings, SpellTimingSampleKind kind)
-    {
-        _suppressManualMark = true;
-        try
-        {
-            if (kind == SpellTimingSampleKind.Cast)
-            {
-                CastTimeText = settings.CastTimeSeconds.ToString("0.0#", CultureInfo.InvariantCulture);
-                CastSource = settings.CastSource;
-                _castSampleCount = settings.CastSampleCount;
-                _castSampleSum = settings.CastSampleSum;
-            }
-            else
-            {
-                DurationText = FormatDuration(TimeSpan.FromSeconds(settings.DurationSeconds));
-                DurationSource = settings.DurationSource;
-                _durationSampleCount = settings.DurationSampleCount;
-                _durationSampleSum = settings.DurationSampleSum;
             }
         }
         finally
@@ -384,12 +357,8 @@ public sealed class BuffRuleViewModel : ObservableObject
         RaisePropertyChanged(nameof(AlertSummary));
     }
 
-    private static string SourceHint(SpellTimingSource source) => source switch
-    {
-        SpellTimingSource.Learned => "Learned",
-        SpellTimingSource.Manual => "Manual",
-        _ => "From spell data"
-    };
+    private static string SourceHint(SpellTimingSource source) =>
+        source == SpellTimingSource.Manual ? "Manual" : "From spell data";
 
     private static bool TryParseDuration(string text, out TimeSpan duration)
     {
