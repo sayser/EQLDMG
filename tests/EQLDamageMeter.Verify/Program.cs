@@ -498,6 +498,32 @@ internal static class Program
         var goblinMob = coinOrder.Loot.Mobs.First(m => m.Name.Contains("goblin", StringComparison.OrdinalIgnoreCase));
         Check("Prior mob coin not inflated by next corpse", skeleton.CoinCopper == 1000);
         Check("Pending coin attaches to named mob", goblinMob.CoinCopper == 2000);
+
+        // Coin-only / empty corpses: slain lines must create mob rows.
+        SessionLootParser.ResetRuntime();
+        var emptyKill = new SessionRecord
+        {
+            Id = "empty", StartedAt = DateTime.UtcNow, Character = "Sayser", Server = "halas",
+            Loot = new SessionLootData()
+        };
+        var ek = DateTime.UtcNow;
+        SessionLootParser.TryObserve(emptyKill, ek,
+            "You receive 8 platinum, 7 gold, 7 silver and 1 copper from the corpse.");
+        SessionLootParser.TryObserve(emptyKill, ek, "You have slain a haunted chest!");
+        var chest = emptyKill.Loot.Mobs.FirstOrDefault(m =>
+            m.Name.Contains("haunted chest", StringComparison.OrdinalIgnoreCase));
+        Check("Coin-only slain creates mob",
+            chest is not null && chest.CorpsesLooted == 1 && chest.Kills.Count == 1 &&
+            chest.CoinCopper == 8 * 1000 + 7 * 100 + 7 * 10 + 1 &&
+            chest.Items.Count == 0);
+
+        SessionLootParser.TryObserve(emptyKill, ek.AddSeconds(30),
+            "A barren chest has been slain by Innoruuk`s Chosen!");
+        var barren = emptyKill.Loot.Mobs.FirstOrDefault(m =>
+            m.Name.Contains("barren chest", StringComparison.OrdinalIgnoreCase));
+        Check("Empty pet slain creates mob",
+            barren is not null && barren.CorpsesLooted == 1 && barren.CoinCopper == 0 &&
+            barren.Items.Count == 0);
     }
 
     private static void RunLatestKillVsHistoryTests()

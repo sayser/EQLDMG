@@ -11,6 +11,7 @@ public static partial class SessionLootParser
     private static long _pendingCoinCopper;
     private static DateTime _pendingCoinAt;
     private static DateTime _lastItemLootAt;
+    private static DateTime _lastKillAt;
 
     public static void ResetRuntime()
     {
@@ -20,6 +21,7 @@ public static partial class SessionLootParser
             _pendingCoinCopper = 0;
             _pendingCoinAt = default;
             _lastItemLootAt = default;
+            _lastKillAt = default;
         }
     }
 
@@ -52,6 +54,10 @@ public static partial class SessionLootParser
 
             if (TryReadCoin(message, out var copper))
                 return RecordCoin(session, timestamp, copper);
+
+            // Track corpses even when they drop nothing (or only coin with no item lines).
+            if (TryReadSlain(message, out var slainMob))
+                return RecordKill(session, timestamp, slainMob);
 
             return false;
         }
@@ -147,27 +153,42 @@ public static partial class SessionLootParser
         return true;
     }
 
+    private static bool RecordKill(SessionRecord session, DateTime timestamp, string mobName)
+    {
+        var mob = GetOrCreateMob(session, mobName);
+        var kill = GetOrStartKill(mob, timestamp);
+        TouchMob(mob.Name, timestamp);
+        session.Loot.LastMobName = mob.Name;
+        _lastKillAt = timestamp;
+        // Coin often logs in the same second before the slain line.
+        ApplyPendingCoin(mob, kill, timestamp);
+        return true;
+    }
+
     private static bool RecordCoin(SessionRecord session, DateTime timestamp, long copper)
     {
         session.Loot.CoinCopper += copper;
         _pendingCoinCopper += copper;
         _pendingCoinAt = timestamp;
 
-        // Coin lines do not name the mob. Default: keep pending for the next RecordItem.
-        // Only attach immediately when loot items for this corpse just landed (typical
-        // "item then coin" order). A tight 2s window prevents the next corpse's early
-        // coin line from crediting the previous mob.
+        // Coin lines do not name the mob. Keep pending until a slain line or item loot
+        // names the corpse. A tight 2s window prevents the next corpse's early coin
+        // from crediting the previous mob.
         var mobName = session.Loot.LastMobName;
-        if (string.IsNullOrWhiteSpace(mobName) || _lastItemLootAt == default ||
-            timestamp - _lastItemLootAt > TimeSpan.FromSeconds(2))
-            return true;
+        if (string.IsNullOrWhiteSpace(mobName)) return true;
 
         var key = NormalizeMobKey(mobName);
         var mob = session.Loot.Mobs.FirstOrDefault(item =>
             NormalizeMobKey(item.Name).Equals(key, StringComparison.OrdinalIgnoreCase));
         if (mob is null || mob.Kills.Count == 0) return true;
         var kill = mob.Kills[^1];
-        if (kill.Items.Count == 0) return true;
+
+        var recentItems = _lastItemLootAt != default &&
+                          timestamp - _lastItemLootAt <= TimeSpan.FromSeconds(2) &&
+                          kill.Items.Count > 0;
+        var recentKill = _lastKillAt != default &&
+                         timestamp - _lastKillAt <= TimeSpan.FromSeconds(2);
+        if (!recentItems && !recentKill) return true;
 
         ApplyPendingCoin(mob, kill, timestamp);
         TouchMob(mob.Name, timestamp);
@@ -338,6 +359,22 @@ public static partial class SessionLootParser
         return true;
     }
 
+    private static bool TryReadSlain(string message, out string mob)
+    {
+        mob = string.Empty;
+        var local = LocalSlainRegex().Match(message);
+        if (local.Success)
+        {
+            mob = CleanMobName(local.Groups["mob"].Value);
+            return mob.Length > 0;
+        }
+
+        var other = OtherSlainRegex().Match(message);
+        if (!other.Success) return false;
+        mob = CleanMobName(other.Groups["mob"].Value);
+        return mob.Length > 0;
+    }
+
     private static string CleanItemName(string value)
     {
         var item = value.Trim();
@@ -397,6 +434,12 @@ public static partial class SessionLootParser
 
     [GeneratedRegex(@"^You receive (?<coin>.+?) from the corpse\.?$", RegexOptions.CultureInvariant)]
     private static partial Regex CoinRegex();
+
+    [GeneratedRegex(@"^You have slain (?<mob>.+?)!$", RegexOptions.CultureInvariant)]
+    private static partial Regex LocalSlainRegex();
+
+    [GeneratedRegex(@"^(?<mob>.+?) has been slain by .+!$", RegexOptions.CultureInvariant)]
+    private static partial Regex OtherSlainRegex();
 
     // EQ logs use either full words ("2 platinum") or compact Form ("2p 3g 4s 5c").
     [GeneratedRegex(@"(?<n>\d+)\s*(?<unit>platinum|platinums|gold|golds|silver|silvers|copper|coppers|[pgsc])\b",

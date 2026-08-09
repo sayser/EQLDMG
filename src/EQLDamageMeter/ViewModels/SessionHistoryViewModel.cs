@@ -557,7 +557,8 @@ public sealed class SessionMobLootRowViewModel : ObservableObject
             .OrderBy(kill => kill.Timestamp)
             .Select(SessionMobKillViewModel.From)
             .ToArray();
-        if (kills.Length == 0 && (mob.Items.Count > 0 || mob.CoinCopper > 0))
+        if (kills.Length == 0 &&
+            (mob.Items.Count > 0 || mob.CoinCopper > 0 || mob.CorpsesLooted > 0))
         {
             // Older session_info.json without per-kill data: show aggregate as a single kill.
             kills =
