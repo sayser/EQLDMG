@@ -58,91 +58,135 @@ public sealed class LogFileMonitor : IAsyncDisposable
         var buffer = new byte[32 * 1024];
         var discardOversizedLine = false;
         var discardInitialPartialLine = _discardInitialPartialLine;
+        FileStream? stream = null;
+        DateTime? openedCreationUtc = null;
+        var nextIdentityCheckUtc = DateTime.UtcNow;
 
-        while (!cancellationToken.IsCancellationRequested)
+        try
         {
-            try
+            while (!cancellationToken.IsCancellationRequested)
             {
-                await using var stream = new FileStream(_path, FileMode.Open, FileAccess.Read,
-                    FileShare.ReadWrite | FileShare.Delete, buffer.Length,
-                    FileOptions.Asynchronous | FileOptions.SequentialScan);
-
-                if (stream.Length < position)
+                try
                 {
-                    position = 0;
-                    pending.Clear();
-                    discardOversizedLine = false;
-                    discardInitialPartialLine = false;
-                }
-
-                stream.Position = position;
-                var foundData = false;
-                while (true)
-                {
-                    var count = await stream.ReadAsync(buffer, cancellationToken);
-                    if (count == 0) break;
-                    foundData = true;
-                    position += count;
-                    for (var index = 0; index < count; index++)
+                    if (stream is null)
                     {
-                        var value = buffer[index];
-                        if (value == (byte)'\n')
+                        stream = new FileStream(_path, FileMode.Open, FileAccess.Read,
+                            FileShare.ReadWrite | FileShare.Delete, buffer.Length,
+                            FileOptions.Asynchronous | FileOptions.SequentialScan);
+                        openedCreationUtc = File.GetCreationTimeUtc(_path);
+                    }
+
+                    // Delete+recreate at the same path leaves the old handle open on Windows.
+                    // Detect a new file identity while idle and reopen from the live end.
+                    if (DateTime.UtcNow >= nextIdentityCheckUtc)
+                    {
+                        nextIdentityCheckUtc = DateTime.UtcNow.AddSeconds(2);
+                        var creationUtc = File.GetCreationTimeUtc(_path);
+                        if (openedCreationUtc is { } opened && creationUtc != opened)
                         {
-                            if (discardInitialPartialLine)
-                            {
-                                pending.Clear();
-                                discardInitialPartialLine = false;
-                                continue;
-                            }
-                            if (pending.Count > 0 && pending[^1] == (byte)'\r') pending.RemoveAt(pending.Count - 1);
-                            if (!discardOversizedLine && pending.Count > 0)
-                            {
-                                var line = LogEncoding.GetString(CollectionsMarshal.AsSpan(pending));
-                                await _onLine(line, cancellationToken);
-                            }
+                            stream = await DisposeStreamAsync(stream);
+                            position = new FileInfo(_path).Length;
                             pending.Clear();
                             discardOversizedLine = false;
+                            discardInitialPartialLine = position > 0;
+                            continue;
                         }
-                        else if (!discardInitialPartialLine && !discardOversizedLine)
+                    }
+
+                    if (stream.Length < position)
+                    {
+                        position = 0;
+                        pending.Clear();
+                        discardOversizedLine = false;
+                        discardInitialPartialLine = false;
+                    }
+
+                    if (stream.Position != position)
+                        stream.Position = position;
+
+                    var foundData = false;
+                    while (true)
+                    {
+                        var count = await stream.ReadAsync(buffer, cancellationToken);
+                        if (count == 0) break;
+                        foundData = true;
+                        position += count;
+                        for (var index = 0; index < count; index++)
                         {
-                            pending.Add(value);
-                            if (pending.Count > MaxLogLineBytes)
+                            var value = buffer[index];
+                            if (value == (byte)'\n')
                             {
+                                if (discardInitialPartialLine)
+                                {
+                                    pending.Clear();
+                                    discardInitialPartialLine = false;
+                                    continue;
+                                }
+                                if (pending.Count > 0 && pending[^1] == (byte)'\r') pending.RemoveAt(pending.Count - 1);
+                                if (!discardOversizedLine && pending.Count > 0)
+                                {
+                                    var line = LogEncoding.GetString(CollectionsMarshal.AsSpan(pending));
+                                    await _onLine(line, cancellationToken);
+                                }
                                 pending.Clear();
-                                discardOversizedLine = true;
+                                discardOversizedLine = false;
+                            }
+                            else if (!discardInitialPartialLine && !discardOversizedLine)
+                            {
+                                pending.Add(value);
+                                if (pending.Count > MaxLogLineBytes)
+                                {
+                                    pending.Clear();
+                                    discardOversizedLine = true;
+                                }
                             }
                         }
                     }
-                }
 
-                await ReportHealthAsync(true);
-                await Task.Delay(foundData ? 40 : 150, cancellationToken);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (FileNotFoundException)
-            {
-                await ReportHealthAsync(false);
-                await Task.Delay(500, cancellationToken);
-            }
-            catch (IOException)
-            {
-                await ReportHealthAsync(false);
-                await Task.Delay(250, cancellationToken);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                await ReportHealthAsync(false);
-                await Task.Delay(500, cancellationToken);
-            }
-            catch (Exception exception) when (exception is not OutOfMemoryException and not StackOverflowException)
-            {
-                await ReportHealthAsync(false);
-                await Task.Delay(500, cancellationToken);
+                    await ReportHealthAsync(true);
+                    await Task.Delay(foundData ? 40 : 150, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (FileNotFoundException)
+                {
+                    stream = await DisposeStreamAsync(stream);
+                    await ReportHealthAsync(false);
+                    await Task.Delay(500, cancellationToken);
+                }
+                catch (IOException)
+                {
+                    stream = await DisposeStreamAsync(stream);
+                    await ReportHealthAsync(false);
+                    await Task.Delay(250, cancellationToken);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    stream = await DisposeStreamAsync(stream);
+                    await ReportHealthAsync(false);
+                    await Task.Delay(500, cancellationToken);
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException and not StackOverflowException)
+                {
+                    stream = await DisposeStreamAsync(stream);
+                    await ReportHealthAsync(false);
+                    await Task.Delay(500, cancellationToken);
+                }
             }
         }
+        finally
+        {
+            stream = await DisposeStreamAsync(stream);
+        }
+    }
+
+    private static async ValueTask<FileStream?> DisposeStreamAsync(FileStream? stream)
+    {
+        if (stream is null) return null;
+        await stream.DisposeAsync();
+        return null;
     }
 
     private async Task ReportHealthAsync(bool isHealthy)

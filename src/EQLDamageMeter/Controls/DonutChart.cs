@@ -26,7 +26,7 @@ public sealed class DonutChart : FrameworkElement
         // Keep outer diameter fixed to the control size; only the ring band gets thicker.
         var outerRadius = Math.Max(0, Math.Min(ActualWidth, ActualHeight) / 2 - 6);
         var center = new Point(ActualWidth / 2, ActualHeight / 2);
-        var thickness = Math.Clamp(outerRadius * 0.46, 26, outerRadius * 0.72);
+        var thickness = Math.Clamp(outerRadius * 0.46, 12, outerRadius * 0.72);
         var pathRadius = Math.Max(0, outerRadius - thickness / 2);
 
         drawingContext.DrawEllipse(null, new Pen(EmptyRingBrush, thickness), center, pathRadius, pathRadius);

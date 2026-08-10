@@ -9,7 +9,16 @@ public sealed class BuffTracker
     private const string UnconfirmedTargetKey = "\0TARGET";
     private const string UnconfirmedTargetName = "Target";
     private static readonly TimeSpan ConfirmationGrace = TimeSpan.FromSeconds(10);
-
+    /// <summary>
+    /// EQ often logs "Your X spell has worn off of Y" in the same second as a remes/reroot
+    /// land. That worn-off refers to the previous application and must not clear the new timer.
+    /// </summary>
+    private static readonly TimeSpan ControlOverwriteGrace = TimeSpan.FromSeconds(2);
+    /// <summary>
+    /// Charm stays on the overlay past its configured duration until worn-off. After this
+    /// overdue window we drop the instance so a missed worn-off cannot pin buffs forever.
+    /// </summary>
+    private static readonly TimeSpan CharmMaxOverdue = TimeSpan.FromMinutes(3);
     private sealed class ActiveInstance
     {
         public required string TargetName { get; set; }
@@ -144,39 +153,52 @@ public sealed class BuffTracker
     public void Observe(DateTime timestamp, string message)
     {
         // Gate / zone / evac ends enemy control and DoTs immediately (charm included).
-        if (ZoneLoading.IsMatch(message) || ZoneEntered.IsMatch(message))
+        if ((message.Contains("LOADING", StringComparison.OrdinalIgnoreCase) ||
+             message.Contains("entered", StringComparison.OrdinalIgnoreCase)) &&
+            (ZoneLoading.IsMatch(message) || ZoneEntered.IsMatch(message)))
         {
             ClearEnemyEffectsOnZone();
             return;
         }
 
-        if (LocalDeath.IsMatch(message))
+        if ((message.Contains("died", StringComparison.OrdinalIgnoreCase) ||
+             message.Contains("slain", StringComparison.OrdinalIgnoreCase)) &&
+            LocalDeath.IsMatch(message))
         {
             StopAll(BuffStopReason.Death);
             return;
         }
 
-        // Natural worn-off / fade before target-death clears so a same-second
+        // Land/fade texts are spell-specific and often have no shared keywords, so these
+        // confirmation paths stay ungated.
         if (ConfirmSelfApplication(timestamp, message)) return;
         if (ConfirmOtherApplication(timestamp, message)) return;
         if (ExpireByFadeMessage(timestamp, message)) return;
 
-        var wornOff = LocalWornOff.Match(message);
-        if (wornOff.Success)
+        if (message.Contains("worn off", StringComparison.OrdinalIgnoreCase))
         {
-            ExpireOtherTarget(timestamp, wornOff.Groups["spell"].Value, wornOff.Groups["target"].Value);
-            return;
+            var wornOff = LocalWornOff.Match(message);
+            if (wornOff.Success)
+            {
+                ExpireOtherTarget(timestamp, wornOff.Groups["spell"].Value, wornOff.Groups["target"].Value);
+                return;
+            }
         }
 
-        var death = LocalTargetDeath.Match(message);
-        if (!death.Success) death = TargetDeath.Match(message);
-        if (death.Success)
+        if (message.Contains("died", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("slain", StringComparison.OrdinalIgnoreCase))
         {
-            RemoveTarget(death.Groups["target"].Value, timestamp);
-            return;
+            var death = LocalTargetDeath.Match(message);
+            if (!death.Success) death = TargetDeath.Match(message);
+            if (death.Success)
+            {
+                RemoveTarget(death.Groups["target"].Value, timestamp);
+                return;
+            }
         }
 
-        if (LocalDispel.IsMatch(message))
+        if (message.Contains("dispelled", StringComparison.OrdinalIgnoreCase) &&
+            LocalDispel.IsMatch(message))
         {
             if (_lastSpecificFadeAt != timestamp)
             {
@@ -188,22 +210,31 @@ public sealed class BuffTracker
             return;
         }
 
-        var cast = LocalCast.Match(message);
-        if (cast.Success)
+        if (message.Contains("begin casting", StringComparison.OrdinalIgnoreCase))
         {
-            BeginMatchingRules(timestamp, cast.Groups["spell"].Value);
-            return;
+            var cast = LocalCast.Match(message);
+            if (cast.Success)
+            {
+                BeginMatchingRules(timestamp, cast.Groups["spell"].Value);
+                return;
+            }
         }
 
-        var failure = LocalFailure.Match(message);
-        if (failure.Success)
+        if (message.Contains("spell", StringComparison.OrdinalIgnoreCase))
         {
-            CancelMatchingRules(failure.Groups["spell"].Value);
-            return;
+            var failure = LocalFailure.Match(message);
+            if (failure.Success)
+            {
+                CancelMatchingRules(failure.Groups["spell"].Value);
+                return;
+            }
         }
 
-        var resisted = LocalResist.Match(message);
-        if (resisted.Success) CancelMatchingRules(resisted.Groups["spell"].Value);
+        if (message.Contains("resisted your", StringComparison.OrdinalIgnoreCase))
+        {
+            var resisted = LocalResist.Match(message);
+            if (resisted.Success) CancelMatchingRules(resisted.Groups["spell"].Value);
+        }
     }
 
     public IReadOnlyList<BuffExpirationAlert> Tick(DateTime now)
@@ -237,14 +268,17 @@ public sealed class BuffTracker
             {
                 var instance = pair.Value;
                 if (now < instance.ExpiresAt) continue;
+                var isCharm = rule.Category == SpellTrackerCategory.Control &&
+                              rule.ControlType == ControlEffectType.Charm;
                 if (!instance.Alerted)
                 {
                     instance.Alerted = true;
                     alerts ??= [];
                     alerts.Add(new BuffExpirationAlert(rule));
                 }
-                if (rule.Category == SpellTrackerCategory.Control &&
-                    rule.ControlType == ControlEffectType.Charm) continue;
+                // Charm stays overdue until worn-off, but drop it after CharmMaxOverdue so a
+                // missed worn-off cannot pin PreserveBuffTargetOnDeath forever.
+                if (isCharm && now < instance.ExpiresAt + CharmMaxOverdue) continue;
                 state.Instances.Remove(pair.Key);
                 if (state.Instances.Count == 0 && state.StopReason == BuffStopReason.None)
                     state.StopReason = BuffStopReason.Expired;
@@ -261,7 +295,9 @@ public sealed class BuffTracker
         var rule = _rules.GetValueOrDefault(ruleId);
         var isCharm = rule?.Category == SpellTrackerCategory.Control &&
                       rule.ControlType == ControlEffectType.Charm;
-        var active = state.Instances.Values.Where(instance => now < instance.ExpiresAt || isCharm)
+        var active = state.Instances.Values
+            .Where(instance => now < instance.ExpiresAt ||
+                               isCharm && now < instance.ExpiresAt + CharmMaxOverdue)
             .OrderBy(instance => instance.ExpiresAt).ToArray();
         var isCasting = state.PendingStart is { } pending && now < pending + ConfirmationGrace;
         if (active.Length == 0)
@@ -277,14 +313,19 @@ public sealed class BuffTracker
 
     public IReadOnlyList<BuffInstanceSnapshot> GetActiveSnapshots(DateTime now) =>
         _rules.Values.Where(rule => rule.IsEnabled)
-            .SelectMany(rule => _states[rule.Id].Instances
-                .Where(pair => now < pair.Value.ExpiresAt ||
-                    rule.Category == SpellTrackerCategory.Control && rule.ControlType == ControlEffectType.Charm)
-                .Select(pair => new BuffInstanceSnapshot(rule.Id, pair.Key, rule.SpellName,
-                    pair.Value.TargetName, pair.Value.IsSelf, pair.Value.StartedAt, pair.Value.ExpiresAt,
-                    pair.Value.ExpiresAt > now ? pair.Value.ExpiresAt - now : now - pair.Value.ExpiresAt,
-                    pair.Value.ExpiresAt > now && pair.Value.ExpiresAt - now <= TimeSpan.FromSeconds(30),
-                    pair.Value.ExpiresAt <= now)))
+            .SelectMany(rule =>
+            {
+                var isCharm = rule.Category == SpellTrackerCategory.Control &&
+                              rule.ControlType == ControlEffectType.Charm;
+                return _states[rule.Id].Instances
+                    .Where(pair => now < pair.Value.ExpiresAt ||
+                                   isCharm && now < pair.Value.ExpiresAt + CharmMaxOverdue)
+                    .Select(pair => new BuffInstanceSnapshot(rule.Id, pair.Key, rule.SpellName,
+                        pair.Value.TargetName, pair.Value.IsSelf, pair.Value.StartedAt, pair.Value.ExpiresAt,
+                        pair.Value.ExpiresAt > now ? pair.Value.ExpiresAt - now : now - pair.Value.ExpiresAt,
+                        pair.Value.ExpiresAt > now && pair.Value.ExpiresAt - now <= TimeSpan.FromSeconds(30),
+                        pair.Value.ExpiresAt <= now));
+            })
             .OrderBy(snapshot => snapshot.ExpiresAt)
             .ThenBy(snapshot => snapshot.SpellName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(snapshot => snapshot.TargetName, StringComparer.OrdinalIgnoreCase)
@@ -293,7 +334,8 @@ public sealed class BuffTracker
     public bool HasActiveCharmTarget(string target, DateTime now) =>
         _rules.Values.Any(rule => rule.IsEnabled && rule.Category == SpellTrackerCategory.Control &&
             rule.ControlType == ControlEffectType.Charm && _states[rule.Id].Instances.Values.Any(instance =>
-                instance.TargetName.Equals(target.Trim(), StringComparison.OrdinalIgnoreCase)));
+                instance.TargetName.Equals(target.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                now < instance.ExpiresAt + CharmMaxOverdue));
 
     private void BeginMatchingRules(DateTime timestamp, string spell)
     {
@@ -364,7 +406,7 @@ public sealed class BuffTracker
                                  item.ControlType == ControlEffectType.Charm))
                         _states[charmRule.Id].Instances.Clear();
                 }
-                var targetKey = ResolvePendingTargetKey(state, target);
+                var targetKey = ResolveEnemyLandTargetKey(state, rule, target);
                 state.Instances.Remove(UnconfirmedTargetKey);
                 Activate(state, rule, targetKey, target, false, timestamp, clearPending: false,
                     clearsOnTargetDeath: true);
@@ -417,7 +459,7 @@ public sealed class BuffTracker
         if (bestAmbiguousEnemy is not null && bestAmbiguousTarget is not null)
         {
             var state = _states[bestAmbiguousEnemy.Id];
-            var targetKey = ResolvePendingTargetKey(state, bestAmbiguousTarget);
+            var targetKey = ResolveEnemyLandTargetKey(state, bestAmbiguousEnemy, bestAmbiguousTarget);
             state.Instances.Remove(UnconfirmedTargetKey);
             Activate(state, bestAmbiguousEnemy, targetKey, bestAmbiguousTarget, false, timestamp,
                 clearPending: false, clearsOnTargetDeath: true);
@@ -485,8 +527,20 @@ public sealed class BuffTracker
             // recast already pending for target B.
             var key = FindTargetInstanceKey(state, target);
             if (key is null) continue;
+            var removed = state.Instances[key];
             state.Instances.Remove(key);
-            if (rule.Category == SpellTrackerCategory.Control)
+
+            // Remes/reroot overwrite: a newer land for the same name just stacked a
+            // replacement timer. Drop the previous application without alerting.
+            // Same-second AE lands share StartedAt, so a real early break still alerts
+            // (sibling StartedAt is not strictly greater).
+            var isOverwrite = IsMezOrRoot(rule) &&
+                state.Instances.Values.Any(item =>
+                    item.TargetName.Equals(target.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                    item.StartedAt > removed.StartedAt &&
+                    timestamp - item.StartedAt <= ControlOverwriteGrace);
+
+            if (!isOverwrite && rule.Category == SpellTrackerCategory.Control)
                 _queuedAlerts.Enqueue(new BuffExpirationAlert(rule));
             if (state.Instances.Count == 0 && state.StopReason == BuffStopReason.None)
                 state.StopReason = BuffStopReason.Expired;
@@ -564,12 +618,51 @@ public sealed class BuffTracker
                 PreserveBuffTargetOnDeath?.Invoke(normalized, timestamp) == true)
                 continue;
             var state = _states[rule.Id];
-            foreach (var pair in state.Instances
-                         .Where(item => item.Value.ClearsOnTargetDeath &&
-                                        item.Value.TargetName.Equals(normalized, StringComparison.OrdinalIgnoreCase))
-                         .ToArray())
-                state.Instances.Remove(pair.Key);
+            var matching = state.Instances
+                .Where(item => item.Value.ClearsOnTargetDeath &&
+                               item.Value.TargetName.Equals(normalized, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(item => item.Value.ExpiresAt)
+                .ThenBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (matching.Length == 0) continue;
+
+            // One death line is one NPC. For DoT/mez/root AE packs of identical names,
+            // clear a single stack — not every timer sharing that name.
+            if (IsEnemyEffectCategory(rule))
+                state.Instances.Remove(matching[0].Key);
+            else
+                foreach (var pair in matching)
+                    state.Instances.Remove(pair.Key);
         }
+    }
+
+    private static bool IsMezOrRoot(BuffRuleSettings rule) =>
+        rule.Category == SpellTrackerCategory.Control &&
+        rule.ControlType is ControlEffectType.Mez or ControlEffectType.Root;
+
+    /// <summary>
+    /// Mez/Root always open a new application (remes stacks; overwrite worn-off pops the
+    /// old one). DoT/Charm keep pending-key reuse so a refresh can retarget existing slots.
+    /// </summary>
+    private static string ResolveEnemyLandTargetKey(RuleRuntime state, BuffRuleSettings rule, string target) =>
+        IsMezOrRoot(rule) ? ResolveNewControlTargetKey(state, target) : ResolvePendingTargetKey(state, target);
+
+    /// <summary>
+    /// Always allocate a fresh instance key. Do not reuse existing same-name keys — that
+    /// would refresh the wrong slot when only some identically named mobs are remesed.
+    /// </summary>
+    private static string ResolveNewControlTargetKey(RuleRuntime state, string target)
+    {
+        var normalized = target.Trim();
+        if (!state.PendingTargetKeys.TryGetValue(normalized, out var keys))
+        {
+            keys = [];
+            state.PendingTargetKeys[normalized] = keys;
+        }
+
+        var newKey = $"{normalized}\0{Guid.NewGuid():N}";
+        keys.Add(newKey);
+        return newKey;
     }
 
     private static string ResolvePendingTargetKey(RuleRuntime state, string target)

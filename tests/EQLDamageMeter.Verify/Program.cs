@@ -107,6 +107,12 @@ internal static class Program
             parser.TryParse(stamp + "Sayser hit a rat for 100 points of fire damage by Firebolt.", out var spell) &&
             spell!.Damage is { Amount: 100, Ability: "Firebolt", Category: DamageCategory.Spell });
 
+        Check("Unattributed non-melee",
+            parser.TryParse(stamp + "You were hit by non-melee for 42 damage.", out var unm) &&
+            unm!.Damage is { Amount: 42, Ability: "Non-melee", Category: DamageCategory.Spell } &&
+            unm.Damage.Source == LogLineParser.UnattributedNonMeleeSource &&
+            unm.Damage.Target == "Sayser");
+
         Check("Heal with overheal",
             parser.TryParse(stamp + "Foo healed you for 100 (150) hit points by Complete Heal.", out var heal) &&
             heal!.Healing is { Amount: 100, PotentialAmount: 150 } &&
@@ -202,6 +208,22 @@ internal static class Program
         encounter2.ProcessMessage(k0.AddSeconds(1), "You have slain a beetle!");
         encounter2.FinalizeIfInactive(k0.AddSeconds(4));
         Check("Kill grace finalize", encounter2.IsFinalized);
+
+        // Ranked DoT ticks + unranked direct hit must merge (EQ log quirk).
+        var rankMerge = new EncounterTracker("Sayser");
+        var gRank = new GroupStateTracker("Sayser");
+        var r0 = DateTime.Now;
+        rankMerge.Process(new DamageEvent(r0, "Sayser", "an Evangelist of Hate", 50, "Envenomed Bolt",
+            DamageCategory.Spell, false), gRank);
+        rankMerge.Process(new DamageEvent(r0.AddSeconds(1), "Sayser", "an Evangelist of Hate", 432,
+            "Envenomed Bolt VI", DamageCategory.DamageOverTime, false), gRank);
+        rankMerge.Process(new DamageEvent(r0.AddSeconds(2), "Sayser", "an Evangelist of Hate", 440,
+            "Envenomed Bolt VI", DamageCategory.DamageOverTime, false), gRank);
+        var sayserRank = rankMerge.Combatants.First(c => c.Name == "Sayser");
+        Check("Ranked ability merge single row",
+            sayserRank.Abilities.Count == 1 &&
+            sayserRank.Abilities.Values.Single().Name == "Envenomed Bolt VI" &&
+            sayserRank.Abilities.Values.Single().Damage == 922);
 
         // Friendly fire does not credit outgoing (including local → ally)
         var encounter3 = new EncounterTracker("Sayser");
@@ -364,6 +386,97 @@ internal static class Program
         mezCastTracker.Observe(t0.AddSeconds(3), "a goblin has been mesmerized.");
         Check("AE mez multi-target",
             mezCastTracker.GetActiveSnapshots(t0.AddSeconds(3.1)).Count == 3);
+
+        // Same-name AE pack: each land is its own timer (EQ has no entity ids).
+        var mezSame = Rule("Mesmerization", SpellTrackerCategory.Control, ControlEffectType.Mez, 24, 3);
+        var mezSameTracker = new BuffTracker();
+        mezSameTracker.Configure([mezSame], _ => [], _ => [], _ => [" has been mesmerized."], _ => true);
+        mezSameTracker.Observe(t0, "You begin casting Mesmerization.");
+        mezSameTracker.Observe(t0.AddSeconds(3), "an imp protector has been mesmerized.");
+        mezSameTracker.Observe(t0.AddSeconds(3), "an imp protector has been mesmerized.");
+        mezSameTracker.Observe(t0.AddSeconds(3), "an imp protector has been mesmerized.");
+        Check("Mez same-name multi lands",
+            mezSameTracker.GetActiveSnapshots(t0.AddSeconds(3.1)).Count == 3);
+        mezSameTracker.Observe(t0.AddSeconds(27),
+            "Your Mesmerization spell has worn off of an imp protector.");
+        mezSameTracker.Observe(t0.AddSeconds(27),
+            "Your Mesmerization spell has worn off of an imp protector.");
+        mezSameTracker.Observe(t0.AddSeconds(27),
+            "Your Mesmerization spell has worn off of an imp protector.");
+        var sameNameBreakAlerts = mezSameTracker.Tick(t0.AddSeconds(27.1));
+        Check("Mez same-name worn-off alerts each", sameNameBreakAlerts.Count == 3);
+        Check("Mez same-name all cleared",
+            mezSameTracker.GetActiveSnapshots(t0.AddSeconds(27.1)).Count == 0);
+
+        // Remes: new land stacks; overwrite worn-off pops the old application without alert.
+        var mezRemes = Rule("Mesmerization", SpellTrackerCategory.Control, ControlEffectType.Mez, 24, 3);
+        var mezRemesTracker = new BuffTracker();
+        mezRemesTracker.Configure([mezRemes], _ => [], _ => [], _ => [" has been mesmerized."], _ => true);
+        mezRemesTracker.Observe(t0, "You begin casting Mesmerization.");
+        mezRemesTracker.Observe(t0.AddSeconds(3), "a Knight of Innoruuk has been mesmerized.");
+        mezRemesTracker.Observe(t0.AddSeconds(10), "You begin casting Mesmerization.");
+        mezRemesTracker.Observe(t0.AddSeconds(13), "a Knight of Innoruuk has been mesmerized.");
+        mezRemesTracker.Observe(t0.AddSeconds(13),
+            "Your Mesmerization spell has worn off of a Knight of Innoruuk.");
+        var remesAlerts = mezRemesTracker.Tick(t0.AddSeconds(13.1));
+        var remesSnap = mezRemesTracker.GetActiveSnapshots(t0.AddSeconds(13.1));
+        Check("Remes overwrite keeps timer",
+            remesSnap.Count == 1 &&
+            remesSnap[0].TargetName.Equals("a Knight of Innoruuk", StringComparison.OrdinalIgnoreCase) &&
+            Math.Abs((remesSnap[0].ExpiresAt - t0.AddSeconds(13 + 24)).TotalSeconds) < 1.0);
+        Check("Remes overwrite suppresses alert", remesAlerts.Count == 0);
+
+        // AE remes of two targets: overwrite worn-offs must not fire; later real worn-offs do.
+        var mezAeRemes = Rule("Mesmerization", SpellTrackerCategory.Control, ControlEffectType.Mez, 24, 3);
+        var mezAeRemesTracker = new BuffTracker();
+        mezAeRemesTracker.Configure([mezAeRemes], _ => [], _ => [], _ => [" has been mesmerized."], _ => true);
+        mezAeRemesTracker.Observe(t0, "You begin casting Mesmerization.");
+        mezAeRemesTracker.Observe(t0.AddSeconds(3), "an Agent of Innoruuk has been mesmerized.");
+        mezAeRemesTracker.Observe(t0.AddSeconds(3), "a Knight of Innoruuk has been mesmerized.");
+        mezAeRemesTracker.Observe(t0.AddSeconds(20), "You begin casting Mesmerization.");
+        mezAeRemesTracker.Observe(t0.AddSeconds(23), "an Agent of Innoruuk has been mesmerized.");
+        mezAeRemesTracker.Observe(t0.AddSeconds(23), "a Knight of Innoruuk has been mesmerized.");
+        mezAeRemesTracker.Observe(t0.AddSeconds(23),
+            "Your Mesmerization spell has worn off of an Agent of Innoruuk.");
+        mezAeRemesTracker.Observe(t0.AddSeconds(23),
+            "Your Mesmerization spell has worn off of a Knight of Innoruuk.");
+        var aeRemesAlerts = mezAeRemesTracker.Tick(t0.AddSeconds(23.1));
+        Check("AE remes no overwrite alerts", aeRemesAlerts.Count == 0);
+        Check("AE remes both still active",
+            mezAeRemesTracker.GetActiveSnapshots(t0.AddSeconds(23.1)).Count == 2);
+        mezAeRemesTracker.Observe(t0.AddSeconds(47),
+            "Your Mesmerization spell has worn off of an Agent of Innoruuk.");
+        mezAeRemesTracker.Observe(t0.AddSeconds(47),
+            "Your Mesmerization spell has worn off of a Knight of Innoruuk.");
+        var aeBreakAlerts = mezAeRemesTracker.Tick(t0.AddSeconds(47.1));
+        Check("AE mez real worn-off alerts once each", aeBreakAlerts.Count == 2);
+        Check("AE mez cleared after real worn-off",
+            mezAeRemesTracker.GetActiveSnapshots(t0.AddSeconds(47.1)).Count == 0);
+
+        // Same-second AE land + break on one of two identical names still alerts (not overwrite).
+        var mezEarly = Rule("Mesmerization", SpellTrackerCategory.Control, ControlEffectType.Mez, 24, 3);
+        var mezEarlyTracker = new BuffTracker();
+        mezEarlyTracker.Configure([mezEarly], _ => [], _ => [], _ => [" has been mesmerized."], _ => true);
+        mezEarlyTracker.Observe(t0, "You begin casting Mesmerization.");
+        mezEarlyTracker.Observe(t0.AddSeconds(3), "a greater kobold shaman has been mesmerized.");
+        mezEarlyTracker.Observe(t0.AddSeconds(3), "a greater kobold shaman has been mesmerized.");
+        mezEarlyTracker.Observe(t0.AddSeconds(3),
+            "Your Mesmerization spell has worn off of a greater kobold shaman.");
+        var earlyAlerts = mezEarlyTracker.Tick(t0.AddSeconds(3.1));
+        Check("Mez early break among same-name alerts", earlyAlerts.Count == 1);
+        Check("Mez early break leaves sibling",
+            mezEarlyTracker.GetActiveSnapshots(t0.AddSeconds(3.1)).Count == 1);
+
+        // Death clears one same-name mez stack, not the whole pack.
+        var mezDeath = Rule("Mesmerization", SpellTrackerCategory.Control, ControlEffectType.Mez, 24, 3);
+        var mezDeathTracker = new BuffTracker();
+        mezDeathTracker.Configure([mezDeath], _ => [], _ => [], _ => [" has been mesmerized."], _ => true);
+        mezDeathTracker.Observe(t0, "You begin casting Mesmerization.");
+        mezDeathTracker.Observe(t0.AddSeconds(3), "a lava beetle has been mesmerized.");
+        mezDeathTracker.Observe(t0.AddSeconds(3), "a lava beetle has been mesmerized.");
+        mezDeathTracker.Observe(t0.AddSeconds(5), "You have slain a lava beetle!");
+        Check("Mez death clears one same-name",
+            mezDeathTracker.GetActiveSnapshots(t0.AddSeconds(5.1)).Count == 1);
 
         // Worn-off must not cancel a pending recast of the same spell
         var recast = Rule("Odium", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other, 30, 3);

@@ -4,9 +4,19 @@ namespace EQLDamageMeter.Services;
 
 public sealed class AbilityAggregate(string name)
 {
-    public string Name { get; } = name;
+    public string Name { get; private set; } = name;
     public long Damage { get; set; }
     public Dictionary<string, AbilityAggregate> Children { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// EQ often omits the Roman rank on the direct hit ("… by Envenomed Bolt") while DoT
+    /// ticks keep it ("… from your Envenomed Bolt VI"). Prefer the longer/ranked label.
+    /// </summary>
+    public void PreferDisplayName(string candidate)
+    {
+        if (!string.IsNullOrWhiteSpace(candidate) && candidate.Length > Name.Length)
+            Name = candidate;
+    }
 }
 
 public sealed class TargetAggregate(string name)
@@ -309,12 +319,7 @@ public sealed class EncounterTracker(string localPlayerName)
         if (healing.IsOverTime) combatant.HealOverTimeTicks++;
         else combatant.DirectHeals++;
         if (healing.IsCritical) combatant.CriticalHeals++;
-        if (!combatant.HealingAbilities.TryGetValue(healing.Ability, out var ability))
-        {
-            ability = new AbilityAggregate(healing.Ability);
-            combatant.HealingAbilities[healing.Ability] = ability;
-        }
-        ability.Damage += healing.Amount;
+        GetOrCreateAbility(combatant.HealingAbilities, healing.Ability).Damage += healing.Amount;
     }
 
     public void ApplyGroupChange(GroupChange change)
@@ -392,9 +397,12 @@ public sealed class EncounterTracker(string localPlayerName)
             }
         }
 
-        if (defeatedTarget is null && message.EndsWith(" died.", StringComparison.OrdinalIgnoreCase))
+        if (defeatedTarget is null)
         {
-            defeatedTarget = message[..^" died.".Length];
+            if (message.EndsWith(" has died.", StringComparison.OrdinalIgnoreCase))
+                defeatedTarget = message[..^" has died.".Length];
+            else if (message.EndsWith(" died.", StringComparison.OrdinalIgnoreCase))
+                defeatedTarget = message[..^" died.".Length];
         }
 
         if (defeatedTarget is null || !_hostileTargets.Contains(defeatedTarget)) return;
@@ -445,7 +453,8 @@ public sealed class EncounterTracker(string localPlayerName)
 
     public long GetRollingDamageForOwner(string owner, bool includePets, DateTime now, TimeSpan window)
     {
-        if (IsFinalized || CompletionCandidateAt.HasValue) return 0;
+        // Keep rolling DPS live through the kill-completion grace; only stop once finalized.
+        if (IsFinalized) return 0;
         var cutoff = now - window;
         PruneRollingEvents(now);
         long total = 0;
@@ -524,13 +533,7 @@ public sealed class EncounterTracker(string localPlayerName)
             if (damage.IsCritical) combatant.SpellCriticalHits++;
         }
 
-        if (!combatant.Abilities.TryGetValue(damage.Ability, out var ability))
-        {
-            ability = new AbilityAggregate(damage.Ability);
-            combatant.Abilities[damage.Ability] = ability;
-        }
-
-        ability.Damage += damage.Amount;
+        GetOrCreateAbility(combatant.Abilities, damage.Ability).Damage += damage.Amount;
 
         if (!combatant.Targets.TryGetValue(damage.Target, out var target))
         {
@@ -538,12 +541,7 @@ public sealed class EncounterTracker(string localPlayerName)
             combatant.Targets[damage.Target] = target;
         }
         target.Damage += damage.Amount;
-        if (!target.Abilities.TryGetValue(damage.Ability, out var targetAbility))
-        {
-            targetAbility = new AbilityAggregate(damage.Ability);
-            target.Abilities[damage.Ability] = targetAbility;
-        }
-        targetAbility.Damage += damage.Amount;
+        GetOrCreateAbility(target.Abilities, damage.Ability).Damage += damage.Amount;
 
         ReplayPendingOutcomes(damage, group);
     }
@@ -656,13 +654,24 @@ public sealed class EncounterTracker(string localPlayerName)
         defender.DamageTaken += damage.Amount;
         defender.IncomingHits++;
         if (damage.Category == DamageCategory.Melee) defender.IncomingMeleeHits++;
-        if (!defender.IncomingAbilities.TryGetValue(damage.Ability, out var ability))
+        GetOrCreateAbility(defender.IncomingAbilities, damage.Ability).Damage += damage.Amount;
+    }
+
+    private static AbilityAggregate GetOrCreateAbility(Dictionary<string, AbilityAggregate> abilities,
+        string abilityName)
+    {
+        var key = SpellNameNormalizer.GetFamilyName(abilityName);
+        if (!abilities.TryGetValue(key, out var ability))
         {
-            ability = new AbilityAggregate(damage.Ability);
-            defender.IncomingAbilities[damage.Ability] = ability;
+            ability = new AbilityAggregate(abilityName);
+            abilities[key] = ability;
+        }
+        else
+        {
+            ability.PreferDisplayName(abilityName);
         }
 
-        ability.Damage += damage.Amount;
+        return ability;
     }
 
     private void AddDefensiveOutcome(string defenderName, CombatOutcomeEvent outcome, GroupStateTracker group)
@@ -786,13 +795,17 @@ public sealed class EncounterTracker(string localPlayerName)
             HealOverTimeTicks = source.HealOverTimeTicks,
             CriticalHeals = source.CriticalHeals
         };
-        foreach (var ability in source.Abilities.Values) clone.Abilities[ability.Name] = CloneAbility(ability);
-        foreach (var ability in source.IncomingAbilities.Values) clone.IncomingAbilities[ability.Name] = CloneAbility(ability);
-        foreach (var ability in source.HealingAbilities.Values) clone.HealingAbilities[ability.Name] = CloneAbility(ability);
+        foreach (var ability in source.Abilities.Values)
+            clone.Abilities[SpellNameNormalizer.GetFamilyName(ability.Name)] = CloneAbility(ability);
+        foreach (var ability in source.IncomingAbilities.Values)
+            clone.IncomingAbilities[SpellNameNormalizer.GetFamilyName(ability.Name)] = CloneAbility(ability);
+        foreach (var ability in source.HealingAbilities.Values)
+            clone.HealingAbilities[SpellNameNormalizer.GetFamilyName(ability.Name)] = CloneAbility(ability);
         foreach (var target in source.Targets.Values)
         {
             var targetClone = new TargetAggregate(target.Name) { Damage = target.Damage };
-            foreach (var ability in target.Abilities.Values) targetClone.Abilities[ability.Name] = CloneAbility(ability);
+            foreach (var ability in target.Abilities.Values)
+                targetClone.Abilities[SpellNameNormalizer.GetFamilyName(ability.Name)] = CloneAbility(ability);
             clone.Targets[target.Name] = targetClone;
         }
         return clone;

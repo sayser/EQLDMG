@@ -173,12 +173,6 @@ public partial class MainWindow : Window, IAsyncDisposable
             _viewModel.SkyTracker.RemovePart(part);
     }
 
-    private void SkyMarkBank_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { DataContext: SkyTrackedPartViewModel part })
-            _viewModel.SkyTracker.MarkPartInBank(part);
-    }
-
     private void SkyFoundMinus_Click(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { DataContext: SkyTrackedPartViewModel part } && part.FoundCount > 0)

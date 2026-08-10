@@ -36,6 +36,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly List<SessionRecord> _sessionHistory = [];
     private DateTime _lastSessionPersistUtc = DateTime.MinValue;
     private bool _sessionDirty;
+    private DateTime? _lastLogTimestamp;
+    private DateTime? _lastLogWallClock;
     private SpellDataCatalog? _spellDataCatalog;
     private LogFileMonitor? _monitor;
     private LogLineParser? _parser;
@@ -715,6 +717,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_group is null || _encounter is null) return;
 
+        _lastLogTimestamp = parsed.Timestamp;
+        _lastLogWallClock = DateTime.Now;
+
         if (_sessionTracker.Observe(parsed.Timestamp, parsed.Message))
         {
             _sessionDirty = true;
@@ -789,11 +794,16 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_encounter is null || _group is null) return;
         var now = DateTime.Now;
+        // Map wall-clock idle onto the last log timestamp so backlog drain cannot
+        // finalize a fight early, while AFK (no new lines) still times out.
+        var finalizeAt = _lastLogTimestamp is { } logTs && _lastLogWallClock is { } wall
+            ? logTs + (now - wall)
+            : now;
         var wasFinalized = _encounter.IsFinalized;
-        _encounter.FinalizeIfInactive(now);
+        _encounter.FinalizeIfInactive(finalizeAt);
         if (!wasFinalized && _encounter.IsFinalized) _dataVersion++;
         if (_encounter.IsFinalized && _encounter.StartedAt is { } startedAt && !_archivedStarts.Contains(startedAt) &&
-            _encounter.CreateSnapshot(now) is { } finished && Archive(finished, _group.IsGrouped ? "GROUP" : "SOLO"))
+            _encounter.CreateSnapshot(finalizeAt) is { } finished && Archive(finished, _group.IsGrouped ? "GROUP" : "SOLO"))
         {
             _dataVersion++;
         }
@@ -802,18 +812,18 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var history = SelectedHistory;
         var viewingArchive = history is { IsLive: false, Snapshot: not null };
         var snapshot = viewingArchive ? history!.Snapshot : null;
-        var seconds = snapshot is null ? _encounter.GetElapsedSeconds(now) : history!.Seconds;
+        var seconds = snapshot is null ? _encounter.GetElapsedSeconds(finalizeAt) : history!.Seconds;
         var renderedSecond = (long)Math.Floor(seconds);
         if (!force && viewingArchive && ReferenceEquals(_renderedHistory, history) &&
             _renderedDataVersion == _dataVersion)
         {
-            UpdateLiveHistoryCard(now);
+            UpdateLiveHistoryCard(finalizeAt);
             return;
         }
         if (!force && _renderedDataVersion == _dataVersion && _lastRenderedSecond == renderedSecond &&
             ReferenceEquals(_renderedHistory, history))
         {
-            UpdateLiveHistoryCard(now);
+            UpdateLiveHistoryCard(finalizeAt);
             return;
         }
 
@@ -847,14 +857,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             var rollingWindow = TimeSpan.FromSeconds(10);
             var rollingSeconds = Math.Min(rollingWindow.TotalSeconds, seconds);
             var rollingDamage = localPlayer is null ? 0 : _encounter.GetRollingDamageForOwner(
-                CharacterName, CombinePetDamage, now, rollingWindow);
+                CharacterName, CombinePetDamage, finalizeAt, rollingWindow);
             CurrentDps = localPlayer is null || !hasEncounter ? "—" : isWarmingUp ? "Calculating…" :
                 (rollingDamage / Math.Max(1, rollingSeconds)).ToString("N1", CultureInfo.CurrentCulture);
         }
 
         PopulateCombatants(aggregates, seconds, isWarmingUp);
         MaxDamage = Math.Max(1, Combatants.FirstOrDefault()?.Damage ?? 1);
-        UpdateLiveHistoryCard(now, localPlayer?.Damage ?? 0,
+        UpdateLiveHistoryCard(finalizeAt, localPlayer?.Damage ?? 0,
             localPlayer is null || !hasEncounter || isWarmingUp ? 0 : localPlayer.Damage / Math.Max(1, seconds));
         _renderedDataVersion = _dataVersion;
         _lastRenderedSecond = renderedSecond;
@@ -870,7 +880,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RefreshOverlayEntries(now);
         DotSpellTracker.Tick(now);
         ControlSpellTracker.Tick(now);
-        if (_sessionTracker.Current is not null)
+        // Duration ticks every second even when no new XP/loot lines arrive; dirty only
+        // gates disk persist.
+        if (_sessionTracker.Current is not null || _sessionDirty)
             RefreshSessionHistoryUi();
         PersistSessionHistoryIfNeeded(force: false);
     }
@@ -1093,9 +1105,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 var petSummary = new AbilityAggregate("PET DMG") { Damage = petDamage };
                 foreach (var abilityGroup in pets.SelectMany(pet => pet.Abilities.Values)
-                             .GroupBy(ability => ability.Name, StringComparer.OrdinalIgnoreCase))
+                             .GroupBy(ability => SpellNameNormalizer.GetFamilyName(ability.Name),
+                                 StringComparer.OrdinalIgnoreCase))
                 {
-                    petSummary.Children[abilityGroup.Key] = new AbilityAggregate(abilityGroup.Key)
+                    var display = abilityGroup.OrderByDescending(item => item.Name.Length).First().Name;
+                    petSummary.Children[abilityGroup.Key] = new AbilityAggregate(display)
                     {
                         Damage = abilityGroup.Sum(item => item.Damage)
                     };
@@ -1112,10 +1126,15 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         foreach (var ability in abilities)
         {
-            if (!destination.TryGetValue(ability.Name, out var aggregate))
+            var key = SpellNameNormalizer.GetFamilyName(ability.Name);
+            if (!destination.TryGetValue(key, out var aggregate))
             {
                 aggregate = new AbilityAggregate(ability.Name);
-                destination[ability.Name] = aggregate;
+                destination[key] = aggregate;
+            }
+            else
+            {
+                aggregate.PreferDisplayName(ability.Name);
             }
             aggregate.Damage += ability.Damage;
         }

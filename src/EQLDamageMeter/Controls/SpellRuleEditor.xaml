@@ -5,9 +5,9 @@
         xmlns:models="clr-namespace:EQLDamageMeter.Models">
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="1.65*" />
+            <ColumnDefinition Width="*" />
             <ColumnDefinition Width="14" />
-            <ColumnDefinition Width="0.95*" />
+            <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
         <Border Grid.Column="0" Style="{DynamicResource GlassCard}" Padding="16,12">
@@ -153,24 +153,20 @@
                     </StackPanel>
                     <StackPanel Grid.Row="1" Margin="0,8,0,0">
                         <TextBlock Text="Spell Name" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" />
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Border Width="34" Height="34" CornerRadius="6" Background="#152F43"
-                                    BorderBrush="#416A83" BorderThickness="1" Margin="0,0,8,0"
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="52" Height="52" CornerRadius="8" Background="#152F43"
+                                    BorderBrush="#416A83" BorderThickness="1" Margin="0,0,10,0"
                                     VerticalAlignment="Center">
-                                <Image Source="{Binding SelectedRule.Icon}" Width="28" Height="28"
+                                <Image Source="{Binding SelectedRule.Icon}" Width="44" Height="44"
                                        RenderOptions.BitmapScalingMode="NearestNeighbor" SnapsToDevicePixels="True" />
                             </Border>
-                            <local:SpellNameSearchBox Grid.Column="1"
+                            <local:SpellNameSearchBox VerticalAlignment="Center"
                                      Text="{Binding SelectedRule.SpellName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      Catalog="{Binding SpellCatalog}"
                                      Tag="{Binding SelectedRule}"
                                      LostFocus="SpellName_LostFocus"
                                      ToolTip="Type to search spell names (not case sensitive)." />
-                        </Grid>
+                        </StackPanel>
                         <TextBlock Text="{Binding SelectedRule.SpellValidationText}" Foreground="#FF8B91" FontSize="10" Margin="0,4,0,0" TextWrapping="Wrap" />
                     </StackPanel>
                     <Grid Grid.Row="2" Margin="0,12,0,0">
@@ -198,7 +194,7 @@
                     <Grid Grid.Row="3" Margin="0,12,0,0">
                         <Grid.Style><Style TargetType="Grid"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding IsControl}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></Grid.Style>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                        <StackPanel><TextBlock Text="Control Type" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" /><ComboBox Style="{DynamicResource BuffCombo}" ItemsSource="{Binding ControlTypes}" SelectedItem="{Binding SelectedRule.ControlType, Mode=TwoWay}" /></StackPanel>
+                        <StackPanel><TextBlock Text="Control Type" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" /><ComboBox Style="{DynamicResource BuffComboAlert}" Width="110" ItemsSource="{Binding ControlTypes}" SelectedItem="{Binding SelectedRule.ControlType, Mode=TwoWay}" /></StackPanel>
                     </Grid>
                     <Grid Grid.Row="4" Margin="0,14,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -214,13 +210,14 @@
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="Alert Type" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" />
-                            <ComboBox Style="{DynamicResource BuffCombo}" ItemsSource="{Binding AlertModes}"
+                            <ComboBox Style="{DynamicResource BuffComboAlert}" ItemsSource="{Binding AlertModes}"
                                       SelectedItem="{Binding SelectedRule.AlertMode, Mode=TwoWay}"
-                                      ToolTip="Alert type (sound only)" />
+                                      ToolTip="Alert type (sound or text-to-speech)" />
                         </StackPanel>
                         <StackPanel Grid.Column="2" Visibility="{Binding SelectedRule.SoundPickerVisibility}">
                             <TextBlock Text="Sound" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" />
-                            <ComboBox Style="{DynamicResource BuffCombo}" ItemsSource="{Binding SoundChoices}"
+                            <ComboBox Style="{DynamicResource BuffComboAlert}" Width="110"
+                                      ItemsSource="{Binding SoundChoices}"
                                       SelectedItem="{Binding SelectedRule.Sound, Mode=TwoWay}" />
                         </StackPanel>
                     </Grid>

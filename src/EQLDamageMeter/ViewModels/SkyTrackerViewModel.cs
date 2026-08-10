@@ -27,7 +27,7 @@ public sealed class SkyTrackerViewModel : ObservableObject
     public ObservableCollection<SkyTrackedGoalViewModel> Goals { get; } = [];
     public IReadOnlyList<BuffSoundKind> SoundChoices { get; } = Enum.GetValues<BuffSoundKind>();
     public IReadOnlyList<BuffAlertMode> AlertModeChoices { get; } = BuffAlertModeOptions.ExclusiveChoices;
-    public IReadOnlyList<SkyItemLocation> LocationChoices { get; } = Enum.GetValues<SkyItemLocation>();
+    public IReadOnlyList<SkyLocationChoice> LocationChoices { get; } = SkyLocationChoice.All;
 
     public string StatusText
     {
@@ -173,11 +173,12 @@ public sealed class SkyTrackerViewModel : ObservableObject
                     foundCount: 0,
                     SkyItemLocation.Unknown,
                     alertEnabled: true,
-                    part.AlertMode,
-                    part.Sound,
-                    part.VoiceText,
+                    BuffAlertMode.Sound,
+                    BuffSoundKind.Chime,
+                    voiceText: string.Empty,
                     lastDropText: string.Empty,
-                    PersistAsync));
+                    PersistAsync,
+                    existing.RefreshProgress));
             }
 
             existing.RefreshProgress();
@@ -213,11 +214,12 @@ public sealed class SkyTrackerViewModel : ObservableObject
                 foundCount: 0,
                 SkyItemLocation.Unknown,
                 alertEnabled: true,
-                part.AlertMode,
-                part.Sound,
-                part.VoiceText,
+                BuffAlertMode.Sound,
+                BuffSoundKind.Chime,
+                voiceText: string.Empty,
                 lastDropText: string.Empty,
-                PersistAsync));
+                PersistAsync,
+                goal.RefreshProgress));
         }
 
         goal.RefreshProgress();
@@ -254,18 +256,6 @@ public sealed class SkyTrackerViewModel : ObservableObject
             StatusText = $"Stopped tracking {part.ItemName}";
         }
 
-        _ = PersistAsync();
-    }
-
-    public void MarkPartInBank(SkyTrackedPartViewModel part)
-    {
-        if (part is null) return;
-        part.Location = SkyItemLocation.Bank;
-        if (part.FoundCount < part.NeededCount)
-            part.FoundCount = part.NeededCount;
-        part.LastDropText = "Marked in bank";
-        SelectedGoal?.RefreshProgress();
-        StatusText = $"{part.ItemName} marked in bank";
         _ = PersistAsync();
     }
 
@@ -353,10 +343,7 @@ public sealed class SkyTrackerViewModel : ObservableObject
         {
             PreviewParts.Add(new SkyPreviewPartViewModel(item.ItemName, item.Note, item.NeededCount)
             {
-                IsSelected = true,
-                AlertMode = BuffAlertMode.Sound,
-                Sound = BuffSoundKind.Chime,
-                VoiceText = string.Empty
+                IsSelected = true
             });
         }
 
@@ -444,9 +431,6 @@ public sealed class SkyTrackerViewModel : ObservableObject
 public sealed class SkyPreviewPartViewModel : ObservableObject
 {
     private bool _isSelected = true;
-    private BuffAlertMode _alertMode = BuffAlertMode.Sound;
-    private BuffSoundKind _sound = BuffSoundKind.Chime;
-    private string _voiceText = string.Empty;
 
     public SkyPreviewPartViewModel(string itemName, string note, int neededCount)
     {
@@ -458,42 +442,17 @@ public sealed class SkyPreviewPartViewModel : ObservableObject
     public string ItemName { get; }
     public string Note { get; }
     public int NeededCount { get; }
-    public string DisplayName => string.IsNullOrWhiteSpace(Note) ? ItemName : $"{ItemName} ({Note})";
+    /// <summary>Wiki-style drop source, e.g. " (7-Soth)". Empty for random/any-mob drops.</summary>
+    public string DropSourceText =>
+        string.IsNullOrWhiteSpace(Note) ? string.Empty : $" ({Note.Trim()})";
+    public string DisplayName =>
+        string.IsNullOrWhiteSpace(Note) ? ItemName : $"{ItemName} ({Note.Trim()})";
 
     public bool IsSelected
     {
         get => _isSelected;
         set => SetProperty(ref _isSelected, value);
     }
-
-    public BuffAlertMode AlertMode
-    {
-        get => _alertMode;
-        set
-        {
-            var normalized = BuffAlertModeOptions.Normalize(value);
-            if (!SetProperty(ref _alertMode, normalized)) return;
-            RaisePropertyChanged(nameof(SoundPickerVisibility));
-            RaisePropertyChanged(nameof(VoiceTextVisibility));
-        }
-    }
-
-    public BuffSoundKind Sound
-    {
-        get => _sound;
-        set => SetProperty(ref _sound, value);
-    }
-
-    public string VoiceText
-    {
-        get => _voiceText;
-        set => SetProperty(ref _voiceText, value);
-    }
-
-    public Visibility SoundPickerVisibility =>
-        AlertMode == BuffAlertMode.Sound ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility VoiceTextVisibility =>
-        AlertMode == BuffAlertMode.TextToSpeech ? Visibility.Visible : Visibility.Collapsed;
 }
 
 public sealed class SkyTrackedGoalViewModel : ObservableObject
@@ -564,15 +523,33 @@ public sealed class SkyTrackedGoalViewModel : ObservableObject
             model.RewardStats,
             persist);
         foreach (var part in model.Parts)
-            vm.Parts.Add(SkyTrackedPartViewModel.From(part, persist));
+            vm.Parts.Add(SkyTrackedPartViewModel.From(part, persist, vm.RefreshProgress));
         vm.RefreshProgress();
         return vm;
     }
 }
 
+public sealed record SkyLocationChoice(SkyItemLocation Value, string Label)
+{
+    public static IReadOnlyList<SkyLocationChoice> All { get; } =
+    [
+        new(SkyItemLocation.Unknown, "Not set"),
+        new(SkyItemLocation.Inventory, "Equipment"),
+        new(SkyItemLocation.Bank, "Bank"),
+        new(SkyItemLocation.Currency, "Currencies"),
+        new(SkyItemLocation.Other, "Other")
+    ];
+
+    public static string LabelFor(SkyItemLocation location) =>
+        All.FirstOrDefault(choice => choice.Value == location)?.Label ?? location.ToString();
+
+    public override string ToString() => Label;
+}
+
 public sealed class SkyTrackedPartViewModel : ObservableObject
 {
     private readonly Func<Task> _persist;
+    private readonly Action? _onProgressChanged;
     private int _foundCount;
     private SkyItemLocation _location;
     private bool _alertEnabled;
@@ -583,7 +560,7 @@ public sealed class SkyTrackedPartViewModel : ObservableObject
 
     public SkyTrackedPartViewModel(string itemName, string note, int neededCount, int foundCount,
         SkyItemLocation location, bool alertEnabled, BuffAlertMode alertMode, BuffSoundKind sound,
-        string voiceText, string lastDropText, Func<Task> persist)
+        string voiceText, string lastDropText, Func<Task> persist, Action? onProgressChanged = null)
     {
         ItemName = itemName;
         Note = note;
@@ -596,6 +573,7 @@ public sealed class SkyTrackedPartViewModel : ObservableObject
         _voiceText = voiceText ?? string.Empty;
         _lastDropText = lastDropText;
         _persist = persist;
+        _onProgressChanged = onProgressChanged;
     }
 
     public string ItemName { get; }
@@ -603,6 +581,11 @@ public sealed class SkyTrackedPartViewModel : ObservableObject
     public int NeededCount { get; }
     public string DisplayName => string.IsNullOrWhiteSpace(Note) ? ItemName : $"{ItemName} ({Note})";
     public string ProgressText => $"{FoundCount}/{NeededCount}";
+    public string LocationLabel => SkyLocationChoice.LabelFor(Location);
+    public string StatusSummary =>
+        string.IsNullOrWhiteSpace(LastDropText)
+            ? $"{ProgressText} · Where: {LocationLabel}"
+            : $"{ProgressText} · Where: {LocationLabel} · {LastDropText}";
 
     public int FoundCount
     {
@@ -612,6 +595,8 @@ public sealed class SkyTrackedPartViewModel : ObservableObject
             var clamped = Math.Max(0, value);
             if (!SetProperty(ref _foundCount, clamped)) return;
             RaisePropertyChanged(nameof(ProgressText));
+            RaisePropertyChanged(nameof(StatusSummary));
+            _onProgressChanged?.Invoke();
             _ = _persist();
         }
     }
@@ -622,6 +607,16 @@ public sealed class SkyTrackedPartViewModel : ObservableObject
         set
         {
             if (!SetProperty(ref _location, value)) return;
+            if (value == SkyItemLocation.Bank && _foundCount < NeededCount)
+            {
+                _foundCount = NeededCount;
+                RaisePropertyChanged(nameof(FoundCount));
+                RaisePropertyChanged(nameof(ProgressText));
+                _onProgressChanged?.Invoke();
+            }
+
+            RaisePropertyChanged(nameof(LocationLabel));
+            RaisePropertyChanged(nameof(StatusSummary));
             _ = _persist();
         }
     }
@@ -642,9 +637,11 @@ public sealed class SkyTrackedPartViewModel : ObservableObject
         {
             _location = location;
             RaisePropertyChanged(nameof(Location));
+            RaisePropertyChanged(nameof(LocationLabel));
         }
 
         LastDropText = lastDropText;
+        RaisePropertyChanged(nameof(StatusSummary));
     }
 
     public bool AlertEnabled
@@ -653,6 +650,7 @@ public sealed class SkyTrackedPartViewModel : ObservableObject
         set
         {
             if (!SetProperty(ref _alertEnabled, value)) return;
+            RaisePropertyChanged(nameof(AlertDetailsVisibility));
             _ = _persist();
         }
     }
@@ -690,15 +688,21 @@ public sealed class SkyTrackedPartViewModel : ObservableObject
         }
     }
 
+    public Visibility AlertDetailsVisibility =>
+        AlertEnabled ? Visibility.Visible : Visibility.Collapsed;
     public Visibility SoundPickerVisibility =>
-        AlertMode == BuffAlertMode.Sound ? Visibility.Visible : Visibility.Collapsed;
+        AlertEnabled && AlertMode == BuffAlertMode.Sound ? Visibility.Visible : Visibility.Collapsed;
     public Visibility VoiceTextVisibility =>
-        AlertMode == BuffAlertMode.TextToSpeech ? Visibility.Visible : Visibility.Collapsed;
+        AlertEnabled && AlertMode == BuffAlertMode.TextToSpeech ? Visibility.Visible : Visibility.Collapsed;
 
     public string LastDropText
     {
         get => _lastDropText;
-        set => SetProperty(ref _lastDropText, value);
+        set
+        {
+            if (!SetProperty(ref _lastDropText, value)) return;
+            RaisePropertyChanged(nameof(StatusSummary));
+        }
     }
 
     public SkyTrackedPart ToModel() => new()
@@ -715,8 +719,9 @@ public sealed class SkyTrackedPartViewModel : ObservableObject
         LastDropText = LastDropText
     };
 
-    public static SkyTrackedPartViewModel From(SkyTrackedPart model, Func<Task> persist) =>
+    public static SkyTrackedPartViewModel From(SkyTrackedPart model, Func<Task> persist,
+        Action? onProgressChanged = null) =>
         new(model.ItemName, model.Note, model.NeededCount, model.FoundCount, model.Location,
             model.AlertEnabled, model.AlertMode, model.Sound, model.VoiceText, model.LastDropText,
-            persist);
+            persist, onProgressChanged);
 }

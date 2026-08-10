@@ -139,6 +139,14 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="HeaderActionButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="MinWidth" Value="118" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="#78091F31" />
+            <Setter Property="BorderBrush" Value="#4F7891" />
+        </Style>
         <Style x:Key="BuffInput" TargetType="TextBox">
             <Setter Property="Foreground" Value="#EDF7FF" />
             <Setter Property="Background" Value="#A0092235" />
@@ -149,34 +157,117 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
         <DataTemplate x:Key="BuffComboItemTemplate">
-            <TextBlock Text="{Binding}" Foreground="#102A3D" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding}" Foreground="#EDF7FF" FontWeight="SemiBold" />
         </DataTemplate>
+        <ControlTemplate x:Key="BuffComboToggleTemplate" TargetType="ToggleButton">
+            <Border x:Name="Chrome" Background="{Binding Background, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                    BorderBrush="{Binding BorderBrush, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                    BorderThickness="{Binding BorderThickness, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                    CornerRadius="4">
+                <Path Data="M 0,0 L 7,7 L 14,0" Stroke="#A9C3D3" StrokeThickness="1.6"
+                      HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0"
+                      Width="12" Height="7" Stretch="Fill" />
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Chrome" Property="BorderBrush" Value="#6A93AB" />
+                    <Setter TargetName="Chrome" Property="Background" Value="#B0122E44" />
+                </Trigger>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter TargetName="Chrome" Property="BorderBrush" Value="#A98BFF" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter TargetName="Chrome" Property="Opacity" Value="0.55" />
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
         <Style x:Key="BuffCombo" TargetType="ComboBox">
-            <Setter Property="Foreground" Value="#102A3D" />
-            <Setter Property="Background" Value="#EAF7FC" />
+            <Setter Property="Foreground" Value="#EDF7FF" />
+            <Setter Property="Background" Value="#A0092235" />
             <Setter Property="BorderBrush" Value="#42677F" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
             <Setter Property="ItemTemplate" Value="{StaticResource BuffComboItemTemplate}" />
             <Setter Property="ItemContainerStyle">
                 <Setter.Value>
                     <Style TargetType="ComboBoxItem">
-                        <Setter Property="Foreground" Value="#102A3D" />
-                        <Setter Property="Background" Value="#F4FBFE" />
-                        <Setter Property="Padding" Value="8,5" />
-                        <Style.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#BFEAF3" />
-                                <Setter Property="Foreground" Value="#071B2A" />
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Background" Value="#87D3E4" />
-                                <Setter Property="Foreground" Value="#061522" />
-                            </Trigger>
-                        </Style.Triggers>
+                        <Setter Property="Foreground" Value="#EDF7FF" />
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="Padding" Value="10,6" />
+                        <Setter Property="HorizontalContentAlignment" Value="Left" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ComboBoxItem">
+                                    <Border x:Name="ItemBd" Background="{TemplateBinding Background}"
+                                            Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                          VerticalAlignment="Center" />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="ItemBd" Property="Background" Value="#3A5A72" />
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="ItemBd" Property="Background" Value="#684CC0" />
+                                        </Trigger>
+                                        <MultiTrigger>
+                                            <MultiTrigger.Conditions>
+                                                <Condition Property="IsSelected" Value="True" />
+                                                <Condition Property="IsMouseOver" Value="True" />
+                                            </MultiTrigger.Conditions>
+                                            <Setter TargetName="ItemBd" Property="Background" Value="#7B5DD4" />
+                                        </MultiTrigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
                     </Style>
                 </Setter.Value>
             </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="ToggleButton" Template="{StaticResource BuffComboToggleTemplate}"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          Focusable="False" ClickMode="Press" />
+                            <ContentPresenter x:Name="ContentSite" IsHitTestVisible="False"
+                                              Margin="10,0,30,0" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                              ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" />
+                            <Popup x:Name="Popup" Placement="Bottom" AllowsTransparency="True" Focusable="False"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}" PopupAnimation="Slide">
+                                <Border x:Name="DropDownBorder" Margin="0,2,0,0" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                        MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                        Background="#122636" BorderBrush="#5A7F96" BorderThickness="1" CornerRadius="4"
+                                        SnapsToDevicePixels="True">
+                                    <ScrollViewer Margin="1" SnapsToDevicePixels="True">
+                                        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.55" />
+                            </Trigger>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="DropDownBorder" Property="MinHeight" Value="36" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Compact width for Alert Type (fits "TextToSpeech") -->
+        <Style x:Key="BuffComboAlert" TargetType="ComboBox" BasedOn="{StaticResource BuffCombo}">
+            <Setter Property="Width" Value="128" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
         </Style>
         <Style TargetType="ToolTip">
             <Setter Property="Foreground" Value="#102A3D" />
@@ -358,7 +449,6 @@
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="300" />
-                        <ColumnDefinition Width="Auto" MinWidth="148" />
                         <ColumnDefinition Width="12" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
@@ -418,37 +508,13 @@
                         </StackPanel>
                     </Grid>
 
-                    <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                            <Button x:Name="SettingsButton" Content="Settings" Padding="8,4" Margin="0,0,6,0"
-                                    FontSize="11" Click="Settings_Click" ToolTip="Open settings">
-                                <Button.ContextMenu>
-                                    <ContextMenu>
-                                        <MenuItem Header="Logs folder…" Click="ChooseLogs_Click"
-                                                  ToolTip="Choose the EverQuest Legends Logs folder" />
-                                        <MenuItem Header="Populate session from last 3h of log"
-                                                  Click="PopulateSessionFromLog_Click"
-                                                  ToolTip="Rebuild a test session from the last 3 hours of the loaded character log" />
-                                    </ContextMenu>
-                                </Button.ContextMenu>
-                            </Button>
-                            <Button Content="Updates" Padding="8,4" FontSize="11" Click="CheckUpdates_Click"
-                                    ToolTip="{Binding UpdateButtonToolTip}" />
-                        </StackPanel>
-                        <Button x:Name="OverlaysToggleButton" Content="Open all overlays"
-                                Padding="6,3" Margin="0,6,0,0" FontSize="10"
-                                HorizontalAlignment="Stretch"
-                                Click="ToggleAllOverlays_Click"
-                                ToolTip="Open or close DPS, Buff, DoT, and Control overlays" />
-                    </StackPanel>
-
-                    <Border Grid.Column="3" Background="#BA081F31" BorderBrush="#4F7891" BorderThickness="1"
+                    <Border Grid.Column="2" Background="#BA081F31" BorderBrush="#4F7891" BorderThickness="1"
                             CornerRadius="16" Padding="8,7">
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="1.12*" /><ColumnDefinition Width="1" />
-                                <ColumnDefinition Width="*" /><ColumnDefinition Width="1" />
-                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="1.15*" /><ColumnDefinition Width="1" />
+                                <ColumnDefinition Width="0.85*" /><ColumnDefinition Width="1" />
+                                <ColumnDefinition Width="Auto" MinWidth="150" />
                             </Grid.ColumnDefinitions>
 
                             <Grid Margin="10,0">
@@ -465,19 +531,38 @@
                             <Grid Grid.Column="2" Margin="10,0">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="44" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                 <TextBlock Text="◎" FontSize="36" FontWeight="Light" Foreground="#C8E6F5" VerticalAlignment="Center" />
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Mode" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding ModeText}" Style="{StaticResource MetricValue}" Foreground="#2ED9C7" /></StackPanel>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="Mode" Style="{StaticResource MetricLabel}" />
+                                    <TextBlock Text="{Binding ModeText}" Style="{StaticResource MetricValue}" Foreground="#2ED9C7" />
+                                </StackPanel>
                             </Grid>
                             <Border Grid.Column="3" Background="#315268" Margin="0,9" />
 
-                            <Grid Grid.Column="4" Margin="10,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="44" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <TextBlock Text="◷" FontSize="34" FontWeight="Light" Foreground="#C8E6F5" VerticalAlignment="Center" />
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Duration" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding EncounterTime}" Style="{StaticResource MetricValue}" Foreground="#F2FAFF" /></StackPanel>
-                            </Grid>
+                            <StackPanel Grid.Column="4" VerticalAlignment="Center" Margin="12,2,8,2">
+                                <Button x:Name="SettingsButton" Style="{StaticResource HeaderActionButton}"
+                                        Content="Settings" Margin="0,0,0,5"
+                                        Click="Settings_Click" ToolTip="Open settings">
+                                    <Button.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Logs folder…" Click="ChooseLogs_Click"
+                                                      ToolTip="Choose the EverQuest Legends Logs folder" />
+                                            <MenuItem Header="Populate session from last 3h of log"
+                                                      Click="PopulateSessionFromLog_Click"
+                                                      ToolTip="Rebuild a test session from the last 3 hours of the loaded character log" />
+                                        </ContextMenu>
+                                    </Button.ContextMenu>
+                                </Button>
+                                <Button x:Name="OverlaysToggleButton" Style="{StaticResource HeaderActionButton}"
+                                        Content="Open all overlays" Margin="0,0,0,5"
+                                        Click="ToggleAllOverlays_Click"
+                                        ToolTip="Open or close DPS, Buff, DoT, and Control overlays" />
+                                <Button Style="{StaticResource HeaderActionButton}" Content="Updates"
+                                        Click="CheckUpdates_Click" ToolTip="{Binding UpdateButtonToolTip}" />
+                            </StackPanel>
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="2" Grid.ColumnSpan="4" Background="#62071C2D" BorderBrush="#355B73"
+                    <Border Grid.Row="2" Grid.ColumnSpan="3" Background="#62071C2D" BorderBrush="#355B73"
                             BorderThickness="1" CornerRadius="10" HorizontalAlignment="Center" Padding="6,5">
                         <StackPanel Orientation="Horizontal">
                             <RadioButton x:Name="DpsParserButton" Content="DPS Parser" GroupName="PrimaryModule"
@@ -497,12 +582,17 @@
 
             <!-- Main workspace -->
             <Grid Grid.Row="2" Visibility="{Binding IsChecked, ElementName=DpsParserButton, Converter={StaticResource BooleanToVisibility}}">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="1.7*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="0.9*" /></Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0" Style="{StaticResource GlassCard}">
                     <Grid>
                         <Grid.RowDefinitions><RowDefinition Height="54" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                         <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock Text="⚔" FontSize="18" Foreground="#A7C8DA" Margin="0,0,10,0" />
                                 <StackPanel>
@@ -510,7 +600,16 @@
                                     <TextBlock Text="Current encounter" Foreground="#66879D" FontSize="10" Margin="0,3,0,0" />
                                 </StackPanel>
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="22,0,18,0">
+                                <TextBlock Text="◷" FontSize="22" FontWeight="Light" Foreground="#C8E6F5"
+                                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Duration" Style="{StaticResource MetricLabel}" />
+                                    <TextBlock Text="{Binding EncounterTime}" Style="{StaticResource MetricValue}"
+                                               Foreground="#F2FAFF" />
+                                </StackPanel>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                                 <CheckBox Content="Combine pet DPS with owner"
                                           IsChecked="{Binding CombinePetDamage, Mode=TwoWay}"
                                           VerticalAlignment="Center"
@@ -584,8 +683,8 @@
                 <Border Grid.Column="2" Style="{StaticResource GlassCard}" Padding="0">
                     <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="44" /><RowDefinition Height="58" />
-                            <RowDefinition Height="220" /><RowDefinition Height="*" />
+                            <RowDefinition Height="40" /><RowDefinition Height="32" />
+                            <RowDefinition Height="148" /><RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <Border Margin="2,2,2,0" CornerRadius="17,17,0,0" Background="#9A071C2D"
                                 BorderBrush="#527B94" BorderThickness="1" ClipToBounds="True">
@@ -606,47 +705,55 @@
                             </Grid>
                         </Border>
 
-                        <Grid Grid.Row="1" Margin="15,7,15,2">
-                            <StackPanel>
-                                <TextBlock Text="DAMAGE BREAKDOWN" Style="{StaticResource SectionLabel}" FontSize="10" Visibility="{Binding OffenseVisibility}" />
-                                <TextBlock Text="DEFENSE BREAKDOWN" Style="{StaticResource SectionLabel}" FontSize="10" Visibility="{Binding DefenseVisibility}" />
-                                <TextBlock Text="HEALING BREAKDOWN" Style="{StaticResource SectionLabel}" FontSize="10" Visibility="{Binding HealingVisibility}" />
-                                <TextBlock Text="{Binding SelectedName}" FontSize="17" FontWeight="SemiBold" Margin="0,1,0,0" />
+                        <Grid Grid.Row="1" Margin="15,4,15,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="DAMAGE BREAKDOWN" Style="{StaticResource SectionLabel}" FontSize="10"
+                                           VerticalAlignment="Center" Visibility="{Binding OffenseVisibility}" />
+                                <TextBlock Text="DEFENSE BREAKDOWN" Style="{StaticResource SectionLabel}" FontSize="10"
+                                           VerticalAlignment="Center" Visibility="{Binding DefenseVisibility}" />
+                                <TextBlock Text="HEALING BREAKDOWN" Style="{StaticResource SectionLabel}" FontSize="10"
+                                           VerticalAlignment="Center" Visibility="{Binding HealingVisibility}" />
                             </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding SelectedName}" FontSize="15" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
                         </Grid>
 
                         <!-- Offense metrics -->
-                        <Grid Grid.Row="2" Margin="15,0,15,6" ClipToBounds="False" Visibility="{Binding OffenseVisibility}">
-                            <Grid.RowDefinitions><RowDefinition Height="54" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                        <Grid Grid.Row="2" Margin="15,2,15,2" ClipToBounds="False" Visibility="{Binding OffenseVisibility}">
+                            <Grid.RowDefinitions><RowDefinition Height="40" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                             <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <Border Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="HITS" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.Hits}" FontSize="16" FontWeight="Bold" /></StackPanel></Border>
-                                <Border Grid.Column="2" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="MISSED" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.Misses}" FontSize="16" FontWeight="Bold" Foreground="#FFBD57" /></StackPanel></Border>
-                                <Border Grid.Column="4" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="CRIT %" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.CriticalRateText}" FontSize="16" FontWeight="Bold" Foreground="#FFBD57" /></StackPanel></Border>
-                                <Border Grid.Column="6" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="SPELL CRIT %" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.SpellCriticalRateText}" FontSize="16" FontWeight="Bold" Foreground="#2FD8C7" /></StackPanel></Border>
-                                <Border Grid.Column="8" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="RESISTED" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.SpellResists}" FontSize="16" FontWeight="Bold" Foreground="#FF6C91" /></StackPanel></Border>
-                                <Border Grid.Column="10" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="FIZZLED" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.SpellFizzles}" FontSize="16" FontWeight="Bold" Foreground="#A985FF" /></StackPanel></Border>
-                                <Border Grid.Column="12" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="STUNS" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.StunsLanded}" FontSize="16" FontWeight="Bold" Foreground="#7FC6FF" /></StackPanel></Border>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="HITS" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.Hits}" FontSize="14" FontWeight="Bold" /></StackPanel></Border>
+                                <Border Grid.Column="2" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="MISSED" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.Misses}" FontSize="14" FontWeight="Bold" Foreground="#FFBD57" /></StackPanel></Border>
+                                <Border Grid.Column="4" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="CRIT %" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.CriticalRateText}" FontSize="14" FontWeight="Bold" Foreground="#FFBD57" /></StackPanel></Border>
+                                <Border Grid.Column="6" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="SPELL CRIT %" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.SpellCriticalRateText}" FontSize="14" FontWeight="Bold" Foreground="#2FD8C7" /></StackPanel></Border>
+                                <Border Grid.Column="8" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="RESISTED" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.SpellResists}" FontSize="14" FontWeight="Bold" Foreground="#FF6C91" /></StackPanel></Border>
+                                <Border Grid.Column="10" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="FIZZLED" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.SpellFizzles}" FontSize="14" FontWeight="Bold" Foreground="#A985FF" /></StackPanel></Border>
+                                <Border Grid.Column="12" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="STUNS" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.StunsLanded}" FontSize="14" FontWeight="Bold" Foreground="#7FC6FF" /></StackPanel></Border>
                             </Grid>
-                            <Grid Grid.Row="1" Margin="0,8,0,4" ClipToBounds="False">
-                                <controls:DonutChart Width="184" Height="145" ItemsSource="{Binding SelectedAbilities}"
+                            <Grid Grid.Row="1" Margin="0,2,0,0" ClipToBounds="False">
+                                <controls:DonutChart Width="118" Height="96" ItemsSource="{Binding SelectedAbilities}"
                                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Grid>
                         </Grid>
 
                         <!-- Healing metrics -->
-                        <Grid Grid.Row="2" Margin="15,0,15,6" ClipToBounds="False" Visibility="{Binding HealingVisibility}">
-                            <Grid.RowDefinitions><RowDefinition Height="54" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                        <Grid Grid.Row="2" Margin="15,2,15,2" ClipToBounds="False" Visibility="{Binding HealingVisibility}">
+                            <Grid.RowDefinitions><RowDefinition Height="40" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                             <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <Border Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="HEALING" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.HealingText}" FontSize="16" FontWeight="Bold" Foreground="#2FD8C7" /></StackPanel></Border>
-                                <Border Grid.Column="2" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="HPS" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.HpsText}" FontSize="16" FontWeight="Bold" Foreground="#A985FF" /></StackPanel></Border>
-                                <Border Grid.Column="4" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="DIRECT" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.DirectHeals}" FontSize="16" FontWeight="Bold" /></StackPanel></Border>
-                                <Border Grid.Column="6" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="HOT TICKS" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.HealOverTimeTicks}" FontSize="16" FontWeight="Bold" /></StackPanel></Border>
-                                <Border Grid.Column="8" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="HEAL CRIT %" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.HealingCriticalRateText}" FontSize="16" FontWeight="Bold" Foreground="#FFBD57" /></StackPanel></Border>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="HEALING" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.HealingText}" FontSize="14" FontWeight="Bold" Foreground="#2FD8C7" /></StackPanel></Border>
+                                <Border Grid.Column="2" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="HPS" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.HpsText}" FontSize="14" FontWeight="Bold" Foreground="#A985FF" /></StackPanel></Border>
+                                <Border Grid.Column="4" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="DIRECT" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.DirectHeals}" FontSize="14" FontWeight="Bold" /></StackPanel></Border>
+                                <Border Grid.Column="6" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="HOT TICKS" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.HealOverTimeTicks}" FontSize="14" FontWeight="Bold" /></StackPanel></Border>
+                                <Border Grid.Column="8" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="HEAL CRIT %" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.HealingCriticalRateText}" FontSize="14" FontWeight="Bold" Foreground="#FFBD57" /></StackPanel></Border>
                             </Grid>
-                            <Grid Grid.Row="1" Margin="0,8,0,4" ClipToBounds="False">
-                                <controls:DonutChart Width="184" Height="145" ItemsSource="{Binding SelectedAbilities}"
+                            <Grid Grid.Row="1" Margin="0,2,0,0" ClipToBounds="False">
+                                <controls:DonutChart Width="118" Height="96" ItemsSource="{Binding SelectedAbilities}"
                                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Grid>
                         </Grid>
@@ -848,9 +955,9 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1.65*" />
+                    <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="14" />
-                    <ColumnDefinition Width="0.95*" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Row="0" Grid.ColumnSpan="3" Orientation="Horizontal"
@@ -1067,25 +1174,21 @@
 
                             <StackPanel Grid.Row="1" Margin="0,8,0,0">
                                 <TextBlock Text="Spell Name" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Width="34" Height="34" CornerRadius="6" Background="#152F43"
-                                            BorderBrush="#416A83" BorderThickness="1" Margin="0,0,8,0"
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Width="52" Height="52" CornerRadius="8" Background="#152F43"
+                                            BorderBrush="#416A83" BorderThickness="1" Margin="0,0,10,0"
                                             VerticalAlignment="Center">
-                                        <Image Source="{Binding SelectedBuffRule.Icon}" Width="28" Height="28"
+                                        <Image Source="{Binding SelectedBuffRule.Icon}" Width="44" Height="44"
                                                RenderOptions.BitmapScalingMode="NearestNeighbor"
                                                SnapsToDevicePixels="True" />
                                     </Border>
-                                    <controls:SpellNameSearchBox Grid.Column="1"
+                                    <controls:SpellNameSearchBox VerticalAlignment="Center"
                                              Text="{Binding SelectedBuffRule.SpellName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                              Catalog="{Binding SpellCatalog}"
                                              Tag="{Binding SelectedBuffRule}"
                                              LostFocus="BuffSpellName_LostFocus"
                                              ToolTip="Type to search spell names (not case sensitive). Names are checked against EverQuest Legends spell data." />
-                                </Grid>
+                                </StackPanel>
                                 <TextBlock Text="{Binding SelectedBuffRule.SpellValidationText}" Foreground="#FF8B91"
                                            FontSize="10" Margin="0,4,0,0" TextWrapping="Wrap" />
                             </StackPanel>
@@ -1162,14 +1265,15 @@
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                 <StackPanel>
                                     <TextBlock Text="Alert Type" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
-                                    <ComboBox Style="{StaticResource BuffCombo}" ItemsSource="{Binding BuffAlertModes}"
+                                    <ComboBox Style="{StaticResource BuffComboAlert}" ItemsSource="{Binding BuffAlertModes}"
                                               SelectedItem="{Binding SelectedBuffRule.AlertMode, Mode=TwoWay}"
-                                              ToolTip="Alert type (sound only)" />
+                                              ToolTip="Alert type (sound or text-to-speech)" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="2"
                                             Visibility="{Binding SelectedBuffRule.SoundPickerVisibility}">
                                     <TextBlock Text="Sound" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
-                                    <ComboBox Style="{StaticResource BuffCombo}" ItemsSource="{Binding BuffSoundChoices}"
+                                    <ComboBox Style="{StaticResource BuffComboAlert}" Width="110"
+                                              ItemsSource="{Binding BuffSoundChoices}"
                                               SelectedItem="{Binding SelectedBuffRule.Sound, Mode=TwoWay}" />
                                 </StackPanel>
                             </Grid>
@@ -1804,23 +1908,21 @@
                                                         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                                             <CheckBox Content="Alert" IsChecked="{Binding Enabled}"
                                                                       Foreground="#C8DEEA" VerticalAlignment="Center" />
-                                                            <ComboBox Style="{StaticResource BuffCombo}"
+                                                            <ComboBox Style="{StaticResource BuffComboAlert}"
                                                                       ItemsSource="{Binding DataContext.AlertModeChoices, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                                                      SelectedItem="{Binding AlertMode}" Width="120" Margin="10,0,0,0"
+                                                                      SelectedItem="{Binding AlertMode}" Margin="10,0,0,0"
                                                                       VerticalAlignment="Center"
-                                                                      ToolTip="Alert type (sound only)" />
-                                                            <ComboBox Style="{StaticResource BuffCombo}"
+                                                                      ToolTip="Alert type (sound or text-to-speech)" />
+                                                            <ComboBox Style="{StaticResource BuffComboAlert}" Width="110"
                                                                       ItemsSource="{Binding DataContext.SoundChoices, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                                                      SelectedItem="{Binding Sound}" Width="110" Margin="8,0,0,0"
+                                                                      SelectedItem="{Binding Sound}" Margin="8,0,0,0"
                                                                       VerticalAlignment="Center"
                                                                       Visibility="{Binding SoundPickerVisibility}" />
                                                         </StackPanel>
-                                                        <TextBox Margin="0,8,0,0" Padding="8,6"
+                                                        <TextBox Style="{StaticResource BuffInput}" Margin="0,8,0,0"
                                                                  Text="{Binding VoiceText, UpdateSourceTrigger=LostFocus}"
                                                                  Visibility="{Binding VoiceTextVisibility}"
-                                                                 ToolTip="Custom text to speak when this item drops"
-                                                                 Background="#EAF7FC" Foreground="#102A3D"
-                                                                 BorderBrush="#42677F" />
+                                                                 ToolTip="Custom text to speak when this item drops" />
                                                     </StackPanel>
                                                     <Button Grid.Column="1" Content="Remove" Padding="10,4"
                                                             VerticalAlignment="Top"
@@ -2011,7 +2113,7 @@
                                           Style="{StaticResource BuffCombo}" Margin="0,0,6,0">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding RewardName}" Foreground="#102A3D" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding RewardName}" Foreground="#EDF7FF" FontWeight="SemiBold" />
                                         </DataTemplate>
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
@@ -2046,40 +2148,18 @@
                                                    FontSize="12" Margin="0,10,0,0" TextWrapping="Wrap" />
 
                                         <TextBlock Text="REQUIRED ITEMS" Style="{StaticResource SectionLabel}"
-                                                   Margin="0,16,0,8" />
+                                                   Margin="0,16,0,8" Foreground="#E0C070" />
                                         <ItemsControl ItemsSource="{Binding PreviewParts}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Border Background="#4A0C2436" BorderBrush="#2A4A5E" BorderThickness="1"
-                                                            CornerRadius="8" Padding="10,8" Margin="0,0,0,8">
-                                                        <Grid>
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="*" />
-                                                                <ColumnDefinition Width="Auto" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <StackPanel>
-                                                                <CheckBox Content="{Binding DisplayName}"
-                                                                          IsChecked="{Binding IsSelected}"
-                                                                          Foreground="#C8DEEA" />
-                                                                <TextBox Margin="0,8,0,0" Padding="8,6"
-                                                                         Text="{Binding VoiceText, UpdateSourceTrigger=LostFocus}"
-                                                                         Visibility="{Binding VoiceTextVisibility}"
-                                                                         ToolTip="Custom text to speak when this item drops"
-                                                                         Background="#EAF7FC" Foreground="#102A3D"
-                                                                         BorderBrush="#42677F" />
-                                                            </StackPanel>
-                                                            <StackPanel Grid.Column="1" Orientation="Horizontal"
-                                                                        VerticalAlignment="Top">
-                                                                <ComboBox Style="{StaticResource BuffCombo}"
-                                                                          ItemsSource="{Binding DataContext.AlertModeChoices, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                                          SelectedItem="{Binding AlertMode}" Width="120"
-                                                                          ToolTip="Alert type (sound only)" />
-                                                                <ComboBox Style="{StaticResource BuffCombo}"
-                                                                          ItemsSource="{Binding DataContext.SoundChoices, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                                          SelectedItem="{Binding Sound}" Width="110" Margin="8,0,0,0"
-                                                                          Visibility="{Binding SoundPickerVisibility}" />
-                                                            </StackPanel>
-                                                        </Grid>
+                                                    <Border BorderBrush="#2A4A5E" BorderThickness="0,0,0,1" Padding="2,8">
+                                                        <CheckBox IsChecked="{Binding IsSelected}" VerticalAlignment="Center">
+                                                            <TextBlock TextWrapping="Wrap">
+                                                                <Run Text="{Binding ItemName, Mode=OneWay}" Foreground="#8EC8E6"
+                                                                     FontWeight="SemiBold" />
+                                                                <Run Text="{Binding DropSourceText, Mode=OneWay}" Foreground="#C8DEEA" />
+                                                            </TextBlock>
+                                                        </CheckBox>
                                                     </Border>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
@@ -2203,44 +2283,52 @@
                                                                 <StackPanel>
                                                                     <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
                                                                                TextWrapping="Wrap" />
-                                                                    <TextBlock Text="{Binding ProgressText}" Foreground="#2ED9C7"
-                                                                               FontSize="11" Margin="0,2,0,0" />
-                                                                    <TextBlock Text="{Binding LastDropText}" Foreground="#8BA9BD"
-                                                                               FontSize="10" Margin="0,2,0,0" />
+                                                                    <TextBlock Text="{Binding StatusSummary}" Foreground="#2ED9C7"
+                                                                               FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap" />
                                                                 </StackPanel>
-                                                                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                                                    <Button Content="Bank" Padding="8,3" Margin="0,0,6,0"
-                                                                            Click="SkyMarkBank_Click"
-                                                                            ToolTip="Mark this item as stored in the bank" />
-                                                                    <Button Content="Remove" Padding="8,3"
-                                                                            Click="SkyRemovePart_Click" />
-                                                                </StackPanel>
+                                                                <Button Grid.Column="1" Content="Remove" Padding="8,3"
+                                                                        VerticalAlignment="Top"
+                                                                        Click="SkyRemovePart_Click" />
                                                             </Grid>
-                                                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
-                                                                <CheckBox Content="Alert" IsChecked="{Binding AlertEnabled}"
-                                                                          Foreground="#C8DEEA" VerticalAlignment="Center" />
-                                                                <ComboBox Style="{StaticResource BuffCombo}"
-                                                                          ItemsSource="{Binding DataContext.AlertModeChoices, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                                          SelectedItem="{Binding AlertMode}" Width="120"
-                                                                          Margin="10,0,0,0" VerticalAlignment="Center"
-                                                                          ToolTip="Alert type (sound only)" />
-                                                                <ComboBox Style="{StaticResource BuffCombo}"
-                                                                          ItemsSource="{Binding DataContext.SoundChoices, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                                          SelectedItem="{Binding Sound}" Width="110"
-                                                                          Margin="8,0,0,0" VerticalAlignment="Center"
-                                                                          Visibility="{Binding SoundPickerVisibility}" />
-                                                                <ComboBox Style="{StaticResource BuffCombo}"
+
+                                                            <StackPanel Grid.Row="1" Margin="0,10,0,0">
+                                                                <TextBlock Text="WHERE STORED" Style="{StaticResource MetricLabel}"
+                                                                           Margin="0,0,0,5" />
+                                                                <ComboBox Style="{StaticResource BuffComboAlert}" Width="140"
+                                                                          HorizontalAlignment="Left"
                                                                           ItemsSource="{Binding DataContext.LocationChoices, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                                          SelectedItem="{Binding Location}" Width="110"
-                                                                          Margin="8,0,0,0" VerticalAlignment="Center" />
+                                                                          SelectedValue="{Binding Location, Mode=TwoWay}"
+                                                                          SelectedValuePath="Value"
+                                                                          DisplayMemberPath="Label"
+                                                                          ToolTip="Where you put this item so you can find it later" />
                                                             </StackPanel>
-                                                            <TextBox Grid.Row="2" Margin="0,8,0,0" Padding="8,6"
-                                                                     Text="{Binding VoiceText, UpdateSourceTrigger=LostFocus}"
-                                                                     Visibility="{Binding VoiceTextVisibility}"
-                                                                     ToolTip="Custom text to speak when this item drops"
-                                                                     Background="#EAF7FC" Foreground="#102A3D"
-                                                                     BorderBrush="#42677F" />
-                                                            <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,0">
+
+                                                            <StackPanel Grid.Row="2" Margin="0,10,0,0">
+                                                                <TextBlock Text="ALERT" Style="{StaticResource MetricLabel}"
+                                                                           Margin="0,0,0,5" />
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <CheckBox Content="Alert on loot" IsChecked="{Binding AlertEnabled}"
+                                                                              Foreground="#C8DEEA" VerticalAlignment="Center" />
+                                                                    <ComboBox Style="{StaticResource BuffComboAlert}"
+                                                                              ItemsSource="{Binding DataContext.AlertModeChoices, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                              SelectedItem="{Binding AlertMode}"
+                                                                              Margin="10,0,0,0" VerticalAlignment="Center"
+                                                                              Visibility="{Binding AlertDetailsVisibility}"
+                                                                              ToolTip="Alert type (sound or text-to-speech)" />
+                                                                    <ComboBox Style="{StaticResource BuffComboAlert}" Width="110"
+                                                                              ItemsSource="{Binding DataContext.SoundChoices, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                              SelectedItem="{Binding Sound}"
+                                                                              Margin="8,0,0,0" VerticalAlignment="Center"
+                                                                              Visibility="{Binding SoundPickerVisibility}" />
+                                                                    <TextBox Style="{StaticResource BuffInput}" Width="200"
+                                                                             Margin="8,0,0,0" VerticalAlignment="Center"
+                                                                             Text="{Binding VoiceText, UpdateSourceTrigger=LostFocus}"
+                                                                             Visibility="{Binding VoiceTextVisibility}"
+                                                                             ToolTip="Custom text spoken when this item drops" />
+                                                                </StackPanel>
+                                                            </StackPanel>
+
+                                                            <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,0">
                                                                 <TextBlock Text="Found" VerticalAlignment="Center"
                                                                            Foreground="#8BA9BD" Margin="0,0,8,0" />
                                                                 <Button Content="-" Width="28" Padding="0,2"

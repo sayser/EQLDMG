@@ -290,7 +290,19 @@ public sealed class LogLineParser(string localPlayerName)
             }
         }
 
-        if (!message.Contains(" for ", StringComparison.OrdinalIgnoreCase)) return null;
+        // Unattributed incoming: "You were hit by non-melee for N damage." (no "points of").
+        if (message.Contains("hit by non-melee", StringComparison.OrdinalIgnoreCase) &&
+            (match = UnattributedNonMelee.Match(message)).Success)
+        {
+            return Create(timestamp, match, UnattributedNonMeleeSource, DamageCategory.Spell, "Non-melee");
+        }
+
+        // Melee/spell/reactive hits all use "for N points of … damage". Gate before the
+        // heavy Direct/NamedSpell regexes so chat/auction lines with " for " are skipped.
+        if (!message.Contains(" for ", StringComparison.OrdinalIgnoreCase) ||
+            !message.Contains("points of", StringComparison.OrdinalIgnoreCase) ||
+            !message.Contains("damage", StringComparison.OrdinalIgnoreCase))
+            return null;
 
         if ((match = Direct.Match(message)).Success)
         {
@@ -319,11 +331,6 @@ public sealed class LogLineParser(string localPlayerName)
         {
             var source = match.Groups["self"].Success ? LocalPlayerName : match.Groups["source"].Value;
             return Create(timestamp, match, source, DamageCategory.Reactive, "Frost");
-        }
-
-        if ((match = UnattributedNonMelee.Match(message)).Success)
-        {
-            return Create(timestamp, match, UnattributedNonMeleeSource, DamageCategory.Spell, "Non-melee");
         }
 
         return null;

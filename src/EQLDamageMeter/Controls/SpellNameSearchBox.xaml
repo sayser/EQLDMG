@@ -1,15 +1,19 @@
 <UserControl x:Class="EQLDamageMeter.Controls.SpellNameSearchBox"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             HorizontalAlignment="Left"
+             Width="390">
+    <!-- Width fits longest live spell name (55 chars) + 5 extras at UI font size. -->
     <Grid>
         <TextBox x:Name="InputBox"
-                 Foreground="#102A3D"
-                 Background="#F4FBFE"
+                 Foreground="#EDF7FF"
+                 Background="#A0092235"
                  BorderBrush="#42677F"
                  BorderThickness="1"
                  Padding="10,7"
-                 CaretBrush="#4B2FA8"
+                 CaretBrush="#9A78FF"
                  VerticalContentAlignment="Center"
+                 MaxLength="60"
                  ToolTip="{Binding ToolTip, RelativeSource={RelativeSource AncestorType=UserControl}}"
                  TextChanged="InputBox_TextChanged"
                  PreviewKeyDown="InputBox_PreviewKeyDown"
@@ -21,7 +25,7 @@
                AllowsTransparency="True"
                PopupAnimation="Fade">
             <Border x:Name="SuggestionBorder"
-                    Background="#102A3D" BorderBrush="#6C8CA2" BorderThickness="1" CornerRadius="4"
+                    Background="#122636" BorderBrush="#5A7F96" BorderThickness="1" CornerRadius="4"
                     MinWidth="{Binding ActualWidth, ElementName=InputBox}" MaxHeight="220"
                     MouseLeftButtonDown="SuggestionBorder_MouseLeftButtonDown">
                 <ListBox x:Name="SuggestionList"
