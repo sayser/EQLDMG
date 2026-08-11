@@ -17,21 +17,6 @@ public static partial class EqWikiLinks
         return BaseUrl + title.Replace(' ', '_');
     }
 
-    public static string NormalizeMobTitle(string mobName)
-    {
-        var name = mobName.Trim();
-        name = ArticlePrefixRegex().Replace(name, string.Empty);
-        name = name.Replace('\'', ' ');
-        name = WhitespaceRegex().Replace(name, " ").Trim();
-        if (name.Length == 0) return string.Empty;
-
-        var underscored = name.Replace(' ', '_');
-        return char.ToUpper(underscored[0], CultureInfo.InvariantCulture) + underscored[1..];
-    }
-
-    [GeneratedRegex(@"^(a|an|the)\s+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex ArticlePrefixRegex();
-
     [GeneratedRegex(@"\s+")]
     private static partial Regex WhitespaceRegex();
 }

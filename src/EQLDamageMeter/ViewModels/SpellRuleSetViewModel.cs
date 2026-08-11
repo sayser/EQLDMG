@@ -320,19 +320,6 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     }
 
     /// <summary>Re-seeds Catalog-sourced cast/duration using the current caster level.</summary>
-    public bool ReseedCatalogTimings(int casterLevel)
-    {
-        _timingGate.Wait();
-        try
-        {
-            return ReseedCatalogTimingsCore(casterLevel);
-        }
-        finally
-        {
-            _timingGate.Release();
-        }
-    }
-
     public async Task<bool> ReseedCatalogTimingsAsync(int casterLevel)
     {
         await _timingGate.WaitAsync();
@@ -375,22 +362,6 @@ public sealed class SpellRuleSetViewModel : ObservableObject
             _alerts.TestHostilePair(settings!);
         else
             _alerts.Test(settings!);
-        return null;
-    }
-
-    public string? TestLandAlert()
-    {
-        if (SelectedRule is null) return $"Select a {SingularName} first.";
-        if (!SelectedRule.TryCreateSettings(out var settings, out var error)) return error;
-        _alerts.TestLand(settings!);
-        return null;
-    }
-
-    public string? TestExpireAlert()
-    {
-        if (SelectedRule is null) return $"Select a {SingularName} first.";
-        if (!SelectedRule.TryCreateSettings(out var settings, out var error)) return error;
-        _alerts.TestExpire(settings!);
         return null;
     }
 

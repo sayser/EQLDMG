@@ -50,15 +50,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private string _serverName = "—";
     private string _modeText = "SOLO";
     private string _encounterTime = "0:00";
-    private string _characterDamage = "0";
-    private string _encounterDps = "—";
-    private string _currentDps = "—";
     private long _maxDamage = 1;
     private string? _activeLogPath;
     private BreakdownMode _breakdownMode;
     private long _dataVersion;
     private long _renderedDataVersion = -1;
     private long _lastRenderedSecond = -1;
+    private long _cachedLiveCardDamage;
+    private double _cachedLiveCardDps;
     private EncounterHistoryViewModel? _renderedHistory;
     private bool _combinePetDamage;
     private bool _isPetDamageExpanded;
@@ -232,9 +231,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public string ServerName { get => _serverName; private set => SetProperty(ref _serverName, value); }
     public string ModeText { get => _modeText; private set => SetProperty(ref _modeText, value); }
     public string EncounterTime { get => _encounterTime; private set => SetProperty(ref _encounterTime, value); }
-    public string CharacterDamage { get => _characterDamage; private set => SetProperty(ref _characterDamage, value); }
-    public string EncounterDps { get => _encounterDps; private set => SetProperty(ref _encounterDps, value); }
-    public string CurrentDps { get => _currentDps; private set => SetProperty(ref _currentDps, value); }
     public long MaxDamage { get => _maxDamage; private set => SetProperty(ref _maxDamage, value); }
     public bool CombinePetDamage
     {
@@ -871,13 +867,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         if (!force && viewingArchive && ReferenceEquals(_renderedHistory, history) &&
             _renderedDataVersion == _dataVersion)
         {
-            UpdateLiveHistoryCard(finalizeAt);
+            UpdateLiveHistoryCard(_cachedLiveCardDamage, _cachedLiveCardDps);
             return;
         }
         if (!force && _renderedDataVersion == _dataVersion && _lastRenderedSecond == renderedSecond &&
             ReferenceEquals(_renderedHistory, history))
         {
-            UpdateLiveHistoryCard(finalizeAt);
+            UpdateLiveHistoryCard(_cachedLiveCardDamage, _cachedLiveCardDps);
             return;
         }
 
@@ -901,25 +897,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var localPlayer = localSources.Length == 0
             ? null
             : new CombatantAggregate(CharacterName) { Damage = localSources.Sum(item => item.Damage) };
-        CharacterDamage = (localPlayer?.Damage ?? 0).ToString("N0", CultureInfo.CurrentCulture);
-        EncounterDps = localPlayer is null || !hasEncounter ? "—" : isWarmingUp ? "Calculating…" :
-            (localPlayer.Damage / Math.Max(1, seconds)).ToString("N1", CultureInfo.CurrentCulture);
-
-        if (viewingArchive) CurrentDps = "—";
-        else
-        {
-            var rollingWindow = TimeSpan.FromSeconds(10);
-            var rollingSeconds = Math.Min(rollingWindow.TotalSeconds, seconds);
-            var rollingDamage = localPlayer is null ? 0 : _encounter.GetRollingDamageForOwner(
-                CharacterName, CombinePetDamage, finalizeAt, rollingWindow);
-            CurrentDps = localPlayer is null || !hasEncounter ? "—" : isWarmingUp ? "Calculating…" :
-                (rollingDamage / Math.Max(1, rollingSeconds)).ToString("N1", CultureInfo.CurrentCulture);
-        }
 
         PopulateCombatants(aggregates, seconds, isWarmingUp);
         MaxDamage = Math.Max(1, Combatants.FirstOrDefault()?.Damage ?? 1);
-        UpdateLiveHistoryCard(finalizeAt, localPlayer?.Damage ?? 0,
-            localPlayer is null || !hasEncounter || isWarmingUp ? 0 : localPlayer.Damage / Math.Max(1, seconds));
+        _cachedLiveCardDamage = localPlayer?.Damage ?? 0;
+        _cachedLiveCardDps = localPlayer is null || !hasEncounter || isWarmingUp
+            ? 0
+            : localPlayer.Damage / Math.Max(1, seconds);
+        UpdateLiveHistoryCard(_cachedLiveCardDamage, _cachedLiveCardDps);
         _renderedDataVersion = _dataVersion;
         _lastRenderedSecond = renderedSecond;
         _renderedHistory = history;
@@ -1216,59 +1201,75 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var selectedName = CombinePetDamage && !string.IsNullOrWhiteSpace(SelectedCombatant?.OwnerName)
             ? SelectedCombatant.OwnerName
             : SelectedCombatant?.Name;
+
+        var canUpdateInPlace = Combatants.Count == aggregates.Length;
+        if (canUpdateInPlace)
+        {
+            for (var i = 0; i < aggregates.Length; i++)
+            {
+                if (!Combatants[i].Name.Equals(aggregates[i].Name, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(Combatants[i].OwnerName, aggregates[i].OwnerName, StringComparison.OrdinalIgnoreCase))
+                {
+                    canUpdateInPlace = false;
+                    break;
+                }
+            }
+        }
+
+        if (canUpdateInPlace)
+        {
+            for (var index = 0; index < aggregates.Length; index++)
+                ApplyCombatantRow(Combatants[index], aggregates[index], seconds, isWarmingUp, index + 1);
+
+            if (SelectedCombatant is null || !Combatants.Contains(SelectedCombatant))
+            {
+                SelectedCombatant = Combatants.FirstOrDefault(item =>
+                                        item.Name.Equals(selectedName, StringComparison.OrdinalIgnoreCase))
+                                    ?? Combatants.FirstOrDefault();
+            }
+            else
+            {
+                RaiseBreakdownProperties();
+            }
+            return;
+        }
+
         Combatants.Clear();
         for (var index = 0; index < aggregates.Length; index++)
         {
-            var aggregate = aggregates[index];
-            var abilities = CreateAbilities(aggregate.Abilities.Values, seconds);
-            var incomingAbilities = CreateAbilities(aggregate.IncomingAbilities.Values, seconds);
-            var healingAbilities = CreateAbilities(aggregate.HealingAbilities.Values, seconds);
-            var mitigationValues = new (string Name, int Count)[]
-            {
-                ("Dodge", aggregate.Dodges), ("Parry", aggregate.Parries), ("Block", aggregate.Blocks),
-                ("Riposte", aggregate.Ripostes), ("Absorbed", aggregate.Absorbed),
-                ("Spell Resist", aggregate.IncomingSpellResists)
-            };
-            var recorded = mitigationValues.Where(item => item.Count > 0).ToArray();
-            var mitigationTotal = Math.Max(1, recorded.Sum(item => item.Count));
-            var mitigations = recorded.Select((item, colorIndex) =>
-                new AbilityViewModel
-                {
-                    Name = item.Name, Damage = item.Count,
-                    Share = item.Count * 100d / mitigationTotal,
-                    Color = ChartBrushes[colorIndex % ChartBrushes.Length]
-                }).ToArray();
-
-            Combatants.Add(new CombatantViewModel
-            {
-                Name = aggregate.Name, OwnerName = aggregate.OwnerName,
-                Damage = aggregate.Damage,
-                DpsText = isWarmingUp ? "—" : (aggregate.Damage / Math.Max(1, seconds))
-                    .ToString("N1", CultureInfo.CurrentCulture),
-                Hits = aggregate.Hits, Misses = aggregate.Misses,
-                MeleeHits = aggregate.MeleeHits, SpellHits = aggregate.SpellHits,
-                MeleeCriticalHits = aggregate.MeleeCriticalHits,
-                SpellCriticalHits = aggregate.SpellCriticalHits,
-                SpellFizzles = aggregate.SpellFizzles, SpellResists = aggregate.SpellResists,
-                DamageTaken = aggregate.DamageTaken,
-                IncomingMeleeHits = aggregate.IncomingMeleeHits, IncomingMisses = aggregate.IncomingMisses,
-                Dodges = aggregate.Dodges, Parries = aggregate.Parries, Blocks = aggregate.Blocks,
-                Ripostes = aggregate.Ripostes, Absorbed = aggregate.Absorbed,
-                SpellAbsorbs = aggregate.SpellAbsorbs,
-                IncomingSpellResists = aggregate.IncomingSpellResists, Rank = index + 1,
-                StunsLanded = aggregate.StunsLanded, StunsTaken = aggregate.StunsTaken,
-                Healing = aggregate.Healing,
-                DirectHeals = aggregate.DirectHeals, HealOverTimeTicks = aggregate.HealOverTimeTicks,
-                CriticalHeals = aggregate.CriticalHeals,
-                HpsText = (aggregate.Healing / Math.Max(1, seconds))
-                    .ToString("N1", CultureInfo.CurrentCulture),
-                Abilities = abilities, IncomingAbilities = incomingAbilities, HealingAbilities = healingAbilities,
-                Mitigations = mitigations
-            });
+            var row = new CombatantViewModel();
+            ApplyCombatantRow(row, aggregates[index], seconds, isWarmingUp, index + 1);
+            Combatants.Add(row);
         }
 
         SelectedCombatant = Combatants.FirstOrDefault(item => item.Name.Equals(selectedName, StringComparison.OrdinalIgnoreCase))
                             ?? Combatants.FirstOrDefault();
+    }
+
+    private void ApplyCombatantRow(CombatantViewModel row, CombatantAggregate aggregate, double seconds,
+        bool isWarmingUp, int rank)
+    {
+        var abilities = CreateAbilities(aggregate.Abilities.Values, seconds);
+        var incomingAbilities = CreateAbilities(aggregate.IncomingAbilities.Values, seconds);
+        var healingAbilities = CreateAbilities(aggregate.HealingAbilities.Values, seconds);
+        var mitigationValues = new (string Name, int Count)[]
+        {
+            ("Dodge", aggregate.Dodges), ("Parry", aggregate.Parries), ("Block", aggregate.Blocks),
+            ("Riposte", aggregate.Ripostes), ("Absorbed", aggregate.Absorbed),
+            ("Spell Resist", aggregate.IncomingSpellResists)
+        };
+        var recorded = mitigationValues.Where(item => item.Count > 0).ToArray();
+        var mitigationTotal = Math.Max(1, recorded.Sum(item => item.Count));
+        var mitigations = recorded.Select((item, colorIndex) =>
+            new AbilityViewModel
+            {
+                Name = item.Name, Damage = item.Count,
+                Share = item.Count * 100d / mitigationTotal,
+                Color = ChartBrushes[colorIndex % ChartBrushes.Length]
+            }).ToArray();
+
+        row.ApplyAggregate(aggregate, seconds, isWarmingUp, rank, abilities, incomingAbilities,
+            healingAbilities, mitigations);
     }
 
     private AbilityViewModel[] CreateAbilities(IEnumerable<AbilityAggregate> source, double seconds)
@@ -1341,29 +1342,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             SelectedHistory = live;
     }
 
-    private void UpdateLiveHistoryCard(DateTime now, long? damage = null, double? dps = null)
+    private void UpdateLiveHistoryCard(long damage, double dps)
     {
         EnsureLiveHistoryCard();
         var live = EncounterHistory[0];
         if (!live.IsLive || _encounter is null || _group is null) return;
 
         var mode = _group.IsGrouped ? "GROUP" : "SOLO";
-        if (damage is null || dps is null)
-        {
-            var seconds = Math.Max(1, _encounter.GetElapsedSeconds(now));
-            var aggregates = CombinePetDamage
-                ? CombinePetAggregates(_encounter.CreateCombatantArray())
-                : _encounter.CreateCombatantArray();
-            var localDamage = aggregates.Where(item =>
-                    item.Name.Equals(CharacterName, StringComparison.OrdinalIgnoreCase) ||
-                    (CombinePetDamage &&
-                     item.OwnerName?.Equals(CharacterName, StringComparison.OrdinalIgnoreCase) == true))
-                .Sum(item => item.Damage);
-            damage ??= localDamage;
-            dps ??= _encounter.StartedAt.HasValue ? localDamage / seconds : 0;
-        }
-
-        live.UpdateLive(mode, damage.Value, dps.Value, _encounter.StartedAt);
+        live.UpdateLive(mode, damage, dps, _encounter.StartedAt);
     }
 
     private void RaiseBreakdownProperties()

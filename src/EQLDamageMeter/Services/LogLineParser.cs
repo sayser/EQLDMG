@@ -369,28 +369,48 @@ public sealed class LogLineParser(string localPlayerName)
     private static bool IsCritical(Match match) =>
         match.Groups["flags"].Value.Contains("Critical", StringComparison.OrdinalIgnoreCase);
 
-    private static string NormalizeMeleeAbility(string value) => value.ToLowerInvariant() switch
+    private static string NormalizeMeleeAbility(string value)
     {
-        "slashes" or "slash" => "Slash",
-        "hits" or "hit" => "Hit",
-        "smites" or "smite" => "Smite",
-        "claws" or "claw" => "Claw",
-        "stings" or "sting" => "Sting",
-        "slices" or "slice" => "Slice",
-        "smashes" or "smash" => "Smash",
-        "cleaves" or "cleave" => "Cleave",
-        "bashes" or "bash" => "Bash",
-        "kicks" or "kick" => "Kick",
-        "punches" or "punch" => "Punch",
-        "strikes" or "strike" => "Strike",
-        "reaves" or "reave" => "Reave",
-        "crushes" or "crush" => "Crush",
-        "pierces" or "pierce" => "Pierce",
-        "bites" or "bite" => "Bite",
-        "mauls" or "maul" => "Maul",
-        "backstabs" or "backstab" => "Backstab",
-        "shoots" or "shoot" => "Shoot",
-        "frenzies on" or "frenzy on" => "Frenzy",
-        _ => value
-    };
+        if (value.Equals("slashes", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("slash", StringComparison.OrdinalIgnoreCase)) return "Slash";
+        if (value.Equals("hits", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("hit", StringComparison.OrdinalIgnoreCase)) return "Hit";
+        if (value.Equals("smites", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("smite", StringComparison.OrdinalIgnoreCase)) return "Smite";
+        if (value.Equals("claws", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("claw", StringComparison.OrdinalIgnoreCase)) return "Claw";
+        if (value.Equals("stings", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("sting", StringComparison.OrdinalIgnoreCase)) return "Sting";
+        if (value.Equals("slices", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("slice", StringComparison.OrdinalIgnoreCase)) return "Slice";
+        if (value.Equals("smashes", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("smash", StringComparison.OrdinalIgnoreCase)) return "Smash";
+        if (value.Equals("cleaves", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("cleave", StringComparison.OrdinalIgnoreCase)) return "Cleave";
+        if (value.Equals("bashes", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("bash", StringComparison.OrdinalIgnoreCase)) return "Bash";
+        if (value.Equals("kicks", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("kick", StringComparison.OrdinalIgnoreCase)) return "Kick";
+        if (value.Equals("punches", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("punch", StringComparison.OrdinalIgnoreCase)) return "Punch";
+        if (value.Equals("strikes", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("strike", StringComparison.OrdinalIgnoreCase)) return "Strike";
+        if (value.Equals("reaves", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("reave", StringComparison.OrdinalIgnoreCase)) return "Reave";
+        if (value.Equals("crushes", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("crush", StringComparison.OrdinalIgnoreCase)) return "Crush";
+        if (value.Equals("pierces", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("pierce", StringComparison.OrdinalIgnoreCase)) return "Pierce";
+        if (value.Equals("bites", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("bite", StringComparison.OrdinalIgnoreCase)) return "Bite";
+        if (value.Equals("mauls", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("maul", StringComparison.OrdinalIgnoreCase)) return "Maul";
+        if (value.Equals("backstabs", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("backstab", StringComparison.OrdinalIgnoreCase)) return "Backstab";
+        if (value.Equals("shoots", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("shoot", StringComparison.OrdinalIgnoreCase)) return "Shoot";
+        if (value.Equals("frenzies on", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("frenzy on", StringComparison.OrdinalIgnoreCase)) return "Frenzy";
+        return value;
+    }
 }

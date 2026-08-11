@@ -722,24 +722,237 @@
                                        VerticalAlignment="Center" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
                         </Grid>
 
-                        <!-- Offense metrics -->
-                        <Grid Grid.Row="2" Margin="15,2,15,2" ClipToBounds="False" Visibility="{Binding OffenseVisibility}">
-                            <Grid.RowDefinitions><RowDefinition Height="40" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <Border Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="HITS" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.Hits}" FontSize="14" FontWeight="Bold" /></StackPanel></Border>
-                                <Border Grid.Column="2" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="MISSED" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.Misses}" FontSize="14" FontWeight="Bold" Foreground="#FFBD57" /></StackPanel></Border>
-                                <Border Grid.Column="4" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="CRIT %" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.CriticalRateText}" FontSize="14" FontWeight="Bold" Foreground="#FFBD57" /></StackPanel></Border>
-                                <Border Grid.Column="6" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="SPELL CRIT %" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.SpellCriticalRateText}" FontSize="14" FontWeight="Bold" Foreground="#2FD8C7" /></StackPanel></Border>
-                                <Border Grid.Column="8" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="RESISTED" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.SpellResists}" FontSize="14" FontWeight="Bold" Foreground="#FF6C91" /></StackPanel></Border>
-                                <Border Grid.Column="10" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="FIZZLED" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.SpellFizzles}" FontSize="14" FontWeight="Bold" Foreground="#A985FF" /></StackPanel></Border>
-                                <Border Grid.Column="12" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="STUNS" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.StunsLanded}" FontSize="14" FontWeight="Bold" Foreground="#7FC6FF" /></StackPanel></Border>
-                            </Grid>
-                            <Grid Grid.Row="1" Margin="0,2,0,0" ClipToBounds="False">
-                                <controls:DonutChart Width="118" Height="96" ItemsSource="{Binding SelectedAbilities}"
-                                                     HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Grid>
-                        </Grid>
+                        <!-- Offense: metrics + chart/list side-by-side (matches Defense layout) -->
+                        <ScrollViewer Grid.Row="2" Grid.RowSpan="2" Margin="15,4,10,8"
+                                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                      CanContentScroll="False"
+                                      Visibility="{Binding OffenseVisibility}">
+                            <StackPanel Margin="0,0,6,0">
+                                <Grid Height="40">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="4" />
+                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="4" />
+                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="4" />
+                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="4" />
+                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="4" />
+                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="4" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="HITS" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.Hits}" FontSize="14" FontWeight="Bold" /></StackPanel></Border>
+                                    <Border Grid.Column="2" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="MISSED" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.Misses}" FontSize="14" FontWeight="Bold" Foreground="#FFBD57" /></StackPanel></Border>
+                                    <Border Grid.Column="4" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="CRIT %" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.CriticalRateText}" FontSize="14" FontWeight="Bold" Foreground="#FFBD57" /></StackPanel></Border>
+                                    <Border Grid.Column="6" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="SPELL CRIT %" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.SpellCriticalRateText}" FontSize="14" FontWeight="Bold" Foreground="#2FD8C7" /></StackPanel></Border>
+                                    <Border Grid.Column="8" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="RESISTED" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.SpellResists}" FontSize="14" FontWeight="Bold" Foreground="#FF6C91" /></StackPanel></Border>
+                                    <Border Grid.Column="10" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="FIZZLED" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.SpellFizzles}" FontSize="14" FontWeight="Bold" Foreground="#A985FF" /></StackPanel></Border>
+                                    <Border Grid.Column="12" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="STUNS" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.StunsLanded}" FontSize="14" FontWeight="Bold" Foreground="#7FC6FF" /></StackPanel></Border>
+                                </Grid>
+
+                                <TextBlock Text="ABILITY BREAKDOWN" Style="{StaticResource MetricLabel}"
+                                           HorizontalAlignment="Center" Margin="0,12,0,0" />
+                                <Grid MinHeight="220" Margin="0,6,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <controls:DonutChart Width="210" Height="180"
+                                                         ItemsSource="{Binding SelectedAbilities}"
+                                                         HorizontalAlignment="Center" VerticalAlignment="Top" />
+                                    <Grid Grid.Column="1">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="22" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
+                                        <Grid Margin="12,0,8,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="70" />
+                                                <ColumnDefinition Width="52" />
+                                                <ColumnDefinition Width="52" />
+                                            </Grid.ColumnDefinitions>
+                                            <!-- spacer matches icon/dot stack width in rows -->
+                                            <Border Width="30" />
+                                            <TextBlock Grid.Column="1" Text="Ability" Style="{StaticResource MetricLabel}"
+                                                       FontSize="9" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="2" Text="Damage" Style="{StaticResource MetricLabel}"
+                                                       FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="3" Text="DPS" Style="{StaticResource MetricLabel}"
+                                                       FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="4" Text="% of Total" Style="{StaticResource MetricLabel}"
+                                                       FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        </Grid>
+                                        <ListBox Grid.Row="1" ItemsSource="{Binding SelectedAbilities}"
+                                                 Background="Transparent" BorderThickness="0" Padding="4,0,4,4"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                        <ListBox.ItemContainerStyle>
+                                            <Style TargetType="ListBoxItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                                <Setter Property="Focusable" Value="False" />
+                                                <Setter Property="Padding" Value="0" />
+                                                <Setter Property="Background" Value="Transparent" />
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </ListBox.ItemContainerStyle>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel>
+                                                    <Grid Margin="8,3">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="70" />
+                                                            <ColumnDefinition Width="52" />
+                                                            <ColumnDefinition Width="52" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                            <TextBlock Text="▶" Width="12" Foreground="#A98BFF" VerticalAlignment="Center" FontSize="9">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsPetSummary}" Value="True">
+                                                                                <Setter Property="Visibility" Value="Visible" />
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding DataContext.IsPetDamageExpanded, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                                                <Setter Property="Text" Value="▼" />
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                            <Image Source="{Binding Icon}" Width="14" Height="14" Margin="0,0,5,0"
+                                                                   RenderOptions.BitmapScalingMode="NearestNeighbor" SnapsToDevicePixels="True">
+                                                                <Image.Style>
+                                                                    <Style TargetType="Image">
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Image.Style>
+                                                            </Image>
+                                                            <Ellipse Fill="{Binding Color}" Width="8" Height="8" VerticalAlignment="Center" />
+                                                        </StackPanel>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold"
+                                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Foreground" Value="#E8F4FF" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsPetSummary}" Value="True">
+                                                                            <Setter Property="FontWeight" Value="Bold" />
+                                                                            <Setter Property="Foreground" Value="#D8CCFF" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                        <TextBlock Grid.Column="2" Text="{Binding DamageText}" HorizontalAlignment="Right"
+                                                                   VerticalAlignment="Center" FontWeight="SemiBold" />
+                                                        <TextBlock Grid.Column="3" Text="{Binding DpsText}" HorizontalAlignment="Right"
+                                                                   VerticalAlignment="Center" Foreground="#A9C3D3" />
+                                                        <TextBlock Grid.Column="4" Text="{Binding ShareText}" HorizontalAlignment="Right"
+                                                                   VerticalAlignment="Center" Foreground="#96B7CA" />
+                                                        <ToggleButton Grid.ColumnSpan="5" Background="Transparent" BorderThickness="0"
+                                                                      Focusable="False"
+                                                                      IsChecked="{Binding DataContext.IsPetDamageExpanded, RelativeSource={RelativeSource AncestorType=Window}, Mode=TwoWay}">
+                                                            <ToggleButton.Style>
+                                                                <Style TargetType="ToggleButton">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                    <Setter Property="Cursor" Value="Hand" />
+                                                                    <Setter Property="Template">
+                                                                        <Setter.Value>
+                                                                            <ControlTemplate TargetType="ToggleButton">
+                                                                                <Border Background="Transparent" />
+                                                                            </ControlTemplate>
+                                                                        </Setter.Value>
+                                                                    </Setter>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsPetSummary}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </ToggleButton.Style>
+                                                        </ToggleButton>
+                                                    </Grid>
+                                                    <ItemsControl ItemsSource="{Binding Children}" Margin="26,0,0,2">
+                                                        <ItemsControl.Style>
+                                                            <Style TargetType="ItemsControl">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding DataContext.IsPetDamageExpanded, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </ItemsControl.Style>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Grid Margin="8,2">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto" />
+                                                                        <ColumnDefinition Width="*" />
+                                                                        <ColumnDefinition Width="70" />
+                                                                        <ColumnDefinition Width="52" />
+                                                                        <ColumnDefinition Width="52" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                                        <Image Source="{Binding Icon}" Width="12" Height="12" Margin="0,0,5,0"
+                                                                               RenderOptions.BitmapScalingMode="NearestNeighbor" SnapsToDevicePixels="True">
+                                                                            <Image.Style>
+                                                                                <Style TargetType="Image">
+                                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                                    <Style.Triggers>
+                                                                                        <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                                                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                                                        </DataTrigger>
+                                                                                    </Style.Triggers>
+                                                                                </Style>
+                                                                            </Image.Style>
+                                                                        </Image>
+                                                                        <Ellipse Fill="{Binding Color}" Width="6" Height="6" VerticalAlignment="Center" />
+                                                                    </StackPanel>
+                                                                    <TextBlock Grid.Column="1" Text="{Binding Name}" Foreground="#B9D1DE"
+                                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                                    <TextBlock Grid.Column="2" Text="{Binding DamageText}" HorizontalAlignment="Right"
+                                                                               VerticalAlignment="Center" />
+                                                                    <TextBlock Grid.Column="3" Text="{Binding DpsText}" HorizontalAlignment="Right"
+                                                                               VerticalAlignment="Center" Foreground="#8FAFC1" />
+                                                                    <TextBlock Grid.Column="4" Text="{Binding ShareText}" HorizontalAlignment="Right"
+                                                                               VerticalAlignment="Center" Foreground="#8FAFC1" />
+                                                                </Grid>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                        <TextBlock Grid.Row="1" Text="No abilities recorded" Foreground="#7899AD" FontSize="11"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding SelectedAbilities.Count}" Value="0">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+                                </Grid>
+                            </StackPanel>
+                        </ScrollViewer>
 
                         <!-- Healing metrics -->
                         <Grid Grid.Row="2" Margin="15,2,15,2" ClipToBounds="False" Visibility="{Binding HealingVisibility}">
@@ -834,9 +1047,21 @@
                             </StackPanel>
                         </ScrollViewer>
 
-                        <!-- Ability breakdown table -->
+                        <!-- Ability breakdown table (Healing only; Offense/Defense use side-by-side layouts) -->
                         <Grid Grid.Row="3" Margin="15,4,15,6">
-                            <Grid.Style><Style TargetType="Grid"><Style.Triggers><DataTrigger Binding="{Binding DefenseVisibility}" Value="Visible"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></Grid.Style>
+                            <Grid.Style>
+                                <Style TargetType="Grid">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DefenseVisibility}" Value="Visible">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding OffenseVisibility}" Value="Visible">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Grid.Style>
                             <Grid.RowDefinitions><RowDefinition Height="24" /><RowDefinition Height="24" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                             <Grid>
                                 <TextBlock Text="ABILITY BREAKDOWN" Style="{StaticResource SectionLabel}" FontSize="10" VerticalAlignment="Center" />

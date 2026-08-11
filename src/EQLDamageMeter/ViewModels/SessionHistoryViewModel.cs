@@ -122,11 +122,12 @@ public sealed class SessionHistoryViewModel : ObservableObject
             return;
         }
 
-        existing.Apply(current, isLive: true);
+        var structural = existing.Apply(current, isLive: true);
         if (SelectedSession is null || SelectedSession.IsLive)
             SelectedSession = existing;
         RestoreSelectedMob(selectedMobName);
-        SelectionChanged?.Invoke();
+        // Duration ticks every ~400ms; only reload wiki/loot side panels when data changed.
+        if (structural) SelectionChanged?.Invoke();
     }
 
     private void RestoreSelectedMob(string? mobName)
@@ -258,38 +259,82 @@ public sealed class SessionEntryViewModel : ObservableObject
         return entry;
     }
 
-    public void Apply(SessionRecord record, bool isLive)
+    /// <returns>True when non-duration session fields or loot/mobs changed.</returns>
+    public bool Apply(SessionRecord record, bool isLive)
     {
         Id = record.Id;
+        var structural = false;
+        structural |= IsLive != isLive;
         IsLive = isLive;
-        Title = isLive ? "Current session" : FormatTitle(record.StartedAt);
-        Subtitle = FormatSubtitle(record, isLive);
-        CharacterText = string.IsNullOrWhiteSpace(record.Character)
+
+        var title = isLive ? "Current session" : FormatTitle(record.StartedAt);
+        structural |= !string.Equals(Title, title, StringComparison.Ordinal);
+        Title = title;
+
+        var characterText = string.IsNullOrWhiteSpace(record.Character)
             ? "—"
             : $"{record.Character} · {record.Server}";
-        LevelXpText = $"{record.LevelXpPercent.ToString("0.0", CultureInfo.CurrentCulture)}%";
-        LevelsText = record.StartLevel is { } start && record.EndLevel is { } end
+        structural |= !string.Equals(CharacterText, characterText, StringComparison.Ordinal);
+        CharacterText = characterText;
+
+        var levelXpText = $"{record.LevelXpPercent.ToString("0.0", CultureInfo.CurrentCulture)}%";
+        structural |= !string.Equals(LevelXpText, levelXpText, StringComparison.Ordinal);
+        LevelXpText = levelXpText;
+
+        var levelsText = record.StartLevel is { } start && record.EndLevel is { } end
             ? $"+{record.LevelsGained}  ({start} → {end})"
             : $"+{record.LevelsGained}";
-        AaPointsText = $"+{record.AaPointsGained}";
-        MotesText = record.MotesLooted.ToString(CultureInfo.CurrentCulture);
-        DeathsText = record.Deaths.ToString(CultureInfo.CurrentCulture);
+        structural |= !string.Equals(LevelsText, levelsText, StringComparison.Ordinal);
+        LevelsText = levelsText;
+
+        var aaPointsText = $"+{record.AaPointsGained}";
+        structural |= !string.Equals(AaPointsText, aaPointsText, StringComparison.Ordinal);
+        AaPointsText = aaPointsText;
+
+        var motesText = record.MotesLooted.ToString(CultureInfo.CurrentCulture);
+        structural |= !string.Equals(MotesText, motesText, StringComparison.Ordinal);
+        MotesText = motesText;
+
+        var deathsText = record.Deaths.ToString(CultureInfo.CurrentCulture);
+        structural |= !string.Equals(DeathsText, deathsText, StringComparison.Ordinal);
+        DeathsText = deathsText;
+
+        // Duration/subtitle always refresh for live clock; do not treat as structural.
+        Subtitle = FormatSubtitle(record, isLive);
         DurationText = FormatDuration(record, isLive);
-        MoteRows = record.MotesByName
+
+        var moteRows = record.MotesByName
             .OrderByDescending(pair => pair.Value)
             .ThenBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
             .Select(pair => new MoteCountRow(pair.Key, pair.Value))
             .ToArray();
-        _loot = SessionLootParser.Clone(record.Loot);
-        MoneyText = SessionLootParser.FormatCopper(CalculateMoneyEarned(_loot));
+        if (!MoteRowsEqual(MoteRows, moteRows))
+        {
+            MoteRows = moteRows;
+            structural = true;
+        }
+
+        var loot = SessionLootParser.Clone(record.Loot);
+        var moneyText = SessionLootParser.FormatCopper(CalculateMoneyEarned(loot));
+        structural |= !string.Equals(MoneyText, moneyText, StringComparison.Ordinal) ||
+                      !LootShapeEquals(_loot, loot);
+        _loot = loot;
+        MoneyText = moneyText;
 
         // Reuse existing mob rows so an open wiki loot table is not cancelled/reloaded
         // on every live session upsert.
         var previous = Mobs.ToDictionary(item => item.Name, StringComparer.OrdinalIgnoreCase);
+        var orderedMobs = loot.Mobs
+            .OrderByDescending(item => item.Items.Sum(x => x.Count))
+            .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (Mobs.Count != orderedMobs.Length ||
+            !Mobs.Select(item => item.Name).SequenceEqual(orderedMobs.Select(item => item.Name),
+                StringComparer.OrdinalIgnoreCase))
+            structural = true;
+
         Mobs.Clear();
-        foreach (var mob in _loot.Mobs
-                     .OrderByDescending(item => item.Items.Sum(x => x.Count))
-                     .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
+        foreach (var mob in orderedMobs)
         {
             if (previous.TryGetValue(mob.Name, out var existing))
             {
@@ -299,8 +344,42 @@ public sealed class SessionEntryViewModel : ObservableObject
             else
             {
                 Mobs.Add(SessionMobLootRowViewModel.From(mob));
+                structural = true;
             }
         }
+
+        return structural;
+    }
+
+    private static bool MoteRowsEqual(IReadOnlyList<MoteCountRow> left, IReadOnlyList<MoteCountRow> right)
+    {
+        if (left.Count != right.Count) return false;
+        for (var i = 0; i < left.Count; i++)
+        {
+            if (left[i].Count != right[i].Count ||
+                !left[i].Name.Equals(right[i].Name, StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+        return true;
+    }
+
+    private static bool LootShapeEquals(SessionLootData left, SessionLootData right)
+    {
+        if (left.CoinCopper != right.CoinCopper || left.Mobs.Count != right.Mobs.Count) return false;
+        for (var i = 0; i < left.Mobs.Count; i++)
+        {
+            var a = left.Mobs[i];
+            var b = right.Mobs[i];
+            if (!a.Name.Equals(b.Name, StringComparison.OrdinalIgnoreCase) || a.Items.Count != b.Items.Count)
+                return false;
+            for (var j = 0; j < a.Items.Count; j++)
+            {
+                if (a.Items[j].Count != b.Items[j].Count ||
+                    !a.Items[j].Name.Equals(b.Items[j].Name, StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+        }
+        return true;
     }
 
     public void ToggleExpanded() => IsExpanded = !IsExpanded;

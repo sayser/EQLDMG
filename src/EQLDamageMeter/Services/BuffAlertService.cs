@@ -40,12 +40,6 @@ public sealed class BuffAlertService
 
     public void Test(BuffRuleSettings rule) => Play(rule);
 
-    public void TestLand(BuffRuleSettings rule) =>
-        Play(new BuffExpirationAlert(rule, BuffAlertPhase.Landed));
-
-    public void TestExpire(BuffRuleSettings rule) =>
-        Play(new BuffExpirationAlert(rule, BuffAlertPhase.Expired));
-
     /// <summary>Plays land then expire alerts sequentially (Hostile test button).</summary>
     public void TestHostilePair(BuffRuleSettings rule) =>
         _ = Task.Run(() =>

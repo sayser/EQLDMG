@@ -32,10 +32,6 @@ public sealed class BuffRuleViewModel : ObservableObject
     private ImageSource? _icon;
     private SpellTimingSource _castSource;
     private SpellTimingSource _durationSource;
-    private int _castSampleCount;
-    private int _durationSampleCount;
-    private double _castSampleSum;
-    private double _durationSampleSum;
     private bool _suppressManualMark;
 
     public BuffRuleViewModel(BuffRuleSettings settings)
@@ -63,10 +59,6 @@ public sealed class BuffRuleViewModel : ObservableObject
         _durationSource = settings.DurationSource == SpellTimingSource.Learned
             ? SpellTimingSource.Manual
             : settings.DurationSource;
-        _castSampleCount = 0;
-        _durationSampleCount = 0;
-        _castSampleSum = 0;
-        _durationSampleSum = 0;
     }
 
     public Guid Id { get; }
@@ -126,20 +118,12 @@ public sealed class BuffRuleViewModel : ObservableObject
     public bool IsEnabled
     {
         get => _isEnabled;
-        set
-        {
-            if (!SetProperty(ref _isEnabled, value)) return;
-            RaisePropertyChanged(nameof(OverlayVisibility));
-        }
+        set => SetProperty(ref _isEnabled, value);
     }
     public bool ShowInOverlay
     {
         get => _showInOverlay;
-        set
-        {
-            if (!SetProperty(ref _showInOverlay, value)) return;
-            RaisePropertyChanged(nameof(OverlayVisibility));
-        }
+        set => SetProperty(ref _showInOverlay, value);
     }
     public bool TrackSelf
     {
@@ -243,7 +227,6 @@ public sealed class BuffRuleViewModel : ObservableObject
         get => _spellValidationText;
         private set => SetProperty(ref _spellValidationText, value);
     }
-    public Visibility OverlayVisibility => IsEnabled && ShowInOverlay ? Visibility.Visible : Visibility.Collapsed;
     public Visibility SoundPickerVisibility =>
         AlertMode == BuffAlertMode.Sound ? Visibility.Visible : Visibility.Collapsed;
     public Visibility VoiceTextVisibility =>
@@ -294,10 +277,6 @@ public sealed class BuffRuleViewModel : ObservableObject
         {
             CastSource = SpellTimingSource.Catalog;
             DurationSource = SpellTimingSource.Catalog;
-            _castSampleCount = 0;
-            _durationSampleCount = 0;
-            _castSampleSum = 0;
-            _durationSampleSum = 0;
         }
 
         var fillCast = force || CastSource == SpellTimingSource.Catalog;
@@ -356,8 +335,7 @@ public sealed class BuffRuleViewModel : ObservableObject
         var landVoice = string.IsNullOrWhiteSpace(LandVoiceText) ? null : LandVoiceText.Trim();
         settings = new BuffRuleSettings(Id, SpellName.Trim(), checked((int)duration.TotalSeconds), castTime,
             IsEnabled, ShowInOverlay, BuffAlertModeOptions.Normalize(AlertMode), Sound, voice, TrackSelf,
-            TrackOthers, Category, ControlType, CastSource, DurationSource, _castSampleCount,
-            _durationSampleCount, _castSampleSum, _durationSampleSum,
+            TrackOthers, Category, ControlType, CastSource, DurationSource, 0, 0, 0, 0,
             Category == SpellTrackerCategory.Hostile ? LandSound : null,
             Category == SpellTrackerCategory.Hostile ? BuffAlertModeOptions.Normalize(LandAlertMode) : null,
             Category == SpellTrackerCategory.Hostile ? landVoice : null);
@@ -415,7 +393,6 @@ public sealed class BuffRuleViewModel : ObservableObject
             RemainingText = "Waiting";
             StatusText = "Not detected yet";
         }
-        RaisePropertyChanged(nameof(AlertSummary));
     }
 
     private static string SourceHint(SpellTimingSource source) =>

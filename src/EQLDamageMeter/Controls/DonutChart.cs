@@ -8,6 +8,7 @@ namespace EQLDamageMeter.Controls;
 public sealed class DonutChart : FrameworkElement
 {
     private static readonly Brush EmptyRingBrush = CreateFrozenBrush(Color.FromRgb(38, 54, 83));
+    private static readonly Dictionary<int, Pen> EmptyRingPens = [];
     public static readonly DependencyProperty ItemsSourceProperty = DependencyProperty.Register(
         nameof(ItemsSource), typeof(IEnumerable), typeof(DonutChart),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
@@ -21,16 +22,28 @@ public sealed class DonutChart : FrameworkElement
     protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
-        var items = ItemsSource?.Cast<AbilityViewModel>().Where(item => item.Damage > 0).ToArray() ?? [];
-        var total = items.Sum(item => item.Damage);
+        long total = 0;
+        List<AbilityViewModel>? items = null;
+        if (ItemsSource is not null)
+        {
+            foreach (var entry in ItemsSource)
+            {
+                if (entry is not AbilityViewModel item || item.Damage <= 0) continue;
+                items ??= [];
+                items.Add(item);
+                total += item.Damage;
+            }
+        }
+
         // Keep outer diameter fixed to the control size; only the ring band gets thicker.
         var outerRadius = Math.Max(0, Math.Min(ActualWidth, ActualHeight) / 2 - 6);
         var center = new Point(ActualWidth / 2, ActualHeight / 2);
         var thickness = Math.Clamp(outerRadius * 0.46, 12, outerRadius * 0.72);
         var pathRadius = Math.Max(0, outerRadius - thickness / 2);
+        var thicknessKey = (int)Math.Round(thickness * 100);
 
-        drawingContext.DrawEllipse(null, new Pen(EmptyRingBrush, thickness), center, pathRadius, pathRadius);
-        if (total <= 0 || pathRadius <= 0) return;
+        drawingContext.DrawEllipse(null, GetEmptyRingPen(thicknessKey, thickness), center, pathRadius, pathRadius);
+        if (total <= 0 || pathRadius <= 0 || items is null) return;
 
         var start = -90d;
         foreach (var item in items)
@@ -47,6 +60,18 @@ public sealed class DonutChart : FrameworkElement
                 drawingContext.DrawGeometry(null, pen, geometry);
             }
             start += sweep;
+        }
+    }
+
+    private static Pen GetEmptyRingPen(int thicknessKey, double thickness)
+    {
+        lock (EmptyRingPens)
+        {
+            if (EmptyRingPens.TryGetValue(thicknessKey, out var cached)) return cached;
+            var pen = new Pen(EmptyRingBrush, thickness);
+            pen.Freeze();
+            EmptyRingPens[thicknessKey] = pen;
+            return pen;
         }
     }
 
