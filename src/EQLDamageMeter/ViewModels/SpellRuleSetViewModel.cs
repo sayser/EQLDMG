@@ -98,64 +98,129 @@ public sealed class SpellRuleSetViewModel : ObservableObject
 
     public async Task<string?> DeleteRuleAsync(BuffRuleViewModel rule)
     {
-        Rules.Remove(rule);
-        if (ReferenceEquals(SelectedRule, rule)) SelectedRule = null;
-        return await SaveAsync();
+        await _timingGate.WaitAsync();
+        try
+        {
+            Rules.Remove(rule);
+            if (ReferenceEquals(SelectedRule, rule)) SelectedRule = null;
+            // Persist without re-resolving siblings against the catalog (that path can
+            // abort and leave the deleted rule on disk).
+            Configure(CaptureSettingsFromMemory(), pruneMissing: true);
+            RefreshRuleIcons();
+            RefreshOverlay(DateTime.Now);
+            RulesView.Refresh();
+            return await PersistFromMemoryAsync()
+                ? null
+                : $"{_category} rules could not be saved to spelltracker.json. Check that the app folder is writable.";
+        }
+        finally
+        {
+            _timingGate.Release();
+        }
     }
 
     public async Task<string?> SaveAsync(CancellationToken cancellationToken = default)
     {
+        await _timingGate.WaitAsync(cancellationToken);
+        try
+        {
+            var settings = new List<BuffRuleSettings>(Rules.Count);
+            foreach (var rule in Rules)
+            {
+                rule.Category = _category;
+                rule.TrackSelf = false;
+                rule.TrackOthers = true;
+                if (!rule.TryCreateSettings(out var configured, out var error))
+                {
+                    SelectedRule = rule;
+                    return $"{DisplayName(rule)}: {error}";
+                }
+                if (!TryResolveSpell(rule.SpellName, out var spell, out error))
+                {
+                    SelectedRule = rule;
+                    rule.SetSpellValidation(error);
+                    return error;
+                }
+                var previousFamily = SpellNameNormalizer.GetFamilyName(rule.SpellName);
+                rule.SpellName = spell!.Name;
+                rule.SetSpellValidation(null);
+                rule.SetIcon(_catalog()?.GetIcon(spell));
+                rule.ApplyCatalogTimings(spell,
+                    force: !previousFamily.Equals(spell.Name, StringComparison.OrdinalIgnoreCase),
+                    casterLevel: _casterLevel());
+                if (!rule.TryCreateSettings(out configured, out error))
+                {
+                    SelectedRule = rule;
+                    return $"{DisplayName(rule)}: {error}";
+                }
+                settings.Add(configured! with
+                {
+                    SpellName = spell.Name,
+                    Category = _category,
+                    TrackSelf = false,
+                    TrackOthers = true
+                });
+            }
+
+            var duplicate = settings.GroupBy(rule => SpellNameNormalizer.GetFamilyName(rule.SpellName),
+                StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault(group => group.Count() > 1);
+            if (duplicate is not null) return $"Only one {_category} rule can use {duplicate.Key}.";
+
+            Configure(settings);
+            RefreshRuleIcons();
+            RefreshOverlay(DateTime.Now);
+            RulesView.Refresh();
+            return await _save(settings, cancellationToken)
+                ? null
+                : $"{_category} rules could not be saved to spelltracker.json. Check that the app folder is writable.";
+        }
+        finally
+        {
+            _timingGate.Release();
+        }
+    }
+
+    private List<BuffRuleSettings> CaptureSettingsFromMemory()
+    {
+        var previous = (_category switch
+        {
+            SpellTrackerCategory.DamageOverTime => SpellTrackerStore.TryLoadDotRules(),
+            SpellTrackerCategory.Control => SpellTrackerStore.TryLoadControlRules(),
+            _ => SpellTrackerStore.TryLoadBuffRules()
+        }).ToDictionary(item => item.Id);
+
         var settings = new List<BuffRuleSettings>(Rules.Count);
         foreach (var rule in Rules)
         {
             rule.Category = _category;
             rule.TrackSelf = false;
             rule.TrackOthers = true;
-            if (!rule.TryCreateSettings(out var configured, out var error))
+            if (rule.TryCreateSettings(out var configured, out _))
             {
-                SelectedRule = rule;
-                return $"{DisplayName(rule)}: {error}";
+                settings.Add(configured! with
+                {
+                    Category = _category,
+                    TrackSelf = false,
+                    TrackOthers = true
+                });
             }
-            if (!TryResolveSpell(rule.SpellName, out var spell, out error))
+            else if (previous.TryGetValue(rule.Id, out var prior))
             {
-                SelectedRule = rule;
-                rule.SetSpellValidation(error);
-                return error;
+                settings.Add(prior with
+                {
+                    Category = _category,
+                    TrackSelf = false,
+                    TrackOthers = true
+                });
             }
-            var previousFamily = SpellNameNormalizer.GetFamilyName(rule.SpellName);
-            rule.SpellName = spell!.Name;
-            rule.SetSpellValidation(null);
-            rule.SetIcon(_catalog()?.GetIcon(spell));
-            rule.ApplyCatalogTimings(spell,
-                force: !previousFamily.Equals(spell.Name, StringComparison.OrdinalIgnoreCase),
-                casterLevel: _casterLevel());
-            if (!rule.TryCreateSettings(out configured, out error))
-            {
-                SelectedRule = rule;
-                return $"{DisplayName(rule)}: {error}";
-            }
-            settings.Add(configured! with
-            {
-                SpellName = spell.Name,
-                Category = _category,
-                TrackSelf = false,
-                TrackOthers = true
-            });
         }
 
-        var duplicate = settings.GroupBy(rule => SpellNameNormalizer.GetFamilyName(rule.SpellName),
-            StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault(group => group.Count() > 1);
-        if (duplicate is not null) return $"Only one {_category} rule can use {duplicate.Key}.";
-
-        Configure(settings);
-        RefreshRuleIcons();
-        RefreshOverlay(DateTime.Now);
-        RulesView.Refresh();
-        return await _save(settings, cancellationToken)
-            ? null
-            : $"{_category} rules could not be saved to spelltracker.json. Check that the app folder is writable.";
+        return settings;
     }
+
+    private Task<bool> PersistFromMemoryAsync(CancellationToken cancellationToken = default) =>
+        _save(CaptureSettingsFromMemory(), cancellationToken);
 
     public string? ValidateSpell(BuffRuleViewModel? rule)
     {

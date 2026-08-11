@@ -292,58 +292,80 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     public async Task<string?> DeleteBuffRuleAsync(BuffRuleViewModel rule)
     {
-        BuffRules.Remove(rule);
-        if (ReferenceEquals(SelectedBuffRule, rule)) SelectedBuffRule = null;
-        return await SaveBuffRulesAsync();
+        await _buffTimingGate.WaitAsync();
+        try
+        {
+            BuffRules.Remove(rule);
+            if (ReferenceEquals(SelectedBuffRule, rule)) SelectedBuffRule = null;
+            // Persist the in-memory list as-is. Full SaveBuffRulesAsync re-resolves every
+            // sibling against the spell catalog and can abort the delete (rule stays on disk).
+            ApplyBuffConfiguration();
+            BuffRulesView.Refresh();
+            return await PersistBuffRulesFromMemoryAsync()
+                ? null
+                : "Buff rules could not be saved to spelltracker.json. Check that the app folder is writable.";
+        }
+        finally
+        {
+            _buffTimingGate.Release();
+        }
     }
 
     public async Task<string?> SaveBuffRulesAsync()
     {
-        var settings = new List<BuffRuleSettings>(BuffRules.Count);
-        foreach (var rule in BuffRules)
+        await _buffTimingGate.WaitAsync();
+        try
         {
-            if (!rule.TryCreateSettings(out var configured, out var error))
+            var settings = new List<BuffRuleSettings>(BuffRules.Count);
+            foreach (var rule in BuffRules)
             {
-                SelectedBuffRule = rule;
-                var displayName = string.IsNullOrWhiteSpace(rule.SpellName) ? "New buff" : rule.SpellName;
-                return $"{displayName}: {error}";
+                if (!rule.TryCreateSettings(out var configured, out var error))
+                {
+                    SelectedBuffRule = rule;
+                    var displayName = string.IsNullOrWhiteSpace(rule.SpellName) ? "New buff" : rule.SpellName;
+                    return $"{displayName}: {error}";
+                }
+                if (!TryResolveSpell(rule.SpellName, out var spell, out error))
+                {
+                    SelectedBuffRule = rule;
+                    rule.SetSpellValidation(error);
+                    return error;
+                }
+                var previousFamily = SpellNameNormalizer.GetFamilyName(rule.SpellName);
+                rule.SpellName = spell!.Name;
+                rule.SetSpellValidation(null);
+                rule.SetIcon(_spellDataCatalog?.GetIcon(spell));
+                rule.ApplyCatalogTimings(spell,
+                    force: !previousFamily.Equals(spell.Name, StringComparison.OrdinalIgnoreCase),
+                    casterLevel: _characterLevel);
+                if (!rule.TryCreateSettings(out configured, out error))
+                {
+                    SelectedBuffRule = rule;
+                    var displayName = string.IsNullOrWhiteSpace(rule.SpellName) ? "New buff" : rule.SpellName;
+                    return $"{displayName}: {error}";
+                }
+                settings.Add(configured! with { SpellName = spell.Name });
             }
-            if (!TryResolveSpell(rule.SpellName, out var spell, out error))
-            {
-                SelectedBuffRule = rule;
-                rule.SetSpellValidation(error);
-                return error;
-            }
-            var previousFamily = SpellNameNormalizer.GetFamilyName(rule.SpellName);
-            rule.SpellName = spell!.Name;
-            rule.SetSpellValidation(null);
-            rule.SetIcon(_spellDataCatalog?.GetIcon(spell));
-            rule.ApplyCatalogTimings(spell,
-                force: !previousFamily.Equals(spell.Name, StringComparison.OrdinalIgnoreCase),
-                casterLevel: _characterLevel);
-            if (!rule.TryCreateSettings(out configured, out error))
-            {
-                SelectedBuffRule = rule;
-                var displayName = string.IsNullOrWhiteSpace(rule.SpellName) ? "New buff" : rule.SpellName;
-                return $"{displayName}: {error}";
-            }
-            settings.Add(configured! with { SpellName = spell.Name });
+
+            var duplicate = settings.GroupBy(rule => SpellNameNormalizer.GetFamilyName(rule.SpellName),
+                StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault(group => group.Count() > 1);
+            if (duplicate is not null) return $"Only one tracking rule can use the spell name {duplicate.Key}.";
+
+            _buffTracker.Configure(settings, ResolveFadeMessages, ResolveSelfAppliedMessages,
+                ResolveOtherAppliedMessages,
+                suffix => _spellDataCatalog?.IsAmbiguousOtherAppliedSuffix(suffix) == true);
+            RefreshBuffRuleIcons();
+            RefreshOverlayEntries(DateTime.Now);
+            BuffRulesView.Refresh();
+            return await SpellTrackerStore.TrySaveBuffRulesAsync(settings)
+                ? null
+                : "Buff rules could not be saved to spelltracker.json. Check that the app folder is writable.";
         }
-
-        var duplicate = settings.GroupBy(rule => SpellNameNormalizer.GetFamilyName(rule.SpellName),
-            StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault(group => group.Count() > 1);
-        if (duplicate is not null) return $"Only one tracking rule can use the spell name {duplicate.Key}.";
-
-        _buffTracker.Configure(settings, ResolveFadeMessages, ResolveSelfAppliedMessages,
-            ResolveOtherAppliedMessages,
-            suffix => _spellDataCatalog?.IsAmbiguousOtherAppliedSuffix(suffix) == true);
-        RefreshBuffRuleIcons();
-        RefreshOverlayEntries(DateTime.Now);
-        BuffRulesView.Refresh();
-        return await SpellTrackerStore.TrySaveBuffRulesAsync(settings)
-            ? null
-            : "Buff rules could not be saved to spelltracker.json. Check that the app folder is writable.";
+        finally
+        {
+            _buffTimingGate.Release();
+        }
     }
 
     public string? TestSelectedBuffAlert()
@@ -423,12 +445,21 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         var dotChanged = await DotSpellTracker.ReseedCatalogTimingsAsync(_characterLevel);
         var controlChanged = await ControlSpellTracker.ReseedCatalogTimingsAsync(_characterLevel);
-        if (buffChanged) _ = await PersistBuffRulesQuietAsync();
+        if (buffChanged)
+        {
+            await _buffTimingGate.WaitAsync();
+            try { _ = await PersistBuffRulesFromMemoryAsync(); }
+            finally { _buffTimingGate.Release(); }
+        }
         if (dotChanged) _ = await DotSpellTracker.SaveAsync();
         if (controlChanged) _ = await ControlSpellTracker.SaveAsync();
     }
 
-    private async Task<bool> PersistBuffRulesQuietAsync()
+    /// <summary>
+    /// Writes the current BuffRules collection to disk without catalog re-validation.
+    /// Deleted rules are never resurrected from the previous file.
+    /// </summary>
+    private async Task<bool> PersistBuffRulesFromMemoryAsync()
     {
         var previous = SpellTrackerStore.TryLoadBuffRules().ToDictionary(item => item.Id);
         var settings = new List<BuffRuleSettings>(BuffRules.Count);
@@ -439,7 +470,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             else if (previous.TryGetValue(item.Id, out var prior))
                 settings.Add(prior);
         }
-        return settings.Count > 0 && await SpellTrackerStore.TrySaveBuffRulesAsync(settings);
+
+        return await SpellTrackerStore.TrySaveBuffRulesAsync(settings);
     }
 
     private void NoteCharacterLevelFromMessage(string message)
