@@ -352,6 +352,47 @@ internal static class Program
             refreshed[0].ExpiresAt > firstExpires &&
             Math.Abs((refreshed[0].ExpiresAt - t0.AddSeconds(54 + 120)).TotalSeconds) < 1.0);
 
+        // Pending other-buff land is death-linked: pet death clears Chloroplast.
+        var chloroDeath = Rule("Chloroplast", SpellTrackerCategory.Buff, ControlEffectType.Other, 120, 4);
+        chloroDeath = chloroDeath with { TrackSelf = true, TrackOthers = true };
+        var chloroDeathTracker = new BuffTracker();
+        chloroDeathTracker.Configure([chloroDeath],
+            _ => ["You have stopped regenerating."],
+            _ => ["You begin to regenerate."],
+            _ => [" begins to regenerate."], _ => true);
+        chloroDeathTracker.Observe(t0, "You begin casting Chloroplast.");
+        chloroDeathTracker.Observe(t0.AddSeconds(4), "Innoruuk`s Chosen begins to regenerate.");
+        chloroDeathTracker.Observe(t0.AddSeconds(10), "You have slain Innoruuk`s Chosen!");
+        Check("Pet death clears other Chloroplast",
+            chloroDeathTracker.GetActiveSnapshots(t0.AddSeconds(10.1)).Count == 0);
+
+        // Charm break leaves OTHER buffs up — they still tick on the former pet.
+        var charmRule = Rule("Allure", SpellTrackerCategory.Control, ControlEffectType.Charm, 210, 5);
+        var chloroCharm = Rule("Chloroplast", SpellTrackerCategory.Buff, ControlEffectType.Other, 120, 4);
+        chloroCharm = chloroCharm with { TrackSelf = true, TrackOthers = true };
+        var charmBuffTracker = new BuffTracker();
+        charmBuffTracker.Configure([charmRule, chloroCharm],
+            _ => [],
+            _ => ["You begin to regenerate."],
+            spell => spell.Equals("Chloroplast", StringComparison.OrdinalIgnoreCase)
+                ? [" begins to regenerate."]
+                : [" has been charmed."],
+            _ => true);
+        charmBuffTracker.Observe(t0, "You begin casting Allure.");
+        charmBuffTracker.Observe(t0.AddSeconds(5), "Innoruuk`s Chosen has been charmed.");
+        charmBuffTracker.Observe(t0.AddSeconds(10), "You begin casting Chloroplast.");
+        charmBuffTracker.Observe(t0.AddSeconds(14), "Innoruuk`s Chosen begins to regenerate.");
+        charmBuffTracker.Observe(t0.AddSeconds(40),
+            "Your Allure spell has worn off of Innoruuk`s Chosen.");
+        Check("Charm break keeps pet Chloroplast",
+            charmBuffTracker.GetActiveSnapshots(t0.AddSeconds(40.1))
+                .Count(s => s.SpellName == "Chloroplast" &&
+                            s.TargetName.Equals("Innoruuk`s Chosen", StringComparison.OrdinalIgnoreCase)) == 1);
+        charmBuffTracker.Observe(t0.AddSeconds(45), "You have slain Innoruuk`s Chosen!");
+        Check("Former pet death clears Chloroplast after charm break",
+            charmBuffTracker.GetActiveSnapshots(t0.AddSeconds(45.1))
+                .All(s => s.SpellName != "Chloroplast"));
+
         var haste = Rule("Swift Like the Wind", SpellTrackerCategory.Buff, ControlEffectType.Other, 180, 6);
         haste = haste with { TrackSelf = true, TrackOthers = true };
         var hasteTracker = new BuffTracker();

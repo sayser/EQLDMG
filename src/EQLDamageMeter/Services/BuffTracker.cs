@@ -452,8 +452,10 @@ public sealed class BuffTracker
                     var key = FindTargetInstanceKey(state, ambiguousTarget) ?? UnconfirmedTargetKey;
                     if (key != UnconfirmedTargetKey)
                         state.Instances.Remove(UnconfirmedTargetKey);
+                    // Our pending cast landed on a named target (often a charmed pet) —
+                    // clear it when that target dies or charm breaks.
                     Activate(state, rule, key, ambiguousTarget, false, startedAt,
-                        clearPending: false, clearsOnTargetDeath: false);
+                        clearPending: false, clearsOnTargetDeath: true);
                     NoteLandConfirmation(state, rule, timestamp);
                 }
                 else if (state.Instances.ContainsKey(UnconfirmedTargetKey))
