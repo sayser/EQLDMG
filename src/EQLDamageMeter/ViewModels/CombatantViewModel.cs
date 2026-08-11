@@ -39,6 +39,7 @@ public sealed class CombatantViewModel : ObservableObject
     private AbilityViewModel[] _incomingAbilities = [];
     private AbilityViewModel[] _mitigations = [];
     private AbilityViewModel[] _healingAbilities = [];
+    private AbilityViewModel[] _procs = [];
 
     public string Name
     {
@@ -275,6 +276,12 @@ public sealed class CombatantViewModel : ObservableObject
         set => SetProperty(ref _healingAbilities, value);
     }
 
+    public AbilityViewModel[] Procs
+    {
+        get => _procs;
+        set => SetProperty(ref _procs, value);
+    }
+
     public string DamageText => Damage.ToString("N0", CultureInfo.CurrentCulture);
     public string DamageTakenText => DamageTaken.ToString("N0", CultureInfo.CurrentCulture);
     public string HealingText => Healing.ToString("N0", CultureInfo.CurrentCulture);
@@ -293,7 +300,7 @@ public sealed class CombatantViewModel : ObservableObject
 
     public void ApplyAggregate(CombatantAggregate aggregate, double seconds, bool isWarmingUp, int rank,
         AbilityViewModel[] abilities, AbilityViewModel[] incomingAbilities, AbilityViewModel[] healingAbilities,
-        AbilityViewModel[] mitigations)
+        AbilityViewModel[] mitigations, AbilityViewModel[] procs)
     {
         Name = aggregate.Name;
         OwnerName = aggregate.OwnerName;
@@ -330,6 +337,7 @@ public sealed class CombatantViewModel : ObservableObject
         IncomingAbilities = incomingAbilities;
         HealingAbilities = healingAbilities;
         Mitigations = mitigations;
+        Procs = procs;
     }
 
     private static string FormatRate(int criticals, int total) =>

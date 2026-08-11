@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using EQLDamageMeter.Models;
 
 namespace EQLDamageMeter.Services;
@@ -6,6 +7,10 @@ public sealed class AbilityAggregate(string name)
 {
     public string Name { get; private set; } = name;
     public long Damage { get; set; }
+    public int Hits { get; set; }
+    /// <summary>Hits credited as weapon/item/AA procs (spell damage with no matching cast).</summary>
+    public int ProcHits { get; set; }
+    public long ProcDamage { get; set; }
     public Dictionary<string, AbilityAggregate> Children { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
@@ -70,6 +75,11 @@ public sealed class EncounterTracker(string localPlayerName)
 {
     private readonly record struct RollingDamageEvent(
         DateTime Timestamp, string Source, string? OwnerName, int Amount);
+    private readonly record struct PendingCast(DateTime Timestamp, string Source, string SpellFamily);
+
+    private static readonly Regex BeginsCasting = new(
+        @"^(?<source>You|.+?) begin(?:s)? casting (?<spell>.+?)\.?$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private readonly Dictionary<string, CombatantAggregate> _combatants = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<CombatantAggregate> _retiredCombatants = [];
@@ -79,10 +89,12 @@ public sealed class EncounterTracker(string localPlayerName)
     private readonly List<DamageEvent> _pending = [];
     private readonly Queue<RollingDamageEvent> _rollingEvents = [];
     private readonly List<CombatOutcomeEvent> _pendingOutcomes = [];
+    private readonly List<PendingCast> _pendingCasts = [];
 
     public TimeSpan EncounterTimeout { get; set; } = TimeSpan.FromSeconds(10);
     public TimeSpan KillCompletionGrace { get; set; } = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan RollingRetention = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan CastMatchWindow = TimeSpan.FromSeconds(12);
     public DateTime? StartedAt { get; private set; }
     public DateTime? LastDamageAt { get; private set; }
     public DateTime? EndedAt { get; private set; }
@@ -381,6 +393,19 @@ public sealed class EncounterTracker(string localPlayerName)
 
     public void ProcessMessage(DateTime timestamp, string message)
     {
+        if (BeginsCasting.Match(message) is { Success: true } castMatch)
+        {
+            var source = castMatch.Groups["source"].Value;
+            if (source.Equals("You", StringComparison.OrdinalIgnoreCase))
+                source = localPlayerName;
+            var family = SpellNameNormalizer.GetFamilyName(castMatch.Groups["spell"].Value);
+            if (family.Length > 0)
+            {
+                _pendingCasts.Add(new PendingCast(timestamp, source, family));
+                PrunePendingCasts(timestamp);
+            }
+        }
+
         string? defeatedTarget = null;
         const string localPrefix = "You have slain ";
         if (message.StartsWith(localPrefix, StringComparison.OrdinalIgnoreCase) && message.EndsWith('!'))
@@ -487,6 +512,7 @@ public sealed class EncounterTracker(string localPlayerName)
         _pending.Clear();
         _rollingEvents.Clear();
         _pendingOutcomes.Clear();
+        _pendingCasts.Clear();
         StartedAt = null;
         LastDamageAt = null;
         EndedAt = null;
@@ -533,7 +559,14 @@ public sealed class EncounterTracker(string localPlayerName)
             if (damage.IsCritical) combatant.SpellCriticalHits++;
         }
 
-        GetOrCreateAbility(combatant.Abilities, damage.Ability).Damage += damage.Amount;
+        var ability = GetOrCreateAbility(combatant.Abilities, damage.Ability);
+        ability.Damage += damage.Amount;
+        ability.Hits++;
+        if (damage.Category == DamageCategory.Spell && !TryConsumeMatchingCast(damage))
+        {
+            ability.ProcHits++;
+            ability.ProcDamage += damage.Amount;
+        }
 
         if (!combatant.Targets.TryGetValue(damage.Target, out var target))
         {
@@ -541,7 +574,9 @@ public sealed class EncounterTracker(string localPlayerName)
             combatant.Targets[damage.Target] = target;
         }
         target.Damage += damage.Amount;
-        GetOrCreateAbility(target.Abilities, damage.Ability).Damage += damage.Amount;
+        var targetAbility = GetOrCreateAbility(target.Abilities, damage.Ability);
+        targetAbility.Damage += damage.Amount;
+        targetAbility.Hits++;
 
         ReplayPendingOutcomes(damage, group);
     }
@@ -654,7 +689,32 @@ public sealed class EncounterTracker(string localPlayerName)
         defender.DamageTaken += damage.Amount;
         defender.IncomingHits++;
         if (damage.Category == DamageCategory.Melee) defender.IncomingMeleeHits++;
-        GetOrCreateAbility(defender.IncomingAbilities, damage.Ability).Damage += damage.Amount;
+        var incoming = GetOrCreateAbility(defender.IncomingAbilities, damage.Ability);
+        incoming.Damage += damage.Amount;
+        incoming.Hits++;
+    }
+
+    private bool TryConsumeMatchingCast(DamageEvent damage)
+    {
+        PrunePendingCasts(damage.Timestamp);
+        var family = SpellNameNormalizer.GetFamilyName(damage.Ability);
+        for (var i = _pendingCasts.Count - 1; i >= 0; i--)
+        {
+            var cast = _pendingCasts[i];
+            if (!cast.Source.Equals(damage.Source, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!cast.SpellFamily.Equals(family, StringComparison.OrdinalIgnoreCase)) continue;
+            if (damage.Timestamp < cast.Timestamp) continue;
+            if (damage.Timestamp - cast.Timestamp > CastMatchWindow) continue;
+            _pendingCasts.RemoveAt(i);
+            return true;
+        }
+
+        return false;
+    }
+
+    private void PrunePendingCasts(DateTime now)
+    {
+        _pendingCasts.RemoveAll(cast => now - cast.Timestamp > CastMatchWindow);
     }
 
     private static AbilityAggregate GetOrCreateAbility(Dictionary<string, AbilityAggregate> abilities,
@@ -813,6 +873,9 @@ public sealed class EncounterTracker(string localPlayerName)
 
     private static AbilityAggregate CloneAbility(AbilityAggregate source) => new(source.Name)
     {
-        Damage = source.Damage
+        Damage = source.Damage,
+        Hits = source.Hits,
+        ProcHits = source.ProcHits,
+        ProcDamage = source.ProcDamage
     };
 }

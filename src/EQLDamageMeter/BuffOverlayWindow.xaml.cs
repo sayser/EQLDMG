@@ -2,15 +2,22 @@ using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using EQLDamageMeter.Services;
 
 namespace EQLDamageMeter;
 
 public partial class BuffOverlayWindow : Window
 {
-    public BuffOverlayWindow() => InitializeComponent();
+    public BuffOverlayWindow()
+    {
+        InitializeComponent();
+        Tag = OverlayWindowPlacement.BuffKey;
+        Loaded += (_, _) => OverlayClickThrough.ApplySaved(this, OverlayWindowPlacement.BuffKey);
+    }
 
     private void Overlay_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (OverlayClickThrough.IsLocked(this)) return;
         if (e.LeftButton != MouseButtonState.Pressed || IsInteractiveControl(e.OriginalSource as DependencyObject))
             return;
         e.Handled = true;

@@ -2,17 +2,27 @@ using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using EQLDamageMeter.Services;
 
 namespace EQLDamageMeter;
 
 public partial class SpellEffectOverlayWindow : Window
 {
-    public SpellEffectOverlayWindow() => InitializeComponent();
+    public SpellEffectOverlayWindow()
+    {
+        InitializeComponent();
+        Loaded += (_, _) =>
+        {
+            var key = Tag as string ?? "spell";
+            OverlayClickThrough.ApplySaved(this, key);
+        };
+    }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
     private void Overlay_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (OverlayClickThrough.IsLocked(this)) return;
         if (e.LeftButton != MouseButtonState.Pressed || IsInteractiveControl(e.OriginalSource as DependencyObject))
             return;
 

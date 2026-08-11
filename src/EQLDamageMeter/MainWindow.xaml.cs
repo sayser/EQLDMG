@@ -15,6 +15,8 @@ public partial class MainWindow : Window, IAsyncDisposable
     private SpellEffectOverlayWindow? _dotOverlay;
     private SpellEffectOverlayWindow? _controlOverlay;
     private SpellEffectOverlayWindow? _hostileOverlay;
+    private MouseHighlightOverlayWindow? _mouseHighlight;
+    private MouseHighlightSettings _mouseHighlightSettings = AppSettingsStore.TryLoadMouseHighlight();
     private bool _startupUpdateChecked;
     private bool _disposed;
 
@@ -22,6 +24,10 @@ public partial class MainWindow : Window, IAsyncDisposable
     {
         InitializeComponent();
         DataContext = _viewModel;
+        _viewModel.OverlayLockChanged += ApplyOverlayLock;
+        _viewModel.DotSpellTracker.OverlayLockChanged += ApplyOverlayLock;
+        _viewModel.ControlSpellTracker.OverlayLockChanged += ApplyOverlayLock;
+        _viewModel.HostileSpellTracker.OverlayLockChanged += ApplyOverlayLock;
         Loaded += MainWindow_Loaded;
         Closed += async (_, _) =>
         {
@@ -29,12 +35,47 @@ public partial class MainWindow : Window, IAsyncDisposable
         };
     }
 
+    private void ApplyOverlayLock(string key, bool locked)
+    {
+        Window? window = key switch
+        {
+            OverlayWindowPlacement.DpsKey => _overlay,
+            OverlayWindowPlacement.BuffKey => _buffOverlay,
+            OverlayWindowPlacement.DotKey => _dotOverlay,
+            OverlayWindowPlacement.ControlKey => _controlOverlay,
+            OverlayWindowPlacement.HostileKey => _hostileOverlay,
+            _ => null
+        };
+        if (window is not null)
+            OverlayClickThrough.SetLocked(window, locked);
+        else
+            _ = AppSettingsStore.TrySaveOverlayLockedAsync(key, locked);
+    }
+
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        ApplyMouseHighlight();
         await _viewModel.InitializeAsync();
         if (_startupUpdateChecked) return;
         _startupUpdateChecked = true;
         AppUpdateService.CheckForUpdates(this);
+    }
+
+    private async void MouseHighlightOptions_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new MouseHighlightSettingsWindow(_mouseHighlightSettings) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        _mouseHighlightSettings = dialog.Result;
+        await AppSettingsStore.TrySaveMouseHighlightAsync(_mouseHighlightSettings);
+        ApplyMouseHighlight();
+    }
+
+    private void ApplyMouseHighlight()
+    {
+        // No Owner — owned windows hide when the main window minimizes.
+        if (_mouseHighlightSettings.Enabled)
+            _mouseHighlight ??= new MouseHighlightOverlayWindow();
+        _mouseHighlight?.ApplyOptions(_mouseHighlightSettings);
     }
 
     private void CheckUpdates_Click(object sender, RoutedEventArgs e) =>
@@ -281,7 +322,7 @@ public partial class MainWindow : Window, IAsyncDisposable
             return;
         }
 
-        _overlay = new OverlayWindow { DataContext = _viewModel, Owner = this };
+        _overlay = new OverlayWindow { DataContext = _viewModel };
         OverlayWindowPlacement.Attach(_overlay, OverlayWindowPlacement.DpsKey);
         _overlay.Closed += (_, _) =>
         {
@@ -300,7 +341,7 @@ public partial class MainWindow : Window, IAsyncDisposable
             return;
         }
 
-        _buffOverlay = new BuffOverlayWindow { DataContext = _viewModel, Owner = this };
+        _buffOverlay = new BuffOverlayWindow { DataContext = _viewModel };
         OverlayWindowPlacement.Attach(_buffOverlay, OverlayWindowPlacement.BuffKey);
         if (_viewModel.IsCompactBuffOverlay &&
             !AppSettingsStore.TryLoadOverlayBounds(OverlayWindowPlacement.BuffKey, out _))
@@ -338,7 +379,11 @@ public partial class MainWindow : Window, IAsyncDisposable
             return;
         }
 
-        var window = new SpellEffectOverlayWindow { DataContext = dataContext, Owner = this };
+        var window = new SpellEffectOverlayWindow
+        {
+            DataContext = dataContext,
+            Tag = placementKey
+        };
         OverlayWindowPlacement.Attach(window, placementKey);
         // Compact defaults only when this overlay has no saved bounds yet (e.g. first Hostile open).
         if (dataContext is SpellRuleSetViewModel { IsCompactOverlay: true } &&
@@ -413,6 +458,8 @@ public partial class MainWindow : Window, IAsyncDisposable
         _dotOverlay?.Close();
         _controlOverlay?.Close();
         _hostileOverlay?.Close();
+        _mouseHighlight?.Close();
+        _mouseHighlight = null;
         await _viewModel.DisposeAsync();
         GC.SuppressFinalize(this);
     }

@@ -267,7 +267,11 @@ public sealed class SessionEntryViewModel : ObservableObject
         structural |= IsLive != isLive;
         IsLive = isLive;
 
-        var title = isLive ? "Current session" : FormatTitle(record.StartedAt);
+        var title = isLive
+            ? "Current session"
+            : record.Id.StartsWith("backfill:", StringComparison.OrdinalIgnoreCase)
+                ? "Last 3h from log"
+                : FormatTitle(record.StartedAt);
         structural |= !string.Equals(Title, title, StringComparison.Ordinal);
         Title = title;
 
@@ -582,7 +586,8 @@ public sealed class SessionMobLootRowViewModel : ObservableObject
 
     private async Task LoadItemStatsAsync(CancellationToken cancellationToken)
     {
-        var items = WikiLootItems.Where(item => string.IsNullOrWhiteSpace(item.Stats)).ToArray();
+        var items = WikiLootItems.Where(item =>
+            string.IsNullOrWhiteSpace(item.Stats) || string.IsNullOrWhiteSpace(item.Uses)).ToArray();
         if (items.Length == 0) return;
         using var gate = new SemaphoreSlim(4, 4);
         var tasks = items.Select(async item =>
@@ -590,8 +595,17 @@ public sealed class SessionMobLootRowViewModel : ObservableObject
             await gate.WaitAsync(cancellationToken);
             try
             {
-                var (stats, error) = await EqWikiItemStats.FetchStatsAsync(item.Name, cancellationToken);
-                await DispatchAsync(() => item.ApplyStats(stats, error), cancellationToken);
+                if (string.IsNullOrWhiteSpace(item.Stats))
+                {
+                    var (stats, error) = await EqWikiItemStats.FetchStatsAsync(item.Name, cancellationToken);
+                    await DispatchAsync(() => item.ApplyStats(stats, error), cancellationToken);
+                }
+
+                if (string.IsNullOrWhiteSpace(item.Uses))
+                {
+                    var (uses, usesError) = await EqWikiItemUses.FetchUsesAsync(item.Name, cancellationToken);
+                    await DispatchAsync(() => item.ApplyUses(uses.Summary, usesError), cancellationToken);
+                }
             }
             finally
             {
@@ -803,6 +817,7 @@ public sealed class WikiLootItemViewModel : ObservableObject
 {
     private string _stats = string.Empty;
     private string _statsStatus = "Loading item info…";
+    private string _uses = string.Empty;
 
     public WikiLootItemViewModel(string name, string dropChance)
     {
@@ -833,10 +848,22 @@ public sealed class WikiLootItemViewModel : ObservableObject
         }
     }
 
+    public string Uses
+    {
+        get => _uses;
+        private set
+        {
+            if (!SetProperty(ref _uses, value)) return;
+            RaisePropertyChanged(nameof(UsesVisibility));
+        }
+    }
+
     public Visibility StatsVisibility =>
         string.IsNullOrWhiteSpace(Stats) ? Visibility.Collapsed : Visibility.Visible;
     public Visibility StatsStatusVisibility =>
         string.IsNullOrWhiteSpace(StatsStatus) ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility UsesVisibility =>
+        string.IsNullOrWhiteSpace(Uses) ? Visibility.Collapsed : Visibility.Visible;
 
     public void ApplyStats(string stats, string? error)
     {
@@ -849,6 +876,17 @@ public sealed class WikiLootItemViewModel : ObservableObject
 
         Stats = string.Empty;
         StatsStatus = string.IsNullOrWhiteSpace(error) ? "No item stats on wiki." : error;
+    }
+
+    public void ApplyUses(string uses, string? error)
+    {
+        if (!string.IsNullOrWhiteSpace(uses))
+        {
+            Uses = uses;
+            return;
+        }
+
+        Uses = string.IsNullOrWhiteSpace(error) ? string.Empty : error;
     }
 }
 

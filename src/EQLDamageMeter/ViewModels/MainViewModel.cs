@@ -66,6 +66,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private string _buffFilterMode = "All";
     private SpellIconStyle _spellIconStyle = SpellIconStyle.Modern;
     private bool _isCompactBuffOverlay;
+    private bool _lockDpsOverlay;
+    private bool _lockBuffOverlay;
     private int _characterLevel = SpellDataCatalog.DefaultCasterLevel;
     private int _parseGeneration;
     private int _drainScheduled;
@@ -78,6 +80,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             (_, _) => OnRefreshTimer(), _dispatcher);
         _spellIconStyle = AppSettingsStore.TryLoadSpellIconStyle();
         _isCompactBuffOverlay = AppSettingsStore.TryLoadOverlayCompact(OverlayWindowPlacement.BuffKey);
+        _lockDpsOverlay = AppSettingsStore.TryLoadOverlayLocked(OverlayWindowPlacement.DpsKey);
+        _lockBuffOverlay = AppSettingsStore.TryLoadOverlayLocked(OverlayWindowPlacement.BuffKey);
 
         foreach (var settings in SpellTrackerStore.TryLoadBuffRules())
             BuffRules.Add(new BuffRuleViewModel(settings));
@@ -142,6 +146,29 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    public bool LockDpsOverlay
+    {
+        get => _lockDpsOverlay;
+        set
+        {
+            if (!SetProperty(ref _lockDpsOverlay, value)) return;
+            OverlayLockChanged?.Invoke(OverlayWindowPlacement.DpsKey, value);
+        }
+    }
+
+    public bool LockBuffOverlay
+    {
+        get => _lockBuffOverlay;
+        set
+        {
+            if (!SetProperty(ref _lockBuffOverlay, value)) return;
+            OverlayLockChanged?.Invoke(OverlayWindowPlacement.BuffKey, value);
+        }
+    }
+
+    /// <summary>Raised when a main-app Lock checkbox changes (key, locked).</summary>
+    public event Action<string, bool>? OverlayLockChanged;
+
     public string AppVersionText => $"v {AppUpdateService.CurrentVersionText}";
 
     public string UpdateButtonToolTip =>
@@ -201,6 +228,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         BreakdownMode.Healing => SelectedCombatant?.HealingAbilities ?? [],
         _ => SelectedCombatant?.Abilities ?? []
     };
+    public IReadOnlyList<AbilityViewModel> SelectedProcs => SelectedCombatant?.Procs ?? [];
     public IReadOnlyList<AbilityViewModel> SelectedIncomingAbilities => SelectedCombatant?.IncomingAbilities ?? [];
     public IReadOnlyList<AbilityViewModel> SelectedMitigations => SelectedCombatant?.Mitigations ?? [];
     public string SelectedName => SelectedCombatant?.Name ?? string.Empty;
@@ -646,10 +674,19 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _sessionHistory.RemoveAll(item => string.Equals(item.Id, built.Id, StringComparison.Ordinal));
         _sessionHistory.Insert(0, built);
         _sessionDirty = true;
-        RefreshSessionHistoryUi();
-        SessionHistory.SelectedSession = SessionHistory.Sessions.FirstOrDefault(item =>
-                                            string.Equals(item.Id, built.Id, StringComparison.Ordinal))
-                                        ?? SessionHistory.SelectedSession;
+
+        // Reload the full session list (live + history). UpsertCurrent alone leaves a
+        // newly inserted backfill invisible until the next LoadHistory.
+        var live = _sessionTracker.CreateSnapshot();
+        SessionHistory.LoadHistory(_sessionHistory, live);
+        var backfillEntry = SessionHistory.Sessions.FirstOrDefault(item =>
+            string.Equals(item.Id, built.Id, StringComparison.Ordinal));
+        if (backfillEntry is not null)
+        {
+            backfillEntry.IsExpanded = true;
+            SessionHistory.SelectedSession = backfillEntry;
+        }
+
         PersistSessionHistoryIfNeeded(force: true);
     }
 
@@ -1152,7 +1189,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     var display = abilityGroup.OrderByDescending(item => item.Name.Length).First().Name;
                     petSummary.Children[abilityGroup.Key] = new AbilityAggregate(display)
                     {
-                        Damage = abilityGroup.Sum(item => item.Damage)
+                        Damage = abilityGroup.Sum(item => item.Damage),
+                        Hits = abilityGroup.Sum(item => item.Hits),
+                        ProcHits = abilityGroup.Sum(item => item.ProcHits),
+                        ProcDamage = abilityGroup.Sum(item => item.ProcDamage)
                     };
                 }
                 combined.Abilities[petSummary.Name] = petSummary;
@@ -1178,6 +1218,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 aggregate.PreferDisplayName(ability.Name);
             }
             aggregate.Damage += ability.Damage;
+            aggregate.Hits += ability.Hits;
+            aggregate.ProcHits += ability.ProcHits;
+            aggregate.ProcDamage += ability.ProcDamage;
         }
     }
 
@@ -1252,6 +1295,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var abilities = CreateAbilities(aggregate.Abilities.Values, seconds);
         var incomingAbilities = CreateAbilities(aggregate.IncomingAbilities.Values, seconds);
         var healingAbilities = CreateAbilities(aggregate.HealingAbilities.Values, seconds);
+        var procs = CreateProcAbilities(aggregate.Abilities.Values, seconds);
         var mitigationValues = new (string Name, int Count)[]
         {
             ("Dodge", aggregate.Dodges), ("Parry", aggregate.Parries), ("Block", aggregate.Blocks),
@@ -1269,7 +1313,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             }).ToArray();
 
         row.ApplyAggregate(aggregate, seconds, isWarmingUp, rank, abilities, incomingAbilities,
-            healingAbilities, mitigations);
+            healingAbilities, mitigations, procs);
     }
 
     private AbilityViewModel[] CreateAbilities(IEnumerable<AbilityAggregate> source, double seconds)
@@ -1278,7 +1322,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var total = Math.Max(1, abilities.Sum(item => item.Damage));
         return abilities.Select((ability, index) => new AbilityViewModel
         {
-            Name = ability.Name, Damage = ability.Damage, Dps = ability.Damage / Math.Max(1, seconds),
+            Name = ability.Name, Damage = ability.Damage, Hits = ability.Hits,
+            Dps = ability.Damage / Math.Max(1, seconds),
             Share = ability.Damage * 100d / total,
             Color = ChartBrushes[index % ChartBrushes.Length],
             Icon = _spellDataCatalog?.GetAbilityIcon(ability.Name) ?? SpellIconAtlas.GenericIcon,
@@ -1286,6 +1331,49 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             Children = ability.Children.Count == 0
                 ? []
                 : CreateAbilities(ability.Children.Values, seconds)
+        }).ToArray();
+    }
+
+    private AbilityViewModel[] CreateProcAbilities(IEnumerable<AbilityAggregate> source, double seconds)
+    {
+        static IEnumerable<AbilityAggregate> Flatten(AbilityAggregate ability)
+        {
+            if (ability.ProcHits > 0) yield return ability;
+            foreach (var child in ability.Children.Values)
+            foreach (var nested in Flatten(child))
+                yield return nested;
+        }
+
+        var procs = source.SelectMany(Flatten)
+            .GroupBy(item => SpellNameNormalizer.GetFamilyName(item.Name), StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var display = group.OrderByDescending(item => item.Name.Length).First().Name;
+                return new AbilityAggregate(display)
+                {
+                    Damage = group.Sum(item => item.ProcDamage),
+                    Hits = group.Sum(item => item.Hits),
+                    ProcHits = group.Sum(item => item.ProcHits),
+                    ProcDamage = group.Sum(item => item.ProcDamage)
+                };
+            })
+            .OrderByDescending(item => item.ProcHits)
+            .ThenByDescending(item => item.ProcDamage)
+            .ToArray();
+        if (procs.Length == 0) return [];
+        var totalDamage = Math.Max(1, procs.Sum(item => item.ProcDamage));
+        var elapsed = Math.Max(1, seconds);
+        var minutes = Math.Max(elapsed / 60d, 1d / 60d);
+        return procs.Select((ability, index) => new AbilityViewModel
+        {
+            Name = ability.Name,
+            Damage = ability.ProcDamage,
+            Hits = ability.ProcHits,
+            Dps = ability.ProcDamage / elapsed,
+            Ppm = ability.ProcHits / minutes,
+            Share = ability.ProcDamage * 100d / totalDamage,
+            Color = ChartBrushes[index % ChartBrushes.Length],
+            Icon = _spellDataCatalog?.GetAbilityIcon(ability.Name) ?? SpellIconAtlas.GenericIcon
         }).ToArray();
     }
 
@@ -1355,6 +1443,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void RaiseBreakdownProperties()
     {
         RaisePropertyChanged(nameof(SelectedAbilities));
+        RaisePropertyChanged(nameof(SelectedProcs));
         RaisePropertyChanged(nameof(SelectedIncomingAbilities));
         RaisePropertyChanged(nameof(SelectedMitigations));
         RaisePropertyChanged(nameof(SelectedName));

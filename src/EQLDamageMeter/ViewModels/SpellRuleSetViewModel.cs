@@ -19,6 +19,7 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     private string _searchText = string.Empty;
     private string _filterMode = "All";
     private bool _isCompactOverlay;
+    private bool _lockOverlay;
 
     public SpellRuleSetViewModel(SpellTrackerCategory category,
         IEnumerable<BuffRuleSettings> savedRules,
@@ -33,6 +34,7 @@ public sealed class SpellRuleSetViewModel : ObservableObject
         _save = save;
         _alerts = alerts;
         _isCompactOverlay = AppSettingsStore.TryLoadOverlayCompact(OverlayCompactKey);
+        _lockOverlay = AppSettingsStore.TryLoadOverlayLocked(OverlayCompactKey);
         foreach (var settings in savedRules)
             Rules.Add(new BuffRuleViewModel(settings with
             {
@@ -102,6 +104,18 @@ public sealed class SpellRuleSetViewModel : ObservableObject
             _ = AppSettingsStore.TrySaveOverlayCompactAsync(OverlayCompactKey, value);
         }
     }
+
+    public bool LockOverlay
+    {
+        get => _lockOverlay;
+        set
+        {
+            if (!SetProperty(ref _lockOverlay, value)) return;
+            OverlayLockChanged?.Invoke(OverlayCompactKey, value);
+        }
+    }
+
+    public event Action<string, bool>? OverlayLockChanged;
 
     public SpellDataCatalog? SpellCatalog => _catalog();
     public ObservableCollection<BuffRuleViewModel> Rules { get; } = [];

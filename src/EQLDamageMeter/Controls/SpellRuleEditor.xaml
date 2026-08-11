@@ -30,6 +30,10 @@
                                   IsChecked="{Binding IsCompactOverlay}"
                                   ToolTip="Use a smaller, denser overlay" />
                         <Button Content="{Binding OverlayLabel}" Padding="12,7" Margin="0,0,8,0" Click="Overlay_Click" />
+                        <CheckBox Content="Lock" Margin="0,0,10,0" VerticalAlignment="Center"
+                                  Foreground="#C8E0EE" FontSize="11"
+                                  IsChecked="{Binding LockOverlay, Mode=TwoWay}"
+                                  ToolTip="Lock overlay (click-through to the game)" />
                         <Button Content="{Binding AddLabel}" Padding="13,7" Background="#684CC0" BorderBrush="#A98BFF" Click="Add_Click" />
                     </StackPanel>
                 </Grid>

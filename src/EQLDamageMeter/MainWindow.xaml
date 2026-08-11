@@ -549,6 +549,10 @@
                                             <MenuItem Header="Populate session from last 3h of log"
                                                       Click="PopulateSessionFromLog_Click"
                                                       ToolTip="Rebuild a test session from the last 3 hours of the loaded character log" />
+                                            <Separator />
+                                            <MenuItem Header="Mouse Highlights…"
+                                                      Click="MouseHighlightOptions_Click"
+                                                      ToolTip="Show a colored ring around the mouse cursor" />
                                         </ContextMenu>
                                     </Button.ContextMenu>
                                 </Button>
@@ -574,7 +578,7 @@
                             <RadioButton x:Name="QuestTrackerButton" Content="Quest Tracker" GroupName="PrimaryModule"
                                          Style="{StaticResource ModuleNavigationButton}" MinWidth="138" />
                             <RadioButton x:Name="SkyTrackerButton" Content="Plane of Sky" GroupName="PrimaryModule"
-                                         Style="{StaticResource ModuleNavigationButton}" MinWidth="138" />
+                                         Style="{StaticResource ModuleNavigationButton}" MinWidth="128" />
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -617,6 +621,10 @@
                                           ToolTip="Combine regular and charmed pet damage into the owner's DPS row" />
                                 <Button Content="DPS Overlay" Padding="10,6" Margin="0,0,6,0" Click="ToggleOverlay_Click"
                                         ToolTip="Open the DPS ranking overlay window" />
+                                <CheckBox Content="Lock" VerticalAlignment="Center" Foreground="#C8DEEA" FontSize="11"
+                                          Margin="0,0,12,0"
+                                          ToolTip="Lock DPS overlay (click-through to the game)"
+                                          IsChecked="{Binding LockDpsOverlay, Mode=TwoWay}" />
                                 <Button Content="Reset" Padding="12,6" Click="ResetEncounter_Click"
                                         ToolTip="Reset the current DPS encounter" />
                             </StackPanel>
@@ -767,7 +775,7 @@
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="70" />
-                                                <ColumnDefinition Width="52" />
+                                                <ColumnDefinition Width="48" />
                                                 <ColumnDefinition Width="52" />
                                             </Grid.ColumnDefinitions>
                                             <!-- spacer matches icon/dot stack width in rows -->
@@ -806,7 +814,7 @@
                                                             <ColumnDefinition Width="Auto" />
                                                             <ColumnDefinition Width="*" />
                                                             <ColumnDefinition Width="70" />
-                                                            <ColumnDefinition Width="52" />
+                                                            <ColumnDefinition Width="48" />
                                                             <ColumnDefinition Width="52" />
                                                         </Grid.ColumnDefinitions>
                                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
@@ -951,6 +959,96 @@
                                         </TextBlock>
                                     </Grid>
                                 </Grid>
+
+                                <TextBlock Text="PROCS" Style="{StaticResource MetricLabel}"
+                                           HorizontalAlignment="Center" Margin="0,14,0,0"
+                                           ToolTip="Weapon/item/AA procs seen this fight (spell hits with no matching cast). Logs name the effect, not the item." />
+                                <Border Background="#280A1E2C" BorderBrush="#2A4A5E" BorderThickness="1"
+                                        CornerRadius="8" Padding="8,6" Margin="0,6,0,4">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid Margin="4,0,4,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="56" />
+                                                <ColumnDefinition Width="52" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="22" />
+                                            <TextBlock Grid.Column="1" Text="Proc" Style="{StaticResource MetricLabel}" FontSize="9" />
+                                            <TextBlock Grid.Column="2" Text="Procs" Style="{StaticResource MetricLabel}" FontSize="9"
+                                                       HorizontalAlignment="Right"
+                                                       ToolTip="How many times this effect procced" />
+                                            <TextBlock Grid.Column="3" Text="PPM" Style="{StaticResource MetricLabel}" FontSize="9"
+                                                       HorizontalAlignment="Right"
+                                                       ToolTip="Procs per minute over the encounter" />
+                                        </Grid>
+                                        <ListBox Grid.Row="1" ItemsSource="{Binding SelectedProcs}"
+                                                 Background="Transparent" BorderThickness="0" Padding="0"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                            <ListBox.ItemContainerStyle>
+                                                <Style TargetType="ListBoxItem">
+                                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                                    <Setter Property="Focusable" Value="False" />
+                                                    <Setter Property="Padding" Value="0" />
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </ListBox.ItemContainerStyle>
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="4,3">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="56" />
+                                                            <ColumnDefinition Width="52" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Image Source="{Binding Icon}" Width="14" Height="14" Margin="0,0,8,0"
+                                                               RenderOptions.BitmapScalingMode="NearestNeighbor" SnapsToDevicePixels="True">
+                                                            <Image.Style>
+                                                                <Style TargetType="Image">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Image.Style>
+                                                        </Image>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold"
+                                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="2" Text="{Binding Hits}" HorizontalAlignment="Right"
+                                                                   VerticalAlignment="Center" Foreground="#FFBD57" FontWeight="SemiBold" />
+                                                        <TextBlock Grid.Column="3" Text="{Binding PpmText}" HorizontalAlignment="Right"
+                                                                   VerticalAlignment="Center" Foreground="#2FD8C7" FontWeight="SemiBold" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                        <TextBlock Grid.Row="1" Text="No procs observed this fight."
+                                                   Foreground="#7899AD" FontSize="11" Margin="4,6"
+                                                   HorizontalAlignment="Left">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding SelectedProcs.Count}" Value="0">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+                                </Border>
                             </StackPanel>
                         </ScrollViewer>
 
@@ -1231,6 +1329,10 @@
                                           IsChecked="{Binding IsCompactBuffOverlay}"
                                           ToolTip="Use a smaller, denser buff overlay" />
                                 <Button Content="Buff Overlay" Padding="12,7" Margin="0,0,8,0" Click="ToggleBuffOverlay_Click" />
+                                <CheckBox Content="Lock" Margin="0,0,10,0" VerticalAlignment="Center"
+                                          Foreground="#C8E0EE" FontSize="11"
+                                          IsChecked="{Binding LockBuffOverlay, Mode=TwoWay}"
+                                          ToolTip="Lock buff overlay (click-through to the game)" />
                                 <Button Content="＋ Add Buff" Padding="13,7" Background="#684CC0" BorderBrush="#A98BFF"
                                         Click="AddBuffRule_Click" />
                             </StackPanel>
@@ -1935,6 +2037,9 @@
                                                             <TextBlock Text="{Binding Stats}" Foreground="#D7EAF5"
                                                                        FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"
                                                                        Visibility="{Binding StatsVisibility}" />
+                                                            <TextBlock Text="{Binding Uses}" Foreground="#FFBD57"
+                                                                       FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"
+                                                                       Visibility="{Binding UsesVisibility}" />
                                                         </StackPanel>
                                                     </Border>
                                                 </DataTemplate>

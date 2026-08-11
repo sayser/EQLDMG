@@ -15,6 +15,9 @@ public static class AppSettingsStore
             new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, bool> OverlayCompact { get; set; } =
             new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, bool> OverlayLocked { get; set; } =
+            new(StringComparer.OrdinalIgnoreCase);
+        public MouseHighlightSettings MouseHighlight { get; set; } = new();
     }
 
     private static readonly string SettingsPath = AppPaths.Combine("settings.json");
@@ -81,6 +84,54 @@ public static class AppSettingsStore
         {
             settings.OverlayCompact ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             settings.OverlayCompact[key] = compact;
+        }, cancellationToken);
+    }
+
+    public static bool TryLoadOverlayLocked(string key) =>
+        !string.IsNullOrWhiteSpace(key) &&
+        TryLoad()?.OverlayLocked is { } map &&
+        map.TryGetValue(key, out var locked) &&
+        locked;
+
+    public static Task<bool> TrySaveOverlayLockedAsync(string key, bool locked,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return Task.FromResult(false);
+        return UpdateAsync(settings =>
+        {
+            settings.OverlayLocked ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            settings.OverlayLocked[key] = locked;
+        }, cancellationToken);
+    }
+
+    public static MouseHighlightSettings TryLoadMouseHighlight()
+    {
+        var settings = TryLoad()?.MouseHighlight;
+        if (settings is null) return new MouseHighlightSettings();
+        settings.Diameter = Math.Clamp(settings.Diameter <= 0 ? 48 : settings.Diameter, 16, 200);
+        settings.Thickness = Math.Clamp(settings.Thickness <= 0 ? 3 : settings.Thickness, 1, 16);
+        settings.Opacity = Math.Clamp(settings.Opacity <= 0 ? 0.85 : settings.Opacity, 0.15, 1.0);
+        settings.BlinkHz = Math.Clamp(settings.BlinkHz <= 0 ? 2.0 : settings.BlinkHz, 0.5, 8.0);
+        settings.SecondDiameter = Math.Clamp(settings.SecondDiameter <= 0 ? 84 : settings.SecondDiameter, 20, 260);
+        if (string.IsNullOrWhiteSpace(settings.ColorHex)) settings.ColorHex = "#FF5522";
+        return settings;
+    }
+
+    public static Task<bool> TrySaveMouseHighlightAsync(MouseHighlightSettings options,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return UpdateAsync(settings => settings.MouseHighlight = new MouseHighlightSettings
+        {
+            Enabled = options.Enabled,
+            ColorHex = options.ColorHex,
+            Diameter = Math.Clamp(options.Diameter, 16, 200),
+            Thickness = Math.Clamp(options.Thickness, 1, 16),
+            Opacity = Math.Clamp(options.Opacity, 0.15, 1.0),
+            Blink = options.Blink,
+            BlinkHz = Math.Clamp(options.BlinkHz <= 0 ? 2.0 : options.BlinkHz, 0.5, 8.0),
+            SecondRing = options.SecondRing,
+            SecondDiameter = Math.Clamp(options.SecondDiameter <= 0 ? 84 : options.SecondDiameter, 20, 260)
         }, cancellationToken);
     }
 

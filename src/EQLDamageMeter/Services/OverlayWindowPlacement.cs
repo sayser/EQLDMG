@@ -21,7 +21,8 @@ public static class OverlayWindowPlacement
         ArgumentNullException.ThrowIfNull(window);
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
-        // Owned transparent overlays can be recentered by WPF on Show() unless Manual.
+        // Transparent overlays can be recentered by WPF on Show() unless Manual.
+        // Overlays are intentionally not owned by MainWindow so they stay visible when it minimizes.
         window.WindowStartupLocation = WindowStartupLocation.Manual;
         ApplySavedBounds(window, key);
 

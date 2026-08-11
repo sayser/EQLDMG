@@ -1,0 +1,183 @@
+<Window x:Class="EQLDamageMeter.MouseHighlightSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Mouse Highlight" SizeToContent="Height" Width="440"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Background="#FF071624">
+    <Window.Resources>
+        <Style x:Key="DialogLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#8BA9BD" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style x:Key="DialogInput" TargetType="TextBox">
+            <Setter Property="Background" Value="#9A0B263A" />
+            <Setter Property="Foreground" Value="#E8F5FC" />
+            <Setter Property="BorderBrush" Value="#42677F" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="CaretBrush" Value="#E8F5FC" />
+            <Setter Property="SelectionBrush" Value="#684CC0" />
+        </Style>
+        <Style x:Key="Section" TargetType="Border">
+            <Setter Property="Background" Value="#32102B40" />
+            <Setter Property="BorderBrush" Value="#2A4A5E" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+        <Style x:Key="ColorSwatchButton" TargetType="Button">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" Width="28" Height="28" CornerRadius="7"
+                                Background="#32081420" BorderBrush="#355B73" BorderThickness="1" Padding="3">
+                            <Border x:Name="Swatch" CornerRadius="5"
+                                    Background="{Binding Swatch}" BorderBrush="#1A000000" BorderThickness="1" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#57A99F" />
+                                <Setter TargetName="Chrome" Property="Background" Value="#4A0C2436" />
+                            </Trigger>
+                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#A98BFF" />
+                                <Setter TargetName="Chrome" Property="BorderThickness" Value="2" />
+                                <Setter TargetName="Chrome" Property="Background" Value="#55301A52" />
+                                <Setter TargetName="Swatch" Property="BorderBrush" Value="#E8F5FC" />
+                                <Setter TargetName="Swatch" Property="BorderThickness" Value="1" />
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border Background="#A0092235" BorderBrush="#355B73" BorderThickness="1" CornerRadius="12" Margin="8" Padding="14">
+        <StackPanel>
+            <Grid Margin="0,0,0,8">
+                <StackPanel>
+                    <TextBlock Text="MOUSE HIGHLIGHT" FontWeight="Bold" FontSize="13" Foreground="#E8F5FC" />
+                    <TextBlock Text="Click-through ring around the cursor for in-game visibility."
+                               Foreground="#7FA3B8" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0" />
+                </StackPanel>
+                <CheckBox Content="Enable" IsChecked="{Binding Enabled}"
+                          HorizontalAlignment="Right" VerticalAlignment="Top"
+                          Foreground="#C8E0EE" FontSize="12" FontWeight="SemiBold" Margin="0,2,0,0" />
+            </Grid>
+
+            <Border Style="{StaticResource Section}">
+                <StackPanel>
+                    <Grid Margin="0,0,0,6">
+                        <TextBlock Text="COLOR" Style="{StaticResource DialogLabel}" VerticalAlignment="Center" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Border Width="14" Height="14" CornerRadius="3" Background="{Binding ColorBrush}"
+                                    BorderBrush="#A98BFF" BorderThickness="1" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding SelectedColorName}" Foreground="#C8E0EE" FontSize="11"
+                                       FontWeight="SemiBold" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding ColorPresets}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource ColorSwatchButton}"
+                                        ToolTip="{Binding Name}"
+                                        Click="ColorPreset_Click" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Hex" VerticalAlignment="Center" Foreground="#8BA9BD"
+                                   FontSize="11" Margin="0,0,8,0" />
+                        <TextBox Grid.Column="1" Style="{StaticResource DialogInput}"
+                                 Text="{Binding ColorHex, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="Example: #FF5522" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Style="{StaticResource Section}" Margin="0">
+                    <StackPanel>
+                        <Grid>
+                            <TextBlock Text="SIZE" Style="{StaticResource DialogLabel}" />
+                            <TextBlock Text="{Binding DiameterText}" HorizontalAlignment="Right" Foreground="#C8E0EE" FontSize="11" />
+                        </Grid>
+                        <Slider Minimum="20" Maximum="120" Value="{Binding Diameter}" TickFrequency="4"
+                                IsSnapToTickEnabled="True" Margin="0,4,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Style="{StaticResource Section}" Margin="0">
+                    <StackPanel>
+                        <Grid>
+                            <TextBlock Text="THICKNESS" Style="{StaticResource DialogLabel}" />
+                            <TextBlock Text="{Binding ThicknessText}" HorizontalAlignment="Right" Foreground="#C8E0EE" FontSize="11" />
+                        </Grid>
+                        <Slider Minimum="1" Maximum="10" Value="{Binding Thickness}" TickFrequency="1"
+                                IsSnapToTickEnabled="True" Margin="0,4,0,0" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Style="{StaticResource Section}" Margin="0">
+                    <StackPanel>
+                        <CheckBox Content="Blink" IsChecked="{Binding Blink}"
+                                  Foreground="#C8E0EE" FontSize="12" FontWeight="SemiBold" />
+                        <Grid Margin="0,6,0,0" IsEnabled="{Binding Blink}">
+                            <TextBlock Text="SPEED" Style="{StaticResource DialogLabel}" />
+                            <TextBlock Text="{Binding BlinkHzText}" HorizontalAlignment="Right" Foreground="#C8E0EE" FontSize="11" />
+                        </Grid>
+                        <Slider Minimum="0.5" Maximum="6" Value="{Binding BlinkHz}" TickFrequency="0.5"
+                                IsSnapToTickEnabled="True" Margin="0,4,0,0" IsEnabled="{Binding Blink}" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Style="{StaticResource Section}" Margin="0">
+                    <StackPanel>
+                        <CheckBox Content="Second circle" IsChecked="{Binding SecondRing}"
+                                  Foreground="#C8E0EE" FontSize="12" FontWeight="SemiBold" />
+                        <Grid Margin="0,6,0,0" IsEnabled="{Binding SecondRing}">
+                            <TextBlock Text="OUTER SIZE" Style="{StaticResource DialogLabel}" />
+                            <TextBlock Text="{Binding SecondDiameterText}" HorizontalAlignment="Right" Foreground="#C8E0EE" FontSize="11" />
+                        </Grid>
+                        <Slider Minimum="40" Maximum="200" Value="{Binding SecondDiameter}" TickFrequency="4"
+                                IsSnapToTickEnabled="True" Margin="0,4,0,0" IsEnabled="{Binding SecondRing}" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Cancel" Padding="14,7" Margin="0,0,8,0" IsCancel="True" Click="Cancel_Click" />
+                <Button Content="Save" Padding="16,7" Background="#684CC0" BorderBrush="#A98BFF"
+                        IsDefault="True" Click="Save_Click" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>
