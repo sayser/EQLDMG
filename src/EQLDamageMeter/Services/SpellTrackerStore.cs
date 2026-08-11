@@ -12,6 +12,7 @@ public static class SpellTrackerStore
         public List<BuffRuleSettings> BuffRules { get; set; } = [];
         public List<BuffRuleSettings> DotRules { get; set; } = [];
         public List<BuffRuleSettings> ControlRules { get; set; } = [];
+        public List<BuffRuleSettings> HostileRules { get; set; } = [];
     }
 
     /// <summary>
@@ -43,6 +44,9 @@ public static class SpellTrackerStore
     public static IReadOnlyList<BuffRuleSettings> TryLoadControlRules() =>
         TryLoad()?.ControlRules ?? [];
 
+    public static IReadOnlyList<BuffRuleSettings> TryLoadHostileRules() =>
+        TryLoad()?.HostileRules ?? [];
+
     public static Task<bool> TrySaveBuffRulesAsync(IEnumerable<BuffRuleSettings> rules,
         CancellationToken cancellationToken = default)
     {
@@ -62,6 +66,13 @@ public static class SpellTrackerStore
     {
         var snapshot = rules.ToList();
         return UpdateAsync(settings => settings.ControlRules = snapshot, cancellationToken);
+    }
+
+    public static Task<bool> TrySaveHostileRulesAsync(IEnumerable<BuffRuleSettings> rules,
+        CancellationToken cancellationToken = default)
+    {
+        var snapshot = rules.ToList();
+        return UpdateAsync(settings => settings.HostileRules = snapshot, cancellationToken);
     }
 
     private static SpellTrackerSettings? TryLoad()

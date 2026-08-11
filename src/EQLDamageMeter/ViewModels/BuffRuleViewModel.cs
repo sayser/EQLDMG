@@ -19,7 +19,10 @@ public sealed class BuffRuleViewModel : ObservableObject
     private ControlEffectType _controlType;
     private BuffAlertMode _alertMode;
     private BuffSoundKind _sound;
+    private BuffSoundKind _landSound;
+    private BuffAlertMode _landAlertMode;
     private string _voiceText;
+    private string _landVoiceText;
     private string _remainingText = "Waiting";
     private string _statusText = "Not detected yet";
     private bool _isActive;
@@ -49,7 +52,10 @@ public sealed class BuffRuleViewModel : ObservableObject
         _controlType = settings.ControlType;
         _alertMode = BuffAlertModeOptions.Normalize(settings.AlertMode);
         _sound = settings.Sound;
+        _landSound = settings.LandSound ?? settings.Sound;
+        _landAlertMode = BuffAlertModeOptions.Normalize(settings.LandAlertMode ?? BuffAlertMode.Sound);
         _voiceText = settings.VoiceText;
+        _landVoiceText = settings.LandVoiceText ?? string.Empty;
         // Legacy "Learned" values are treated as manual edits going forward.
         _castSource = settings.CastSource == SpellTimingSource.Learned
             ? SpellTimingSource.Manual
@@ -177,6 +183,20 @@ public sealed class BuffRuleViewModel : ObservableObject
             RaisePropertyChanged(nameof(AlertSummary));
             RaisePropertyChanged(nameof(SoundPickerVisibility));
             RaisePropertyChanged(nameof(VoiceTextVisibility));
+            RaisePropertyChanged(nameof(ExpireSoundPickerVisibility));
+            RaisePropertyChanged(nameof(ExpireVoiceTextVisibility));
+        }
+    }
+    public BuffAlertMode LandAlertMode
+    {
+        get => _landAlertMode;
+        set
+        {
+            var normalized = BuffAlertModeOptions.Normalize(value);
+            if (!SetProperty(ref _landAlertMode, normalized)) return;
+            RaisePropertyChanged(nameof(AlertSummary));
+            RaisePropertyChanged(nameof(LandSoundPickerVisibility));
+            RaisePropertyChanged(nameof(LandVoiceTextVisibility));
         }
     }
     public BuffSoundKind Sound
@@ -187,12 +207,29 @@ public sealed class BuffRuleViewModel : ObservableObject
             if (SetProperty(ref _sound, value)) RaisePropertyChanged(nameof(AlertSummary));
         }
     }
+    public BuffSoundKind LandSound
+    {
+        get => _landSound;
+        set
+        {
+            if (SetProperty(ref _landSound, value)) RaisePropertyChanged(nameof(AlertSummary));
+        }
+    }
     public string VoiceText
     {
         get => _voiceText;
         set
         {
             if (!SetProperty(ref _voiceText, value)) return;
+            RaisePropertyChanged(nameof(AlertSummary));
+        }
+    }
+    public string LandVoiceText
+    {
+        get => _landVoiceText;
+        set
+        {
+            if (!SetProperty(ref _landVoiceText, value)) return;
             RaisePropertyChanged(nameof(AlertSummary));
         }
     }
@@ -211,14 +248,34 @@ public sealed class BuffRuleViewModel : ObservableObject
         AlertMode == BuffAlertMode.Sound ? Visibility.Visible : Visibility.Collapsed;
     public Visibility VoiceTextVisibility =>
         AlertMode == BuffAlertMode.TextToSpeech ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility LandSoundPickerVisibility =>
+        LandAlertMode == BuffAlertMode.Sound ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility LandVoiceTextVisibility =>
+        LandAlertMode == BuffAlertMode.TextToSpeech ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ExpireSoundPickerVisibility => SoundPickerVisibility;
+    public Visibility ExpireVoiceTextVisibility => VoiceTextVisibility;
 
-    public string AlertSummary => AlertMode == BuffAlertMode.TextToSpeech
-        ? (string.IsNullOrWhiteSpace(VoiceText) ? "Voice" : "Voice (custom)")
-        : Sound.ToString();
+    public string AlertSummary
+    {
+        get
+        {
+            if (Category != SpellTrackerCategory.Hostile)
+            {
+                return AlertMode == BuffAlertMode.TextToSpeech
+                    ? (string.IsNullOrWhiteSpace(VoiceText) ? "Voice" : "Voice (custom)")
+                    : Sound.ToString();
+            }
+
+            var land = LandAlertMode == BuffAlertMode.TextToSpeech ? "TTS" : LandSound.ToString();
+            var expire = AlertMode == BuffAlertMode.TextToSpeech ? "TTS" : Sound.ToString();
+            return $"{land} → {expire}";
+        }
+    }
     public string TargetSummary => Category switch
     {
         SpellTrackerCategory.DamageOverTime => "Enemy targets",
         SpellTrackerCategory.Control => $"{ControlType} · Enemy targets",
+        SpellTrackerCategory.Hostile => "On me",
         _ => (TrackSelf, TrackOthers) switch
         {
             (true, true) => "Self + Others",
@@ -296,10 +353,14 @@ public sealed class BuffRuleViewModel : ObservableObject
         var voice = string.IsNullOrWhiteSpace(VoiceText)
             ? $"{SpellName.Trim()} has expired"
             : VoiceText.Trim();
+        var landVoice = string.IsNullOrWhiteSpace(LandVoiceText) ? null : LandVoiceText.Trim();
         settings = new BuffRuleSettings(Id, SpellName.Trim(), checked((int)duration.TotalSeconds), castTime,
             IsEnabled, ShowInOverlay, BuffAlertModeOptions.Normalize(AlertMode), Sound, voice, TrackSelf,
             TrackOthers, Category, ControlType, CastSource, DurationSource, _castSampleCount,
-            _durationSampleCount, _castSampleSum, _durationSampleSum);
+            _durationSampleCount, _castSampleSum, _durationSampleSum,
+            Category == SpellTrackerCategory.Hostile ? LandSound : null,
+            Category == SpellTrackerCategory.Hostile ? BuffAlertModeOptions.Normalize(LandAlertMode) : null,
+            Category == SpellTrackerCategory.Hostile ? landVoice : null);
         error = string.Empty;
         return true;
     }

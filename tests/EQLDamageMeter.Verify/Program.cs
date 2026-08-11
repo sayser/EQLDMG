@@ -565,6 +565,71 @@ internal static class Program
         expireTracker.Tick(t0.AddSeconds(2.3));
         var snap = expireTracker.GetSnapshot(shortDot.Id, t0.AddSeconds(2.4));
         Check("Natural expiry flagged", snap.IsExpired && snap.StopReason == BuffStopReason.Expired);
+
+        // Hostile Deadly Poison: only on me; clears on fade / duration / death / dispel — not zone or other-target land
+        var deadly = Rule("Deadly Poison", SpellTrackerCategory.Hostile, ControlEffectType.Other, 222, 0) with
+        {
+            TrackSelf = true,
+            TrackOthers = false,
+            LandSound = BuffSoundKind.Klaxon
+        };
+        var hostile = new BuffTracker();
+        hostile.Configure([deadly],
+            _ => ["The poison has run its course."],
+            _ => ["You have been poisoned."],
+            _ => [" has been poisoned."],
+            _ => true);
+
+        hostile.Observe(t0, "a gnoll has been poisoned.");
+        Check("Hostile ignores other-target land", hostile.GetActiveSnapshots(t0.AddSeconds(0.1)).Count == 0);
+
+        var landAlerts = hostile.Tick(t0.AddSeconds(0.2));
+        Check("Hostile no land alert for other", landAlerts.Count == 0);
+
+        hostile.Observe(t0.AddSeconds(1), "You have been poisoned.");
+        var afterLand = hostile.GetActiveSnapshots(t0.AddSeconds(1.1));
+        Check("Hostile lands on self",
+            afterLand.Count == 1 && afterLand[0].IsSelf && afterLand[0].SpellName == "Deadly Poison");
+        var landed = hostile.Tick(t0.AddSeconds(1.2));
+        Check("Hostile land alert queued",
+            landed.Count == 1 && landed[0].Phase == BuffAlertPhase.Landed);
+
+        hostile.Observe(t0.AddSeconds(2), "You have entered Greater Faydark.");
+        Check("Hostile survives zone", hostile.GetActiveSnapshots(t0.AddSeconds(2.1)).Count == 1);
+
+        hostile.Observe(t0.AddSeconds(3), "You have slain a gnoll!");
+        Check("Hostile ignores NPC death", hostile.GetActiveSnapshots(t0.AddSeconds(3.1)).Count == 1);
+
+        hostile.Observe(t0.AddSeconds(4), "The poison has run its course.");
+        Check("Hostile clears on fade", hostile.GetActiveSnapshots(t0.AddSeconds(4.1)).Count == 0);
+        var fadeAlerts = hostile.Tick(t0.AddSeconds(4.2));
+        Check("Hostile expire alert on fade",
+            fadeAlerts.Count == 1 && fadeAlerts[0].Phase == BuffAlertPhase.Expired);
+
+        hostile.Observe(t0.AddSeconds(10), "You have been poisoned.");
+        Check("Hostile relands", hostile.GetActiveSnapshots(t0.AddSeconds(10.1)).Count == 1);
+        hostile.Observe(t0.AddSeconds(11), "You feel dispelled.");
+        Check("Hostile clears on dispel", hostile.GetActiveSnapshots(t0.AddSeconds(11.1)).Count == 0);
+
+        hostile.Observe(t0.AddSeconds(20), "You have been poisoned.");
+        Check("Hostile active before death", hostile.GetActiveSnapshots(t0.AddSeconds(20.1)).Count == 1);
+        hostile.Observe(t0.AddSeconds(21), "You have been slain by a gnoll!");
+        Check("Hostile clears on player death", hostile.GetActiveSnapshots(t0.AddSeconds(21.1)).Count == 0);
+
+        var shortHostile = deadly with { Id = Guid.NewGuid(), DurationSeconds = 2 };
+        var hostileExpire = new BuffTracker();
+        hostileExpire.Configure([shortHostile],
+            _ => ["The poison has run its course."],
+            _ => ["You have been poisoned."],
+            _ => [],
+            _ => false);
+        hostileExpire.Observe(t0, "You have been poisoned.");
+        hostileExpire.Tick(t0.AddSeconds(0.1)); // drain land alert
+        hostileExpire.Tick(t0.AddSeconds(2.2));
+        Check("Hostile clears on duration",
+            hostileExpire.GetActiveSnapshots(t0.AddSeconds(2.3)).Count == 0);
+        var durationSnap = hostileExpire.GetSnapshot(shortHostile.Id, t0.AddSeconds(2.3));
+        Check("Hostile duration stop reason", durationSnap.StopReason == BuffStopReason.Expired);
     }
 
     private static void RunSessionAndLootTests()

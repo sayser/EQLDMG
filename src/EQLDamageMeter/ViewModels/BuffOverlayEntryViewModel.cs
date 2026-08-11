@@ -37,6 +37,7 @@ public sealed class BuffOverlayEntryViewModel : ObservableObject
     {
         SpellTrackerCategory.DamageOverTime => "DoT",
         SpellTrackerCategory.Control => ControlType.ToString().ToUpperInvariant(),
+        SpellTrackerCategory.Hostile => "HOSTILE",
         _ => IsSelf ? "SELF" : "OTHER"
     };
     public string InstanceKey => $"{RuleId:N}|{RuntimeInstanceKey}";

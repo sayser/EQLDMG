@@ -971,6 +971,8 @@
                                          Style="{StaticResource ModuleNavigationButton}" MinWidth="158" />
                             <RadioButton x:Name="ControlSpellTab" Content="CONTROL" GroupName="SpellTrackerSection"
                                          Style="{StaticResource ModuleNavigationButton}" />
+                            <RadioButton x:Name="HostileSpellTab" Content="HOSTILE" GroupName="SpellTrackerSection"
+                                         Style="{StaticResource ModuleNavigationButton}" />
                         </StackPanel>
                     </Border>
                     <CheckBox Content="Use Modern Spell Icons" Margin="16,0,0,0"
@@ -999,6 +1001,10 @@
                                 </StackPanel>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <CheckBox Content="Compact" Margin="0,0,10,0" VerticalAlignment="Center"
+                                          Foreground="#C8E0EE" FontSize="11"
+                                          IsChecked="{Binding IsCompactBuffOverlay}"
+                                          ToolTip="Use a smaller, denser buff overlay" />
                                 <Button Content="Buff Overlay" Padding="12,7" Margin="0,0,8,0" Click="ToggleBuffOverlay_Click" />
                                 <Button Content="＋ Add Buff" Padding="13,7" Background="#684CC0" BorderBrush="#A98BFF"
                                         Click="AddBuffRule_Click" />
@@ -1314,6 +1320,10 @@
                 <controls:SpellRuleEditor Grid.Row="1" Grid.ColumnSpan="3" DataContext="{Binding ControlSpellTracker}"
                         OverlayRequested="ControlOverlay_Requested"
                         Visibility="{Binding IsChecked, ElementName=ControlSpellTab, Converter={StaticResource BooleanToVisibility}}" />
+
+                <controls:SpellRuleEditor Grid.Row="1" Grid.ColumnSpan="3" DataContext="{Binding HostileSpellTracker}"
+                        OverlayRequested="HostileOverlay_Requested"
+                        Visibility="{Binding IsChecked, ElementName=HostileSpellTab, Converter={StaticResource BooleanToVisibility}}" />
             </Grid>
 
             <!-- Session tracker workspace -->

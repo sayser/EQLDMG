@@ -66,6 +66,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private string _buffSearchText = string.Empty;
     private string _buffFilterMode = "All";
     private SpellIconStyle _spellIconStyle = SpellIconStyle.Modern;
+    private bool _isCompactBuffOverlay;
     private int _characterLevel = SpellDataCatalog.DefaultCasterLevel;
     private int _parseGeneration;
     private int _drainScheduled;
@@ -77,6 +78,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _refreshTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(400), DispatcherPriority.Background,
             (_, _) => OnRefreshTimer(), _dispatcher);
         _spellIconStyle = AppSettingsStore.TryLoadSpellIconStyle();
+        _isCompactBuffOverlay = AppSettingsStore.TryLoadOverlayCompact(OverlayWindowPlacement.BuffKey);
 
         foreach (var settings in SpellTrackerStore.TryLoadBuffRules())
             BuffRules.Add(new BuffRuleViewModel(settings));
@@ -86,6 +88,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         ControlSpellTracker = new SpellRuleSetViewModel(SpellTrackerCategory.Control,
             SpellTrackerStore.TryLoadControlRules(), () => _spellDataCatalog,
             SpellTrackerStore.TrySaveControlRulesAsync, _buffAlertService, () => _characterLevel);
+        HostileSpellTracker = new SpellRuleSetViewModel(SpellTrackerCategory.Hostile,
+            SpellTrackerStore.TryLoadHostileRules(), () => _spellDataCatalog,
+            SpellTrackerStore.TrySaveHostileRulesAsync, _buffAlertService, () => _characterLevel);
         _buffTracker.PreserveBuffTargetOnDeath = (target, timestamp) =>
             ControlSpellTracker.HasActiveCharmTarget(target, timestamp);
         BuffRulesView = CollectionViewSource.GetDefaultView(BuffRules);
@@ -111,6 +116,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public IReadOnlyList<BuffSoundKind> BuffSoundChoices { get; } = Enum.GetValues<BuffSoundKind>();
     public SpellRuleSetViewModel DotSpellTracker { get; }
     public SpellRuleSetViewModel ControlSpellTracker { get; }
+    public SpellRuleSetViewModel HostileSpellTracker { get; }
     public SpellDataCatalog? SpellCatalog => _spellDataCatalog;
 
     public bool UseModernSpellIcons
@@ -124,6 +130,16 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             RaisePropertyChanged();
             ApplySpellIconStyle();
             _ = AppSettingsStore.TrySaveSpellIconStyleAsync(style);
+        }
+    }
+
+    public bool IsCompactBuffOverlay
+    {
+        get => _isCompactBuffOverlay;
+        set
+        {
+            if (!SetProperty(ref _isCompactBuffOverlay, value)) return;
+            _ = AppSettingsStore.TrySaveOverlayCompactAsync(OverlayWindowPlacement.BuffKey, value);
         }
     }
 
@@ -445,6 +461,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         var dotChanged = await DotSpellTracker.ReseedCatalogTimingsAsync(_characterLevel);
         var controlChanged = await ControlSpellTracker.ReseedCatalogTimingsAsync(_characterLevel);
+        var hostileChanged = await HostileSpellTracker.ReseedCatalogTimingsAsync(_characterLevel);
         if (buffChanged)
         {
             await _buffTimingGate.WaitAsync();
@@ -453,6 +470,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         if (dotChanged) _ = await DotSpellTracker.SaveAsync();
         if (controlChanged) _ = await ControlSpellTracker.SaveAsync();
+        if (hostileChanged) _ = await HostileSpellTracker.SaveAsync();
     }
 
     /// <summary>
@@ -536,6 +554,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _buffTracker.ClearRuntime();
         DotSpellTracker.ClearRuntime();
         ControlSpellTracker.ClearRuntime();
+        HostileSpellTracker.ClearRuntime();
         EncounterHistory.Clear();
         _archivedStarts.Clear();
         _dataVersion++;
@@ -565,10 +584,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             RaisePropertyChanged(nameof(SpellCatalog));
             DotSpellTracker.NotifyCatalogChanged();
             ControlSpellTracker.NotifyCatalogChanged();
+            HostileSpellTracker.NotifyCatalogChanged();
             await ReseedCatalogTimingsFromCharacterLevelAsync();
             ApplyBuffConfiguration();
             DotSpellTracker.RefreshConfiguration();
             ControlSpellTracker.RefreshConfiguration();
+            HostileSpellTracker.RefreshConfiguration();
             ApplyBackfillSession(await backfillTask);
         }
         catch (IOException)
@@ -766,6 +787,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _buffTracker.Observe(parsed.Timestamp, parsed.Message);
         DotSpellTracker.Observe(parsed.Timestamp, parsed.Message);
         ControlSpellTracker.Observe(parsed.Timestamp, parsed.Message);
+        HostileSpellTracker.Observe(parsed.Timestamp, parsed.Message);
 
         var priorStart = _encounter.StartedAt;
         var priorCompletionCandidate = _encounter.CompletionCandidateAt;
@@ -907,11 +929,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         RefreshDisplay();
         var now = DateTime.Now;
-        foreach (var alert in _buffTracker.Tick(now)) _buffAlertService.Play(alert.Rule);
+        foreach (var alert in _buffTracker.Tick(now)) _buffAlertService.Play(alert);
         foreach (var rule in BuffRules) rule.ApplyRuntime(_buffTracker.GetSnapshot(rule.Id, now));
         RefreshOverlayEntries(now);
         DotSpellTracker.Tick(now);
         ControlSpellTracker.Tick(now);
+        HostileSpellTracker.Tick(now);
         // Duration ticks every second even when no new XP/loot lines arrive; dirty only
         // gates disk persist.
         if (_sessionTracker.Current is not null || _sessionDirty)
@@ -959,6 +982,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RefreshOverlayEntries(DateTime.Now);
         DotSpellTracker.RefreshIcons();
         ControlSpellTracker.RefreshIcons();
+        HostileSpellTracker.RefreshIcons();
         _dataVersion++;
         _renderedDataVersion = -1;
         RefreshDisplay(force: true);

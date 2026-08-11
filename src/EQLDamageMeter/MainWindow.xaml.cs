@@ -14,6 +14,7 @@ public partial class MainWindow : Window, IAsyncDisposable
     private BuffOverlayWindow? _buffOverlay;
     private SpellEffectOverlayWindow? _dotOverlay;
     private SpellEffectOverlayWindow? _controlOverlay;
+    private SpellEffectOverlayWindow? _hostileOverlay;
     private bool _startupUpdateChecked;
     private bool _disposed;
 
@@ -231,6 +232,10 @@ public partial class MainWindow : Window, IAsyncDisposable
         ToggleSpellOverlay(ref _controlOverlay, _viewModel.ControlSpellTracker,
             OverlayWindowPlacement.ControlKey);
 
+    private void HostileOverlay_Requested(object sender, RoutedEventArgs e) =>
+        ToggleSpellOverlay(ref _hostileOverlay, _viewModel.HostileSpellTracker,
+            OverlayWindowPlacement.HostileKey);
+
     private void OpenAllOverlays()
     {
         ShowDpsOverlay();
@@ -238,6 +243,8 @@ public partial class MainWindow : Window, IAsyncDisposable
         ShowSpellOverlay(ref _dotOverlay, _viewModel.DotSpellTracker, OverlayWindowPlacement.DotKey);
         ShowSpellOverlay(ref _controlOverlay, _viewModel.ControlSpellTracker,
             OverlayWindowPlacement.ControlKey);
+        ShowSpellOverlay(ref _hostileOverlay, _viewModel.HostileSpellTracker,
+            OverlayWindowPlacement.HostileKey);
     }
 
     private void CloseAllOverlays()
@@ -246,13 +253,15 @@ public partial class MainWindow : Window, IAsyncDisposable
         _buffOverlay?.Close();
         _dotOverlay?.Close();
         _controlOverlay?.Close();
+        _hostileOverlay?.Close();
     }
 
     private bool AnyOverlayOpen() =>
         _overlay is { IsVisible: true } ||
         _buffOverlay is { IsVisible: true } ||
         _dotOverlay is { IsVisible: true } ||
-        _controlOverlay is { IsVisible: true };
+        _controlOverlay is { IsVisible: true } ||
+        _hostileOverlay is { IsVisible: true };
 
     private void RefreshOverlaysToggleButton()
     {
@@ -260,8 +269,8 @@ public partial class MainWindow : Window, IAsyncDisposable
         var open = AnyOverlayOpen();
         OverlaysToggleButton.Content = open ? "Close all overlays" : "Open all overlays";
         OverlaysToggleButton.ToolTip = open
-            ? "Close DPS, Buff, DoT, and Control overlays"
-            : "Open DPS, Buff, DoT, and Control overlays";
+            ? "Close DPS, Buff, DoT, Control, and Hostile overlays"
+            : "Open DPS, Buff, DoT, Control, and Hostile overlays";
     }
 
     private void ShowDpsOverlay()
@@ -293,6 +302,12 @@ public partial class MainWindow : Window, IAsyncDisposable
 
         _buffOverlay = new BuffOverlayWindow { DataContext = _viewModel, Owner = this };
         OverlayWindowPlacement.Attach(_buffOverlay, OverlayWindowPlacement.BuffKey);
+        if (_viewModel.IsCompactBuffOverlay &&
+            !AppSettingsStore.TryLoadOverlayBounds(OverlayWindowPlacement.BuffKey, out _))
+        {
+            _buffOverlay.Width = 240;
+            _buffOverlay.Height = 140;
+        }
         _buffOverlay.Closed += (_, _) =>
         {
             _buffOverlay = null;
@@ -325,11 +340,19 @@ public partial class MainWindow : Window, IAsyncDisposable
 
         var window = new SpellEffectOverlayWindow { DataContext = dataContext, Owner = this };
         OverlayWindowPlacement.Attach(window, placementKey);
+        // Compact defaults only when this overlay has no saved bounds yet (e.g. first Hostile open).
+        if (dataContext is SpellRuleSetViewModel { IsCompactOverlay: true } &&
+            !AppSettingsStore.TryLoadOverlayBounds(placementKey, out _))
+        {
+            window.Width = 250;
+            window.Height = 150;
+        }
         overlay = window;
         window.Closed += (_, _) =>
         {
             if (ReferenceEquals(_dotOverlay, window)) _dotOverlay = null;
             if (ReferenceEquals(_controlOverlay, window)) _controlOverlay = null;
+            if (ReferenceEquals(_hostileOverlay, window)) _hostileOverlay = null;
             RefreshOverlaysToggleButton();
         };
         window.Show();
@@ -389,6 +412,7 @@ public partial class MainWindow : Window, IAsyncDisposable
         _buffOverlay?.Close();
         _dotOverlay?.Close();
         _controlOverlay?.Close();
+        _hostileOverlay?.Close();
         await _viewModel.DisposeAsync();
         GC.SuppressFinalize(this);
     }

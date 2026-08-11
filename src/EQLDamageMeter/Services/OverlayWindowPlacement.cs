@@ -12,6 +12,7 @@ public static class OverlayWindowPlacement
     public const string BuffKey = "buff";
     public const string DotKey = "dot";
     public const string ControlKey = "control";
+    public const string HostileKey = "hostile";
 
     private static readonly Dictionary<string, DispatcherTimer> SaveTimers = new(StringComparer.OrdinalIgnoreCase);
 
@@ -20,7 +21,17 @@ public static class OverlayWindowPlacement
         ArgumentNullException.ThrowIfNull(window);
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
+        // Owned transparent overlays can be recentered by WPF on Show() unless Manual.
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
         ApplySavedBounds(window, key);
+
+        void reapply(object? _, EventArgs __) => ApplySavedBounds(window, key);
+        window.SourceInitialized += reapply;
+        window.Loaded += (_, _) =>
+        {
+            window.SourceInitialized -= reapply;
+            ApplySavedBounds(window, key);
+        };
 
         void scheduleSave(object? _, EventArgs __) => ScheduleSave(window, key);
         window.LocationChanged += scheduleSave;
@@ -29,6 +40,7 @@ public static class OverlayWindowPlacement
         {
             window.LocationChanged -= scheduleSave;
             window.SizeChanged -= scheduleSave;
+            window.SourceInitialized -= reapply;
             FlushSave(window, key);
         };
     }

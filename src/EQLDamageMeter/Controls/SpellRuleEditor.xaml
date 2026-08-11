@@ -25,6 +25,10 @@
                         </StackPanel>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <CheckBox Content="Compact" Margin="0,0,10,0" VerticalAlignment="Center"
+                                  Foreground="#C8E0EE" FontSize="11"
+                                  IsChecked="{Binding IsCompactOverlay}"
+                                  ToolTip="Use a smaller, denser overlay" />
                         <Button Content="{Binding OverlayLabel}" Padding="12,7" Margin="0,0,8,0" Click="Overlay_Click" />
                         <Button Content="{Binding AddLabel}" Padding="13,7" Background="#684CC0" BorderBrush="#A98BFF" Click="Add_Click" />
                     </StackPanel>
@@ -146,6 +150,7 @@
                         <RowDefinition Height="44" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <StackPanel>
                         <TextBlock Text="{Binding DetailsTitle}" Style="{DynamicResource SectionLabel}" FontSize="15" />
@@ -198,7 +203,21 @@
                     </Grid>
                     <Grid Grid.Row="4" Margin="0,14,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <StackPanel><TextBlock Text="Track this spell" FontWeight="SemiBold" /><TextBlock Text="Track confirmed applications on enemy targets" Foreground="#66879D" FontSize="10" /></StackPanel>
+                        <StackPanel>
+                            <TextBlock Text="Track this spell" FontWeight="SemiBold" />
+                            <TextBlock Foreground="#66879D" FontSize="10">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="Track confirmed applications on enemy targets" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsHostile}" Value="True">
+                                                <Setter Property="Text" Value="Track when this hostile effect lands on you" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
                         <ToggleButton Grid.Column="1" Style="{DynamicResource BuffToggle}" IsChecked="{Binding SelectedRule.IsEnabled, Mode=TwoWay}" Click="RuleToggle_Click" />
                     </Grid>
                     <Grid Grid.Row="5" Margin="0,12,0,0">
@@ -207,6 +226,16 @@
                         <ToggleButton Grid.Column="1" Style="{DynamicResource BuffToggle}" IsChecked="{Binding SelectedRule.ShowInOverlay, Mode=TwoWay}" Click="RuleToggle_Click" />
                     </Grid>
                     <Grid Grid.Row="6" Margin="0,14,0,0">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsHostile}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="Alert Type" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" />
@@ -221,15 +250,86 @@
                                       SelectedItem="{Binding SelectedRule.Sound, Mode=TwoWay}" />
                         </StackPanel>
                     </Grid>
-                    <StackPanel Grid.Row="7" Margin="0,14,0,0" Visibility="{Binding SelectedRule.VoiceTextVisibility}">
+                    <StackPanel Grid.Row="7" Margin="0,14,0,0">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding IsHostile}" Value="False" />
+                                            <Condition Binding="{Binding SelectedRule.VoiceTextVisibility}" Value="Visible" />
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
                         <TextBlock Text="Voice Text" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" />
                         <TextBox Style="{DynamicResource BuffInput}"
                                  Text="{Binding SelectedRule.VoiceText, UpdateSourceTrigger=PropertyChanged}"
                                  ToolTip="Custom text spoken when this alert fires. Leave blank for the default phrase." />
                     </StackPanel>
-                    <Grid Grid.Row="8" Margin="0,16,0,0">
+                    <!-- Hostile: independent land + expire alert modes -->
+                    <Grid Grid.Row="8" Margin="0,14,0,0">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsHostile}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="LAND ALERT" Style="{DynamicResource MetricLabel}" Margin="0,0,0,8" Foreground="#FF8A9A" />
+                            <TextBlock Text="Alert Type" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" />
+                            <ComboBox Style="{DynamicResource BuffComboAlert}" ItemsSource="{Binding AlertModes}"
+                                      SelectedItem="{Binding SelectedRule.LandAlertMode, Mode=TwoWay}"
+                                      ToolTip="Sound or text-to-speech when this effect lands on you" />
+                            <StackPanel Margin="0,10,0,0" Visibility="{Binding SelectedRule.LandSoundPickerVisibility}">
+                                <TextBlock Text="Land Sound" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" />
+                                <ComboBox Style="{DynamicResource BuffComboAlert}" Width="120"
+                                          ItemsSource="{Binding SoundChoices}"
+                                          SelectedItem="{Binding SelectedRule.LandSound, Mode=TwoWay}" />
+                            </StackPanel>
+                            <StackPanel Margin="0,10,0,0" Visibility="{Binding SelectedRule.LandVoiceTextVisibility}">
+                                <TextBlock Text="Land Voice Text" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" />
+                                <TextBox Style="{DynamicResource BuffInput}"
+                                         Text="{Binding SelectedRule.LandVoiceText, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="Spoken when this hostile effect lands. Leave blank for '{spell} landed'." />
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="EXPIRE ALERT" Style="{DynamicResource MetricLabel}" Margin="0,0,0,8" Foreground="#39E0CC" />
+                            <TextBlock Text="Alert Type" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" />
+                            <ComboBox Style="{DynamicResource BuffComboAlert}" ItemsSource="{Binding AlertModes}"
+                                      SelectedItem="{Binding SelectedRule.AlertMode, Mode=TwoWay}"
+                                      ToolTip="Sound or text-to-speech when this effect fades, is dispelled, or the timer ends" />
+                            <StackPanel Margin="0,10,0,0" Visibility="{Binding SelectedRule.ExpireSoundPickerVisibility}">
+                                <TextBlock Text="Expire Sound" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" />
+                                <ComboBox Style="{DynamicResource BuffComboAlert}" Width="120"
+                                          ItemsSource="{Binding SoundChoices}"
+                                          SelectedItem="{Binding SelectedRule.Sound, Mode=TwoWay}" />
+                            </StackPanel>
+                            <StackPanel Margin="0,10,0,0" Visibility="{Binding SelectedRule.ExpireVoiceTextVisibility}">
+                                <TextBlock Text="Expire Voice Text" Style="{DynamicResource MetricLabel}" Margin="0,0,0,5" />
+                                <TextBox Style="{DynamicResource BuffInput}"
+                                         Text="{Binding SelectedRule.VoiceText, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="Spoken when this hostile effect expires. Leave blank for the default phrase." />
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                    <Grid Grid.Row="9" Margin="0,16,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="8" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                        <Button Content="Test Alert" Click="TestAlert_Click" />
+                        <Button Content="Test Alert" Click="TestAlert_Click"
+                                ToolTip="For Hostile, plays land alert then expire alert" />
                         <Button Grid.Column="2" Content="Save Spell" Background="#684CC0" BorderBrush="#A98BFF" Click="Save_Click" />
                     </Grid>
                 </Grid>

@@ -207,7 +207,13 @@ public sealed class BuffTracker
                 var selfInstances = _rules.Values
                     .Where(rule => rule.IsEnabled && _states[rule.Id].Instances.ContainsKey(SelfTargetKey))
                     .ToArray();
-                if (selfInstances.Length == 1) StopSelf(selfInstances[0].Id, BuffStopReason.Dispelled);
+                if (selfInstances.Length == 1)
+                {
+                    var dispelled = selfInstances[0];
+                    StopSelf(dispelled.Id, BuffStopReason.Dispelled);
+                    if (dispelled.Category == SpellTrackerCategory.Hostile)
+                        _queuedAlerts.Enqueue(new BuffExpirationAlert(dispelled, BuffAlertPhase.Expired));
+                }
             }
             return;
         }
@@ -346,6 +352,9 @@ public sealed class BuffTracker
     {
         foreach (var rule in MatchingEnabledRules(spell))
         {
+            // Hostile timers start from enemy land text on you — never from your cast bar.
+            if (rule.Category == SpellTrackerCategory.Hostile) continue;
+
             var state = _states[rule.Id];
             state.PendingCastStartedAt = timestamp;
             state.PendingStart = timestamp.AddSeconds(rule.CastTimeSeconds);
@@ -366,19 +375,34 @@ public sealed class BuffTracker
 
     private void CancelMatchingRules(string spell)
     {
-        foreach (var rule in MatchingEnabledRules(spell)) ClearPendingCast(_states[rule.Id]);
+        foreach (var rule in MatchingEnabledRules(spell))
+        {
+            if (rule.Category == SpellTrackerCategory.Hostile) continue;
+            ClearPendingCast(_states[rule.Id]);
+        }
     }
 
     private bool ConfirmSelfApplication(DateTime timestamp, string message)
     {
         var matches = PendingRules(timestamp).Where(rule =>
             _selfAppliedMessages.GetValueOrDefault(rule.Id)?.Contains(message) == true).ToArray();
+        if (matches.Length == 0)
+        {
+            // Hostile: enemy land text on you needs no "You begin casting" pending window.
+            matches = _rules.Values.Where(rule =>
+                rule.IsEnabled &&
+                rule.Category == SpellTrackerCategory.Hostile &&
+                rule.TrackSelf &&
+                _selfAppliedMessages.GetValueOrDefault(rule.Id)?.Contains(message) == true).ToArray();
+        }
         if (matches.Length == 0) return false;
         foreach (var rule in matches)
         {
             var state = _states[rule.Id];
             ClearPendingCast(state);
-            if (rule.TrackSelf) Activate(state, rule, SelfTargetKey, "Self", true, timestamp);
+            if (rule.TrackSelf)
+                ActivateAndAlert(state, rule, SelfTargetKey, "Self", true, timestamp,
+                    clearsOnTargetDeath: rule.Category != SpellTrackerCategory.Hostile);
         }
         return true;
     }
@@ -511,7 +535,11 @@ public sealed class BuffTracker
         var state = _states[rule.Id];
         var instance = state.Instances.Values.First();
         if (instance.IsSelf)
+        {
             StopSelf(rule.Id, BuffStopReason.Expired, preserveNewerPending: true);
+            if (rule.Category == SpellTrackerCategory.Hostile)
+                _queuedAlerts.Enqueue(new BuffExpirationAlert(rule, BuffAlertPhase.Expired));
+        }
         else
         {
             state.Instances.Clear();
@@ -568,6 +596,15 @@ public sealed class BuffTracker
             ClearsOnTargetDeath = clearsOnTargetDeath
         };
         state.StopReason = BuffStopReason.None;
+    }
+
+    private void ActivateAndAlert(RuleRuntime state, BuffRuleSettings rule, string targetKey,
+        string targetName, bool isSelf, DateTime startedAt, bool clearPending = true,
+        bool clearsOnTargetDeath = true)
+    {
+        Activate(state, rule, targetKey, targetName, isSelf, startedAt, clearPending, clearsOnTargetDeath);
+        if (rule.Category == SpellTrackerCategory.Hostile && isSelf)
+            _queuedAlerts.Enqueue(new BuffExpirationAlert(rule, BuffAlertPhase.Landed));
     }
 
     private IEnumerable<BuffRuleSettings> PendingRules(DateTime timestamp) =>
@@ -724,6 +761,8 @@ public sealed class BuffTracker
     {
         foreach (var rule in _rules.Values)
         {
+            // Outgoing DoT/Control on mobs end on zone. Hostile-on-you persists across
+            // zone (same as beneficial self buffs) until fade, dispel, duration, or death.
             if (!IsEnemyEffectCategory(rule)) continue;
             var state = _states[rule.Id];
             var hadInstances = state.Instances.Count > 0;

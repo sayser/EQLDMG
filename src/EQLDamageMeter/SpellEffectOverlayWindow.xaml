@@ -2,97 +2,214 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:models="clr-namespace:EQLDamageMeter.Models"
-        Title="EQDM Spell Overlay" Width="430" Height="300" MinWidth="330" MinHeight="100"
+        Title="EQDM Spell Overlay" Width="430" Height="300" MinWidth="180" MinHeight="56"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True"
-        ShowInTaskbar="False" ResizeMode="CanResizeWithGrip" PreviewMouseLeftButtonDown="Overlay_PreviewMouseLeftButtonDown">
-    <Border Background="#E0071928" BorderBrush="#6C8CA2" BorderThickness="1" CornerRadius="13" Padding="8">
+        ShowInTaskbar="False" ResizeMode="CanResizeWithGrip"
+        PreviewMouseLeftButtonDown="Overlay_PreviewMouseLeftButtonDown">
+    <!-- 1/255 alpha: visually transparent but still hit-testable for dragging (same as DPS). -->
+    <Border Background="#01000000" BorderBrush="#556C8CA2" BorderThickness="1" CornerRadius="10" Padding="5">
         <Grid>
-            <Grid.RowDefinitions><RowDefinition Height="32" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-            <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Margin="0,0,0,4">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsCompactOverlay}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="&#x25F4;" FontSize="18" Foreground="#A98BFF" Margin="2,0,8,0" />
+                    <TextBlock Text="&#x25F4;" FontSize="16" Foreground="#A98BFF" Margin="2,0,8,0" />
                     <TextBlock Text="{Binding HeaderTitle}" FontWeight="Bold" Foreground="#E8F5FC" />
                 </StackPanel>
-                <Button Content="&#x00D7;" HorizontalAlignment="Right" Width="25" Height="25" Padding="0" FontSize="14"
-                        ToolTip="Close overlay" Click="Close_Click" />
             </Grid>
+
+            <Button Content="&#x00D7;" HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Width="22" Height="22" Padding="0" FontSize="13" Panel.ZIndex="3"
+                    ToolTip="Close overlay" Click="Close_Click" />
+
             <Grid Grid.Row="1">
                 <ListBox ItemsSource="{Binding OverlayEntries}" Background="Transparent" BorderThickness="0"
-                         ScrollViewer.VerticalScrollBarVisibility="Auto">
+                         ScrollViewer.VerticalScrollBarVisibility="Auto" Margin="0,0,18,0">
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Padding" Value="0" />
-                            <Setter Property="Margin" Value="0,0,0,8" /><Setter Property="Focusable" Value="False" />
-                            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value></Setter>
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="Margin" Value="0,0,0,6" />
+                            <Setter Property="Focusable" Value="False" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding DataContext.IsCompactOverlay, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                    <Setter Property="Margin" Value="0,0,0,2" />
+                                </DataTrigger>
+                            </Style.Triggers>
                         </Style>
                     </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <Border x:Name="EffectRow" BorderThickness="2" CornerRadius="10" Padding="12,11" MinHeight="56">
+                            <Border x:Name="EffectRow" BorderThickness="1" CornerRadius="8">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="#662D211A" />
+                                        <Setter Property="BorderBrush" Value="#AAD87539" />
+                                        <Setter Property="Padding" Value="10,8" />
+                                        <Setter Property="MinHeight" Value="48" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Category}" Value="{x:Static models:SpellTrackerCategory.Control}">
+                                                <Setter Property="Background" Value="#66241938" />
+                                                <Setter Property="BorderBrush" Value="#AA8F72E8" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Category}" Value="{x:Static models:SpellTrackerCategory.Hostile}">
+                                                <Setter Property="Background" Value="#663A1520" />
+                                                <Setter Property="BorderBrush" Value="#AAE06070" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsExpiringSoon}" Value="True">
+                                                <Setter Property="BorderBrush" Value="#FFBD57" />
+                                                <DataTrigger.EnterActions>
+                                                    <BeginStoryboard x:Name="Pulse">
+                                                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.4" To="1"
+                                                                             Duration="0:0:0.38" />
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </DataTrigger.EnterActions>
+                                                <DataTrigger.ExitActions>
+                                                    <StopStoryboard BeginStoryboardName="Pulse" />
+                                                </DataTrigger.ExitActions>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsOverdue}" Value="True">
+                                                <Setter Property="BorderBrush" Value="#FF5C70" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding DataContext.IsCompactOverlay, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                <Setter Property="Padding" Value="4,2" />
+                                                <Setter Property="MinHeight" Value="20" />
+                                                <Setter Property="CornerRadius" Value="4" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="96" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <Image Source="{Binding Icon}" Width="36" Height="36" Margin="0,0,12,0"
-                                           VerticalAlignment="Center"
+                                    <Image Source="{Binding Icon}" Margin="0,0,8,0" VerticalAlignment="Center"
                                            RenderOptions.BitmapScalingMode="NearestNeighbor" SnapsToDevicePixels="True">
                                         <Image.Style>
                                             <Style TargetType="Image">
+                                                <Setter Property="Width" Value="32" />
+                                                <Setter Property="Height" Value="32" />
                                                 <Setter Property="Visibility" Value="Visible" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
                                                         <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding DataContext.IsCompactOverlay, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                        <Setter Property="Width" Value="16" />
+                                                        <Setter Property="Height" Value="16" />
+                                                        <Setter Property="Margin" Value="0,0,5,0" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </Image.Style>
                                     </Image>
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding SpellName}" FontSize="14" FontWeight="SemiBold" Foreground="#F0F8FF" TextTrimming="CharacterEllipsis" />
-                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                            <TextBlock x:Name="TypeLabel" Text="{Binding EffectTypeLabel}" FontSize="11" FontWeight="Bold" Foreground="#FF9B62" />
-                                            <TextBlock Text="  ·  " FontSize="11" Foreground="#526F83" />
-                                            <TextBlock Text="{Binding TargetName}" FontSize="11" Foreground="#A9C3D3" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="  ·  " FontSize="11" Foreground="#526F83" />
-                                            <TextBlock Text="{Binding StatusText}" FontSize="11" Foreground="#7899AD" />
+                                        <TextBlock Text="{Binding SpellName}" FontWeight="SemiBold"
+                                                   Foreground="#F0F8FF" TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="FontSize" Value="13" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding DataContext.IsCompactOverlay, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                            <Setter Property="FontSize" Value="11" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                            <StackPanel.Style>
+                                                <Style TargetType="StackPanel">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding DataContext.IsCompactOverlay, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </StackPanel.Style>
+                                            <TextBlock x:Name="TypeLabel" Text="{Binding EffectTypeLabel}" FontSize="10"
+                                                       FontWeight="Bold" Foreground="#FF9B62" />
+                                            <TextBlock Text="  ·  " FontSize="10" Foreground="#526F83" />
+                                            <TextBlock Text="{Binding TargetName}" FontSize="10" Foreground="#A9C3D3"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="  ·  " FontSize="10" Foreground="#526F83" />
+                                            <TextBlock Text="{Binding StatusText}" FontSize="10" Foreground="#7899AD" />
                                         </StackPanel>
                                     </StackPanel>
-                                    <TextBlock x:Name="RemainingTimer" Grid.Column="2" Text="{Binding RemainingText}" FontSize="22" FontWeight="Bold"
-                                               Foreground="#FF9B62" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                                        <TextBlock FontSize="9" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0"
+                                                   TextTrimming="CharacterEllipsis" MaxWidth="72">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Setter Property="Foreground" Value="#FF9B62" />
+                                                    <Setter Property="Text" Value="{Binding TargetName}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding DataContext.IsCompactOverlay, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Category}" Value="{x:Static models:SpellTrackerCategory.Hostile}">
+                                                            <Setter Property="Text" Value="{Binding EffectTypeLabel}" />
+                                                            <Setter Property="Foreground" Value="#FF8A9A" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Category}" Value="{x:Static models:SpellTrackerCategory.Control}">
+                                                            <Setter Property="Foreground" Value="#C4A4FF" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock x:Name="RemainingTimer" Text="{Binding RemainingText}" FontWeight="Bold"
+                                                   Foreground="#FF9B62" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="FontSize" Value="20" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding DataContext.IsCompactOverlay, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                            <Setter Property="FontSize" Value="12" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Category}" Value="{x:Static models:SpellTrackerCategory.Control}">
+                                                            <Setter Property="Foreground" Value="#C4A4FF" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Category}" Value="{x:Static models:SpellTrackerCategory.Hostile}">
+                                                            <Setter Property="Foreground" Value="#FF8A9A" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
                                 </Grid>
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="Background" Value="#D12D211A" /><Setter Property="BorderBrush" Value="#D87539" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding Category}" Value="{x:Static models:SpellTrackerCategory.Control}">
-                                                <Setter Property="Background" Value="#D1241938" /><Setter Property="BorderBrush" Value="#8F72E8" />
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding IsExpiringSoon}" Value="True">
-                                                <Setter Property="BorderBrush" Value="#FFBD57" /><Setter Property="Background" Value="#E13D2D25" />
-                                                <DataTrigger.EnterActions>
-                                                    <BeginStoryboard x:Name="Pulse">
-                                                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
-                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.35" To="1"
-                                                                             Duration="0:0:0.38" />
-                                                        </Storyboard>
-                                                    </BeginStoryboard>
-                                                </DataTrigger.EnterActions>
-                                                <DataTrigger.ExitActions><StopStoryboard BeginStoryboardName="Pulse" /></DataTrigger.ExitActions>
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding IsOverdue}" Value="True">
-                                                <Setter Property="BorderBrush" Value="#FF5C70" />
-                                                <Setter Property="Background" Value="#E13D1E32" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
                             </Border>
                             <DataTemplate.Triggers>
                                 <DataTrigger Binding="{Binding Category}" Value="{x:Static models:SpellTrackerCategory.Control}">
                                     <Setter TargetName="TypeLabel" Property="Foreground" Value="#C4A4FF" />
-                                    <Setter TargetName="RemainingTimer" Property="Foreground" Value="#C4A4FF" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Category}" Value="{x:Static models:SpellTrackerCategory.Hostile}">
+                                    <Setter TargetName="TypeLabel" Property="Foreground" Value="#FF8A9A" />
                                 </DataTrigger>
                             </DataTemplate.Triggers>
                         </DataTemplate>
@@ -100,7 +217,19 @@
                 </ListBox>
                 <TextBlock Text="No tracked spell effects are currently active." Foreground="#7899AD"
                            HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="11">
-                    <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding OverlayEntries.Count}" Value="0"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding OverlayEntries.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsCompactOverlay}" Value="True">
+                                    <Setter Property="FontSize" Value="9" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
                 </TextBlock>
             </Grid>
         </Grid>

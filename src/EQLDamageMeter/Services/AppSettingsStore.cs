@@ -13,6 +13,8 @@ public static class AppSettingsStore
         public SpellIconStyle SpellIconStyle { get; set; } = SpellIconStyle.Modern;
         public Dictionary<string, OverlayBounds> OverlayBounds { get; set; } =
             new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, bool> OverlayCompact { get; set; } =
+            new(StringComparer.OrdinalIgnoreCase);
     }
 
     private static readonly string SettingsPath = AppPaths.Combine("settings.json");
@@ -62,6 +64,23 @@ public static class AppSettingsStore
         {
             settings.OverlayBounds ??= new Dictionary<string, OverlayBounds>(StringComparer.OrdinalIgnoreCase);
             settings.OverlayBounds[key] = bounds;
+        }, cancellationToken);
+    }
+
+    public static bool TryLoadOverlayCompact(string key) =>
+        !string.IsNullOrWhiteSpace(key) &&
+        TryLoad()?.OverlayCompact is { } map &&
+        map.TryGetValue(key, out var compact) &&
+        compact;
+
+    public static Task<bool> TrySaveOverlayCompactAsync(string key, bool compact,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return Task.FromResult(false);
+        return UpdateAsync(settings =>
+        {
+            settings.OverlayCompact ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            settings.OverlayCompact[key] = compact;
         }, cancellationToken);
     }
 

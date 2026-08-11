@@ -18,6 +18,7 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     private BuffRuleViewModel? _selectedRule;
     private string _searchText = string.Empty;
     private string _filterMode = "All";
+    private bool _isCompactOverlay;
 
     public SpellRuleSetViewModel(SpellTrackerCategory category,
         IEnumerable<BuffRuleSettings> savedRules,
@@ -31,12 +32,13 @@ public sealed class SpellRuleSetViewModel : ObservableObject
         _casterLevel = casterLevel ?? (() => SpellDataCatalog.DefaultCasterLevel);
         _save = save;
         _alerts = alerts;
+        _isCompactOverlay = AppSettingsStore.TryLoadOverlayCompact(OverlayCompactKey);
         foreach (var settings in savedRules)
             Rules.Add(new BuffRuleViewModel(settings with
             {
                 Category = category,
-                TrackSelf = false,
-                TrackOthers = true
+                TrackSelf = DefaultTrackSelf,
+                TrackOthers = DefaultTrackOthers
             }));
         RulesView = CollectionViewSource.GetDefaultView(Rules);
         RulesView.Filter = FilterRule;
@@ -44,15 +46,63 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     }
 
     public SpellTrackerCategory Category => _category;
-    public string SingularName => _category == SpellTrackerCategory.Control ? "control spell" : "DoT";
-    public string HeaderTitle => _category == SpellTrackerCategory.Control ? "CONTROL TRACKER" : "DoT TRACKER";
-    public string DetailsTitle => _category == SpellTrackerCategory.Control ? "CONTROL DETAILS" : "DoT DETAILS";
-    public string AddLabel => _category == SpellTrackerCategory.Control ? "+ Add Control" : "+ Add DoT";
-    public string OverlayLabel => _category == SpellTrackerCategory.Control ? "Control Overlay" : "DoT Overlay";
-    public string EmptyDetailsHint => _category == SpellTrackerCategory.Control
-        ? "Select a control spell or click + Add Control to view details."
-        : "Select a DoT or click + Add DoT to view details.";
+    public string SingularName => _category switch
+    {
+        SpellTrackerCategory.Control => "control spell",
+        SpellTrackerCategory.Hostile => "hostile spell",
+        _ => "DoT"
+    };
+    public string HeaderTitle => _category switch
+    {
+        SpellTrackerCategory.Control => "CONTROL TRACKER",
+        SpellTrackerCategory.Hostile => "HOSTILE TRACKER",
+        _ => "DoT TRACKER"
+    };
+    public string DetailsTitle => _category switch
+    {
+        SpellTrackerCategory.Control => "CONTROL DETAILS",
+        SpellTrackerCategory.Hostile => "HOSTILE DETAILS",
+        _ => "DoT DETAILS"
+    };
+    public string AddLabel => _category switch
+    {
+        SpellTrackerCategory.Control => "+ Add Control",
+        SpellTrackerCategory.Hostile => "+ Add Hostile",
+        _ => "+ Add DoT"
+    };
+    public string OverlayLabel => _category switch
+    {
+        SpellTrackerCategory.Control => "Control Overlay",
+        SpellTrackerCategory.Hostile => "Hostile Overlay",
+        _ => "DoT Overlay"
+    };
+    public string EmptyDetailsHint => _category switch
+    {
+        SpellTrackerCategory.Control => "Select a control spell or click + Add Control to view details.",
+        SpellTrackerCategory.Hostile => "Select a hostile spell or click + Add Hostile to view details.",
+        _ => "Select a DoT or click + Add DoT to view details."
+    };
     public bool IsControl => _category == SpellTrackerCategory.Control;
+    public bool IsHostile => _category == SpellTrackerCategory.Hostile;
+    private bool DefaultTrackSelf => _category == SpellTrackerCategory.Hostile;
+    private bool DefaultTrackOthers => _category != SpellTrackerCategory.Hostile;
+    private string OverlayCompactKey => _category switch
+    {
+        SpellTrackerCategory.Control => OverlayWindowPlacement.ControlKey,
+        SpellTrackerCategory.Hostile => OverlayWindowPlacement.HostileKey,
+        _ => OverlayWindowPlacement.DotKey
+    };
+
+    public bool IsCompactOverlay
+    {
+        get => _isCompactOverlay;
+        set
+        {
+            if (!SetProperty(ref _isCompactOverlay, value)) return;
+            _ = AppSettingsStore.TrySaveOverlayCompactAsync(OverlayCompactKey, value);
+        }
+    }
+
     public SpellDataCatalog? SpellCatalog => _catalog();
     public ObservableCollection<BuffRuleViewModel> Rules { get; } = [];
     public ObservableCollection<BuffOverlayEntryViewModel> OverlayEntries { get; } = [];
@@ -84,11 +134,23 @@ public sealed class SpellRuleSetViewModel : ObservableObject
 
     public BuffRuleViewModel AddRule()
     {
-        var duration = _category == SpellTrackerCategory.Control ? 30 : 60;
+        var duration = _category switch
+        {
+            SpellTrackerCategory.Control => 30,
+            SpellTrackerCategory.Hostile => 60,
+            _ => 60
+        };
         var controlType = _category == SpellTrackerCategory.Control ? ControlEffectType.Mez : ControlEffectType.Other;
-        var rule = new BuffRuleViewModel(new BuffRuleSettings(Guid.NewGuid(), string.Empty, duration, 3,
-            true, true, BuffAlertMode.Sound, BuffSoundKind.Chime, string.Empty, false, true,
-            _category, controlType));
+        var castTime = _category == SpellTrackerCategory.Hostile ? 0 : 3;
+        var landSound = _category == SpellTrackerCategory.Hostile ? BuffSoundKind.Klaxon : (BuffSoundKind?)null;
+        var expireSound = _category == SpellTrackerCategory.Hostile ? BuffSoundKind.AlarmBeep : BuffSoundKind.Chime;
+        var landAlertMode = _category == SpellTrackerCategory.Hostile
+            ? BuffAlertMode.Sound
+            : (BuffAlertMode?)null;
+        var rule = new BuffRuleViewModel(new BuffRuleSettings(Guid.NewGuid(), string.Empty, duration, castTime,
+            true, true, BuffAlertMode.Sound, expireSound, string.Empty,
+            DefaultTrackSelf, DefaultTrackOthers, _category, controlType,
+            LandSound: landSound, LandAlertMode: landAlertMode, LandVoiceText: null));
         Rules.Add(rule);
         SelectedRule = rule;
         _filterMode = "All";
@@ -128,8 +190,8 @@ public sealed class SpellRuleSetViewModel : ObservableObject
             foreach (var rule in Rules)
             {
                 rule.Category = _category;
-                rule.TrackSelf = false;
-                rule.TrackOthers = true;
+                rule.TrackSelf = DefaultTrackSelf;
+                rule.TrackOthers = DefaultTrackOthers;
                 if (!rule.TryCreateSettings(out var configured, out var error))
                 {
                     SelectedRule = rule;
@@ -157,8 +219,8 @@ public sealed class SpellRuleSetViewModel : ObservableObject
                 {
                     SpellName = spell.Name,
                     Category = _category,
-                    TrackSelf = false,
-                    TrackOthers = true
+                    TrackSelf = DefaultTrackSelf,
+                    TrackOthers = DefaultTrackOthers
                 });
             }
 
@@ -187,6 +249,7 @@ public sealed class SpellRuleSetViewModel : ObservableObject
         {
             SpellTrackerCategory.DamageOverTime => SpellTrackerStore.TryLoadDotRules(),
             SpellTrackerCategory.Control => SpellTrackerStore.TryLoadControlRules(),
+            SpellTrackerCategory.Hostile => SpellTrackerStore.TryLoadHostileRules(),
             _ => SpellTrackerStore.TryLoadBuffRules()
         }).ToDictionary(item => item.Id);
 
@@ -194,15 +257,15 @@ public sealed class SpellRuleSetViewModel : ObservableObject
         foreach (var rule in Rules)
         {
             rule.Category = _category;
-            rule.TrackSelf = false;
-            rule.TrackOthers = true;
+            rule.TrackSelf = DefaultTrackSelf;
+            rule.TrackOthers = DefaultTrackOthers;
             if (rule.TryCreateSettings(out var configured, out _))
             {
                 settings.Add(configured! with
                 {
                     Category = _category,
-                    TrackSelf = false,
-                    TrackOthers = true
+                    TrackSelf = DefaultTrackSelf,
+                    TrackOthers = DefaultTrackOthers
                 });
             }
             else if (previous.TryGetValue(rule.Id, out var prior))
@@ -210,8 +273,8 @@ public sealed class SpellRuleSetViewModel : ObservableObject
                 settings.Add(prior with
                 {
                     Category = _category,
-                    TrackSelf = false,
-                    TrackOthers = true
+                    TrackSelf = DefaultTrackSelf,
+                    TrackOthers = DefaultTrackOthers
                 });
             }
         }
@@ -308,7 +371,26 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     {
         if (SelectedRule is null) return $"Select a {SingularName} first.";
         if (!SelectedRule.TryCreateSettings(out var settings, out var error)) return error;
-        _alerts.Test(settings!);
+        if (_category == SpellTrackerCategory.Hostile)
+            _alerts.TestHostilePair(settings!);
+        else
+            _alerts.Test(settings!);
+        return null;
+    }
+
+    public string? TestLandAlert()
+    {
+        if (SelectedRule is null) return $"Select a {SingularName} first.";
+        if (!SelectedRule.TryCreateSettings(out var settings, out var error)) return error;
+        _alerts.TestLand(settings!);
+        return null;
+    }
+
+    public string? TestExpireAlert()
+    {
+        if (SelectedRule is null) return $"Select a {SingularName} first.";
+        if (!SelectedRule.TryCreateSettings(out var settings, out var error)) return error;
+        _alerts.TestExpire(settings!);
         return null;
     }
 
@@ -322,7 +404,7 @@ public sealed class SpellRuleSetViewModel : ObservableObject
 
     public void Tick(DateTime now)
     {
-        foreach (var alert in _tracker.Tick(now)) _alerts.Play(alert.Rule);
+        foreach (var alert in _tracker.Tick(now)) _alerts.Play(alert);
         foreach (var rule in Rules) rule.ApplyRuntime(_tracker.GetSnapshot(rule.Id, now));
         RefreshOverlay(now);
     }
@@ -334,8 +416,8 @@ public sealed class SpellRuleSetViewModel : ObservableObject
             : null).OfType<BuffRuleSettings>().Select(rule => rule with
             {
                 Category = _category,
-                TrackSelf = false,
-                TrackOthers = true
+                TrackSelf = DefaultTrackSelf,
+                TrackOthers = DefaultTrackOthers
             }).ToArray();
         // Do not prune rules mid-edit: an invalid sibling must keep its last runtime state.
         Configure(settings, pruneMissing: false);
@@ -353,7 +435,9 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     public void NotifyCatalogChanged() => RaisePropertyChanged(nameof(SpellCatalog));
 
     private void Configure(IReadOnlyCollection<BuffRuleSettings> settings, bool pruneMissing = true) =>
-        _tracker.Configure(settings, ResolveFadeMessages, _ => [], ResolveOtherAppliedMessages,
+        _tracker.Configure(settings, ResolveFadeMessages,
+            _category == SpellTrackerCategory.Hostile ? ResolveSelfAppliedMessages : (_ => []),
+            _category == SpellTrackerCategory.Hostile ? (_ => []) : ResolveOtherAppliedMessages,
             suffix => _catalog()?.IsAmbiguousOtherAppliedSuffix(suffix) == true,
             pruneMissing: pruneMissing);
 
@@ -367,6 +451,11 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     private IReadOnlyList<string> ResolveFadeMessages(string spellName) =>
         _catalog() is { } catalog && catalog.TryResolveFamily(spellName, out var spell)
             ? spell!.FadeMessages
+            : [];
+
+    private IReadOnlyList<string> ResolveSelfAppliedMessages(string spellName) =>
+        _catalog() is { } catalog && catalog.TryResolveFamily(spellName, out var spell)
+            ? spell!.SelfAppliedMessages
             : [];
 
     private IReadOnlyList<string> ResolveOtherAppliedMessages(string spellName) =>

@@ -42,7 +42,13 @@ public enum BuffSoundKind
     Coin,
     Thud,
     Whistle,
-    Cascade
+    Cascade,
+    Klaxon,
+    Buzzer,
+    AirHorn,
+    Wail,
+    AlarmBeep,
+    RedAlert
 }
 
 public enum BuffStopReason
@@ -58,7 +64,9 @@ public enum SpellTrackerCategory
 {
     Buff,
     DamageOverTime,
-    Control
+    Control,
+    /// <summary>Enemy spells / debuffs applied to the local player.</summary>
+    Hostile
 }
 
 public enum ControlEffectType
@@ -102,7 +110,13 @@ public sealed record BuffRuleSettings(
     int CastSampleCount = 0,
     int DurationSampleCount = 0,
     double CastSampleSum = 0,
-    double DurationSampleSum = 0);
+    double DurationSampleSum = 0,
+    /// <summary>Hostile only: sound when the effect lands on you. Defaults to Sound.</summary>
+    BuffSoundKind? LandSound = null,
+    /// <summary>Hostile only: Sound or TTS for the land alert. Defaults to Sound.</summary>
+    BuffAlertMode? LandAlertMode = null,
+    /// <summary>Hostile only: spoken text when land alert uses TTS.</summary>
+    string? LandVoiceText = null);
 
 public sealed record BuffRuntimeSnapshot(
     Guid RuleId,
@@ -116,7 +130,13 @@ public sealed record BuffRuntimeSnapshot(
     bool IsOverdue,
     BuffStopReason StopReason);
 
-public sealed record BuffExpirationAlert(BuffRuleSettings Rule);
+public enum BuffAlertPhase
+{
+    Expired = 0,
+    Landed = 1
+}
+
+public sealed record BuffExpirationAlert(BuffRuleSettings Rule, BuffAlertPhase Phase = BuffAlertPhase.Expired);
 
 public sealed record BuffInstanceSnapshot(
     Guid RuleId,
