@@ -122,14 +122,21 @@ public sealed class EqWikiQuestCatalog
         }
     }
 
-    public IReadOnlyList<string> FindMatches(string query, int limit = 12)
+    public IReadOnlyList<string> FindMatches(string query, int limit = 250)
     {
         if (_titles.Count == 0 || string.IsNullOrWhiteSpace(query)) return [];
         var needle = query.Trim();
-        return _titles
-            .Where(title => title.Contains(needle, StringComparison.OrdinalIgnoreCase))
-            .Take(limit)
-            .ToArray();
+        // Prefer titles that start with the query, then alphabetical contains matches.
+        var startsWith = new List<string>();
+        var contains = new List<string>();
+        foreach (var title in _titles)
+        {
+            if (!title.Contains(needle, StringComparison.OrdinalIgnoreCase)) continue;
+            if (title.StartsWith(needle, StringComparison.OrdinalIgnoreCase)) startsWith.Add(title);
+            else contains.Add(title);
+        }
+
+        return startsWith.Concat(contains).Take(limit).ToArray();
     }
 
     public bool TryResolveTitle(string query, out string title)
@@ -203,7 +210,7 @@ public sealed class EqWikiQuestCatalog
     private static HttpClient CreateClient()
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("EQDM/1.3.5 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("EQDM/1.3.6 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
         return client;
     }
 

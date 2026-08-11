@@ -19,6 +19,8 @@ public sealed class BuffTracker
     /// overdue window we drop the instance so a missed worn-off cannot pin buffs forever.
     /// </summary>
     private static readonly TimeSpan CharmMaxOverdue = TimeSpan.FromMinutes(3);
+    /// <summary>Overlay rows pulse when remaining time is at or below this.</summary>
+    private static readonly TimeSpan ExpiringSoonWindow = TimeSpan.FromSeconds(10);
     private sealed class ActiveInstance
     {
         public required string TargetName { get; set; }
@@ -308,7 +310,7 @@ public sealed class BuffTracker
         var isOverdue = isCharm && now >= next.ExpiresAt;
         var remaining = isOverdue ? TimeSpan.Zero : next.ExpiresAt - now;
         return new BuffRuntimeSnapshot(ruleId, next.StartedAt, next.ExpiresAt, remaining, isCasting, true, false,
-            !isOverdue && remaining <= TimeSpan.FromSeconds(30), isOverdue, state.StopReason);
+            !isOverdue && remaining <= ExpiringSoonWindow, isOverdue, state.StopReason);
     }
 
     public IReadOnlyList<BuffInstanceSnapshot> GetActiveSnapshots(DateTime now) =>
@@ -323,12 +325,15 @@ public sealed class BuffTracker
                     .Select(pair => new BuffInstanceSnapshot(rule.Id, pair.Key, rule.SpellName,
                         pair.Value.TargetName, pair.Value.IsSelf, pair.Value.StartedAt, pair.Value.ExpiresAt,
                         pair.Value.ExpiresAt > now ? pair.Value.ExpiresAt - now : now - pair.Value.ExpiresAt,
-                        pair.Value.ExpiresAt > now && pair.Value.ExpiresAt - now <= TimeSpan.FromSeconds(30),
+                        pair.Value.ExpiresAt > now && pair.Value.ExpiresAt - now <= ExpiringSoonWindow,
                         pair.Value.ExpiresAt <= now));
             })
-            .OrderBy(snapshot => snapshot.ExpiresAt)
+            // Self first, then others grouped by target, soonest expiry within each group.
+            .OrderByDescending(snapshot => snapshot.IsSelf)
+            .ThenBy(snapshot => snapshot.IsSelf ? string.Empty : snapshot.TargetName,
+                StringComparer.OrdinalIgnoreCase)
+            .ThenBy(snapshot => snapshot.ExpiresAt)
             .ThenBy(snapshot => snapshot.SpellName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(snapshot => snapshot.TargetName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
     public bool HasActiveCharmTarget(string target, DateTime now) =>

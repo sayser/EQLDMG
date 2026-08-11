@@ -2292,6 +2292,12 @@
                                                             </Grid>
 
                                                             <StackPanel Grid.Row="1" Margin="0,10,0,0">
+                                                                <TextBlock Text="ALREADY OWN THIS ITEM? (OPTIONAL)"
+                                                                           Style="{StaticResource MetricLabel}"
+                                                                           Margin="0,0,0,4" />
+                                                                <TextBlock Text="If you already have this part, note where you put it so you can find it later. Leave as Not set if you still need to loot it."
+                                                                           Foreground="#8BA9BD" FontSize="11"
+                                                                           TextWrapping="Wrap" Margin="0,0,0,8" />
                                                                 <TextBlock Text="WHERE STORED" Style="{StaticResource MetricLabel}"
                                                                            Margin="0,0,0,5" />
                                                                 <ComboBox Style="{StaticResource BuffComboAlert}" Width="140"
@@ -2300,7 +2306,7 @@
                                                                           SelectedValue="{Binding Location, Mode=TwoWay}"
                                                                           SelectedValuePath="Value"
                                                                           DisplayMemberPath="Label"
-                                                                          ToolTip="Where you put this item so you can find it later" />
+                                                                          ToolTip="Optional: where you already stored this item (bank, inventory, etc.)" />
                                                             </StackPanel>
 
                                                             <StackPanel Grid.Row="2" Margin="0,10,0,0">

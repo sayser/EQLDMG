@@ -22,13 +22,13 @@
                PopupAnimation="Fade">
             <Border x:Name="SuggestionBorder"
                     Background="#102A3D" BorderBrush="#6C8CA2" BorderThickness="1" CornerRadius="4"
-                    MinWidth="{Binding ActualWidth, ElementName=InputBox}" MaxHeight="260"
+                    MinWidth="{Binding ActualWidth, ElementName=InputBox}" MaxHeight="420"
                     MouseLeftButtonDown="SuggestionBorder_MouseLeftButtonDown">
                 <ListBox x:Name="SuggestionList"
                          Background="Transparent"
                          BorderThickness="0"
                          Foreground="#EDF7FF"
-                         MaxHeight="260"
+                         MaxHeight="420"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          PreviewMouseLeftButtonDown="SuggestionList_PreviewMouseLeftButtonDown"
                          KeyDown="SuggestionList_KeyDown">

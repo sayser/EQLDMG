@@ -22,20 +22,20 @@
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Padding" Value="0" />
-                            <Setter Property="Margin" Value="0,0,0,6" /><Setter Property="Focusable" Value="False" />
+                            <Setter Property="Margin" Value="0,0,0,8" /><Setter Property="Focusable" Value="False" />
                             <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value></Setter>
                         </Style>
                     </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <Border x:Name="EffectRow" BorderThickness="1" CornerRadius="9" Padding="10,7">
+                            <Border x:Name="EffectRow" BorderThickness="2" CornerRadius="10" Padding="12,11" MinHeight="56">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="92" />
+                                        <ColumnDefinition Width="96" />
                                     </Grid.ColumnDefinitions>
-                                    <Image Source="{Binding Icon}" Width="28" Height="28" Margin="0,0,10,0"
+                                    <Image Source="{Binding Icon}" Width="36" Height="36" Margin="0,0,12,0"
                                            VerticalAlignment="Center"
                                            RenderOptions.BitmapScalingMode="NearestNeighbor" SnapsToDevicePixels="True">
                                         <Image.Style>
@@ -49,17 +49,17 @@
                                             </Style>
                                         </Image.Style>
                                     </Image>
-                                    <StackPanel Grid.Column="1">
-                                        <TextBlock Text="{Binding SpellName}" FontWeight="SemiBold" Foreground="#F0F8FF" TextTrimming="CharacterEllipsis" />
-                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
-                                            <TextBlock x:Name="TypeLabel" Text="{Binding EffectTypeLabel}" FontSize="10" FontWeight="Bold" Foreground="#FF9B62" />
-                                            <TextBlock Text="  ·  " FontSize="10" Foreground="#526F83" />
-                                            <TextBlock Text="{Binding TargetName}" FontSize="10" Foreground="#A9C3D3" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="  ·  " FontSize="10" Foreground="#526F83" />
-                                            <TextBlock Text="{Binding StatusText}" FontSize="10" Foreground="#7899AD" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding SpellName}" FontSize="14" FontWeight="SemiBold" Foreground="#F0F8FF" TextTrimming="CharacterEllipsis" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                            <TextBlock x:Name="TypeLabel" Text="{Binding EffectTypeLabel}" FontSize="11" FontWeight="Bold" Foreground="#FF9B62" />
+                                            <TextBlock Text="  ·  " FontSize="11" Foreground="#526F83" />
+                                            <TextBlock Text="{Binding TargetName}" FontSize="11" Foreground="#A9C3D3" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="  ·  " FontSize="11" Foreground="#526F83" />
+                                            <TextBlock Text="{Binding StatusText}" FontSize="11" Foreground="#7899AD" />
                                         </StackPanel>
                                     </StackPanel>
-                                    <TextBlock x:Name="RemainingTimer" Grid.Column="2" Text="{Binding RemainingText}" FontSize="20" FontWeight="Bold"
+                                    <TextBlock x:Name="RemainingTimer" Grid.Column="2" Text="{Binding RemainingText}" FontSize="22" FontWeight="Bold"
                                                Foreground="#FF9B62" HorizontalAlignment="Right" VerticalAlignment="Center" />
                                 </Grid>
                                 <Border.Style>
@@ -71,7 +71,14 @@
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding IsExpiringSoon}" Value="True">
                                                 <Setter Property="BorderBrush" Value="#FFBD57" /><Setter Property="Background" Value="#E13D2D25" />
-                                                <DataTrigger.EnterActions><BeginStoryboard x:Name="Pulse"><Storyboard RepeatBehavior="Forever" AutoReverse="True"><DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.48" To="1" Duration="0:0:0.42" /></Storyboard></BeginStoryboard></DataTrigger.EnterActions>
+                                                <DataTrigger.EnterActions>
+                                                    <BeginStoryboard x:Name="Pulse">
+                                                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.35" To="1"
+                                                                             Duration="0:0:0.38" />
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </DataTrigger.EnterActions>
                                                 <DataTrigger.ExitActions><StopStoryboard BeginStoryboardName="Pulse" /></DataTrigger.ExitActions>
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding IsOverdue}" Value="True">
