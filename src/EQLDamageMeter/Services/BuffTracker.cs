@@ -79,6 +79,15 @@ public sealed class BuffTracker
     private static readonly Regex ZoneEntered = new(
         @"^You have entered .+\.$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    /// <summary>
+    /// Direct spell land attribution, e.g. "You hit X for 55 points of poison damage by Envenomed Bolt."
+    /// or "Bzzazzt hit X for 100 points of poison damage by Deadly Poison." Shared land text
+    /// ("X has been poisoned.") has no caster — this line is how we tell yours from a pet/group/NPC.
+    /// </summary>
+    private static readonly Regex NamedSpellHit = new(
+        @"^(?<source>.+?) hit (?<target>.+?) for (?<amount>\d+) points? of \S+ damage by (?<ability>.+?)\.(?: \([^)]+\))*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly TimeSpan SpellHitAttributionWindow = TimeSpan.FromSeconds(1.5);
 
     private readonly Dictionary<Guid, BuffRuleSettings> _rules = [];
     private readonly Dictionary<Guid, RuleRuntime> _states = [];
@@ -88,6 +97,10 @@ public sealed class BuffTracker
     private readonly Dictionary<Guid, string[]> _ambiguousOtherSuffixes = [];
     private readonly Queue<BuffExpirationAlert> _queuedAlerts = [];
     private DateTime? _lastSpecificFadeAt;
+    private RecentSpellHit? _lastSpellHit;
+
+    private readonly record struct RecentSpellHit(
+        string Target, string Source, string Ability, DateTime Timestamp);
 
     public Func<string, DateTime, bool>? PreserveBuffTargetOnDeath { get; set; }
 
@@ -150,6 +163,7 @@ public sealed class BuffTracker
         foreach (var state in _states.Values) ResetState(state);
         _queuedAlerts.Clear();
         _lastSpecificFadeAt = null;
+        _lastSpellHit = null;
     }
 
     public void Observe(DateTime timestamp, string message)
@@ -170,6 +184,10 @@ public sealed class BuffTracker
             StopAll(BuffStopReason.Death);
             return;
         }
+
+        // Remember caster+ability hits before land text so shared lines like
+        // "has been poisoned." can be attributed (or rejected as foreign).
+        NoteSpellHit(timestamp, message);
 
         // Land/fade texts are spell-specific and often have no shared keywords, so these
         // confirmation paths stay ungated.
@@ -413,6 +431,7 @@ public sealed class BuffTracker
         BuffRuleSettings? bestAmbiguousEnemy = null;
         DateTime bestAmbiguousPending = DateTime.MinValue;
         string? bestAmbiguousTarget = null;
+        var bestAmbiguousFromHit = false;
 
         foreach (var rule in _rules.Values.Where(rule => rule.IsEnabled && rule.TrackOthers).ToArray())
         {
@@ -427,6 +446,8 @@ public sealed class BuffTracker
             {
                 var target = message[..^uniqueSuffix.Length].Trim();
                 if (target.Length == 0) continue;
+                if (!AcceptsLandAttribution(rule, target, timestamp, requireAbilityMatch: false))
+                    continue;
                 matched = true;
                 if (rule.Category == SpellTrackerCategory.Control && rule.ControlType == ControlEffectType.Charm)
                 {
@@ -449,15 +470,27 @@ public sealed class BuffTracker
             var ambiguousTarget = message[..^ambiguousSuffix.Length].Trim();
             if (ambiguousTarget.Length == 0) continue;
 
-            // Shared land text can match multiple pending DoT/Control rules. Confirm only
-            // the cast that finished most recently so one poison line cannot arm every
-            // overlapping poison DoT.
+            // Shared land text (poison/disease/etc.) can come from your DoT, a pet, a
+            // group member, or an NPC. Prefer a matching "You hit … by {spell}" line;
+            // reject lands attributed to anyone else.
             if (isPending && IsEnemyEffectCategory(rule) &&
-                state.PendingStart is { } pendingStart && pendingStart >= bestAmbiguousPending)
+                state.PendingStart is { } pendingStart)
             {
-                bestAmbiguousPending = pendingStart;
-                bestAmbiguousEnemy = rule;
-                bestAmbiguousTarget = ambiguousTarget;
+                var attribution = ClassifyLandAttribution(rule, ambiguousTarget, timestamp);
+                if (attribution == LandAttribution.Foreign) continue;
+                var fromHit = attribution == LandAttribution.LocalMatchingAbility;
+                // A local ability-matched hit always beats a no-hit pending guess, and
+                // among equals the newest cast wins so overlapping poison DoTs stay singular.
+                var better =
+                    fromHit && !bestAmbiguousFromHit ||
+                    fromHit == bestAmbiguousFromHit && pendingStart >= bestAmbiguousPending;
+                if (better && (fromHit || attribution == LandAttribution.Unattributed))
+                {
+                    bestAmbiguousPending = pendingStart;
+                    bestAmbiguousEnemy = rule;
+                    bestAmbiguousTarget = ambiguousTarget;
+                    bestAmbiguousFromHit = fromHit;
+                }
                 continue;
             }
 
@@ -502,6 +535,67 @@ public sealed class BuffTracker
         }
 
         return matched;
+    }
+
+    private enum LandAttribution
+    {
+        Unattributed,
+        LocalMatchingAbility,
+        Foreign
+    }
+
+    private void NoteSpellHit(DateTime timestamp, string message)
+    {
+        if (!message.Contains(" damage by ", StringComparison.OrdinalIgnoreCase)) return;
+        var match = NamedSpellHit.Match(message);
+        if (!match.Success) return;
+        _lastSpellHit = new RecentSpellHit(
+            match.Groups["target"].Value.Trim(),
+            match.Groups["source"].Value.Trim(),
+            match.Groups["ability"].Value.Trim(),
+            timestamp);
+    }
+
+    private bool TryGetRecentSpellHit(string target, DateTime timestamp, out string source, out string ability)
+    {
+        source = string.Empty;
+        ability = string.Empty;
+        if (_lastSpellHit is not { } hit) return false;
+        if (timestamp - hit.Timestamp > SpellHitAttributionWindow || timestamp < hit.Timestamp)
+            return false;
+        if (!hit.Target.Equals(target.Trim(), StringComparison.OrdinalIgnoreCase))
+            return false;
+        source = hit.Source;
+        ability = hit.Ability;
+        return true;
+    }
+
+    private static bool IsLocalHitSource(string source) =>
+        source.Equals("You", StringComparison.OrdinalIgnoreCase) ||
+        source.Equals("YOUR", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Unique land text: reject when a foreign caster just hit this target (group/pet/NPC
+    /// same-spell land). Otherwise allow the pending cast window to confirm.
+    /// </summary>
+    private bool AcceptsLandAttribution(BuffRuleSettings rule, string target, DateTime timestamp,
+        bool requireAbilityMatch)
+    {
+        if (!TryGetRecentSpellHit(target, timestamp, out var source, out var ability))
+            return !requireAbilityMatch;
+        if (!IsLocalHitSource(source)) return false;
+        if (!requireAbilityMatch) return true;
+        return SpellNameNormalizer.BelongsToFamily(ability, rule.SpellName);
+    }
+
+    private LandAttribution ClassifyLandAttribution(BuffRuleSettings rule, string target, DateTime timestamp)
+    {
+        if (!TryGetRecentSpellHit(target, timestamp, out var source, out var ability))
+            return LandAttribution.Unattributed;
+        if (!IsLocalHitSource(source)) return LandAttribution.Foreign;
+        return SpellNameNormalizer.BelongsToFamily(ability, rule.SpellName)
+            ? LandAttribution.LocalMatchingAbility
+            : LandAttribution.Foreign;
     }
 
     private void ClearOtherPendingAmbiguousEnemyCasts(Guid confirmedRuleId, string target, string message)
@@ -686,10 +780,13 @@ public sealed class BuffTracker
 
     /// <summary>
     /// Mez/Root always open a new application (remes stacks; overwrite worn-off pops the
-    /// old one). DoT/Charm keep pending-key reuse so a refresh can retarget existing slots.
+    /// old one). DoT/Charm keep one live slot per target display name so shared land text
+    /// cannot stack duplicate rows for the same mob.
     /// </summary>
     private static string ResolveEnemyLandTargetKey(RuleRuntime state, BuffRuleSettings rule, string target) =>
-        IsMezOrRoot(rule) ? ResolveNewControlTargetKey(state, target) : ResolvePendingTargetKey(state, target);
+        IsMezOrRoot(rule)
+            ? ResolveNewControlTargetKey(state, target)
+            : FindTargetInstanceKey(state, target) ?? target.Trim();
 
     /// <summary>
     /// Always allocate a fresh instance key. Do not reuse existing same-name keys — that
@@ -705,28 +802,6 @@ public sealed class BuffTracker
         }
 
         var newKey = $"{normalized}\0{Guid.NewGuid():N}";
-        keys.Add(newKey);
-        return newKey;
-    }
-
-    private static string ResolvePendingTargetKey(RuleRuntime state, string target)
-    {
-        if (!state.PendingTargetKeys.TryGetValue(target, out var keys))
-        {
-            keys = state.Instances
-                .Where(pair => pair.Value.TargetName.Equals(target, StringComparison.OrdinalIgnoreCase))
-                .OrderBy(pair => pair.Value.StartedAt)
-                .ThenBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
-                .Select(pair => pair.Key)
-                .ToList();
-            state.PendingTargetKeys[target] = keys;
-        }
-
-        var occurrence = state.PendingTargetOccurrences.GetValueOrDefault(target);
-        state.PendingTargetOccurrences[target] = occurrence + 1;
-        if (occurrence < keys.Count) return keys[occurrence];
-
-        var newKey = $"{target}\0{Guid.NewGuid():N}";
         keys.Add(newKey);
         return newKey;
     }
@@ -747,13 +822,13 @@ public sealed class BuffTracker
         rule.Category is SpellTrackerCategory.DamageOverTime or SpellTrackerCategory.Control;
 
     /// <summary>
-    /// Buffs clamp the pending window to 1s after the first land (bystander spam).
-    /// DoT / Control / AE mez must keep the full cast grace so every land in the
-    /// burst can open its own target instance.
+    /// Buffs and DoTs clamp the pending window to 1s after the first land so shared
+    /// land text (pets/group/NPCs) cannot keep arming the same cast. AE mez/root keep
+    /// the full cast grace so every land in the burst can open its own target instance.
     /// </summary>
     private static void NoteLandConfirmation(RuleRuntime state, BuffRuleSettings rule, DateTime timestamp)
     {
-        if (IsEnemyEffectCategory(rule)) return;
+        if (IsMezOrRoot(rule)) return;
         state.PendingConfirmationEndsAt ??= timestamp.AddSeconds(1);
     }
 

@@ -444,7 +444,7 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" MinHeight="96" />
-                        <RowDefinition Height="8" />
+                        <RowDefinition Height="2" />
                         <RowDefinition Height="Auto" MinHeight="38" />
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
@@ -566,21 +566,44 @@
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="2" Grid.ColumnSpan="3" Background="#62071C2D" BorderBrush="#355B73"
-                            BorderThickness="1" CornerRadius="10" HorizontalAlignment="Center" Padding="6,5">
-                        <StackPanel Orientation="Horizontal">
-                            <RadioButton x:Name="DpsParserButton" Content="DPS Parser" GroupName="PrimaryModule"
-                                         IsChecked="True" Style="{StaticResource ModuleNavigationButton}" />
-                            <RadioButton x:Name="SpellTrackerButton" Content="Spell Tracker" GroupName="PrimaryModule"
-                                         Style="{StaticResource ModuleNavigationButton}" />
-                            <RadioButton x:Name="SessionTrackerButton" Content="Session Tracker" GroupName="PrimaryModule"
-                                         Style="{StaticResource ModuleNavigationButton}" MinWidth="148" />
-                            <RadioButton x:Name="QuestTrackerButton" Content="Quest Tracker" GroupName="PrimaryModule"
-                                         Style="{StaticResource ModuleNavigationButton}" MinWidth="138" />
-                            <RadioButton x:Name="SkyTrackerButton" Content="Plane of Sky" GroupName="PrimaryModule"
-                                         Style="{StaticResource ModuleNavigationButton}" MinWidth="128" />
-                        </StackPanel>
-                    </Border>
+                    <!-- Module nav + timer share one row (timer aligns with Plane of Sky) -->
+                    <Grid Grid.Row="2" Grid.ColumnSpan="3">
+                        <Border Background="#62071C2D" BorderBrush="#355B73"
+                                BorderThickness="1" CornerRadius="10" HorizontalAlignment="Center"
+                                VerticalAlignment="Center" Padding="6,5">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="DpsParserButton" Content="DPS Parser" GroupName="PrimaryModule"
+                                             IsChecked="True" Style="{StaticResource ModuleNavigationButton}" />
+                                <RadioButton x:Name="SpellTrackerButton" Content="Spell Tracker" GroupName="PrimaryModule"
+                                             Style="{StaticResource ModuleNavigationButton}" />
+                                <RadioButton x:Name="SessionTrackerButton" Content="Session Tracker" GroupName="PrimaryModule"
+                                             Style="{StaticResource ModuleNavigationButton}" MinWidth="148" />
+                                <RadioButton x:Name="QuestTrackerButton" Content="Quest Tracker" GroupName="PrimaryModule"
+                                             Style="{StaticResource ModuleNavigationButton}" MinWidth="138" />
+                                <RadioButton x:Name="SkyTrackerButton" Content="Plane of Sky" GroupName="PrimaryModule"
+                                             Style="{StaticResource ModuleNavigationButton}" MinWidth="128" />
+                            </StackPanel>
+                        </Border>
+                        <Grid HorizontalAlignment="Right" VerticalAlignment="Center" MinWidth="168" Margin="0,0,4,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="6" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="ManualTimerButton" Style="{StaticResource HeaderActionButton}"
+                                    Content="START TIMER" MinWidth="0" Padding="8,6"
+                                    Click="ManualTimerToggle_Click"
+                                    ToolTip="Start a stopwatch from 0:00. Stop keeps the time; Start again resets." />
+                            <Border Grid.Column="2" Background="#78091F31" BorderBrush="#4F7891"
+                                    BorderThickness="1" CornerRadius="4" Padding="10,4" MinWidth="52"
+                                    VerticalAlignment="Stretch">
+                                <TextBlock x:Name="ManualTimerText" Text="0:00"
+                                           Foreground="#2ED9C7" FontSize="13" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" HorizontalAlignment="Center"
+                                           FontFamily="Consolas" />
+                            </Border>
+                        </Grid>
+                    </Grid>
                 </Grid>
             </Border>
 

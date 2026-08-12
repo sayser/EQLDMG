@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Threading;
 using EQLDamageMeter.Services;
 using EQLDamageMeter.ViewModels;
 using Microsoft.Win32;
@@ -19,11 +21,19 @@ public partial class MainWindow : Window, IAsyncDisposable
     private MouseHighlightSettings _mouseHighlightSettings = AppSettingsStore.TryLoadMouseHighlight();
     private bool _startupUpdateChecked;
     private bool _disposed;
+    private readonly DispatcherTimer _manualTimerTick;
+    private readonly Stopwatch _manualStopwatch = new();
+    private bool _manualTimerRunning;
 
     public MainWindow()
     {
         InitializeComponent();
         DataContext = _viewModel;
+        _manualTimerTick = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(200)
+        };
+        _manualTimerTick.Tick += (_, _) => RefreshManualTimerDisplay();
         _viewModel.OverlayLockChanged += ApplyOverlayLock;
         _viewModel.DotSpellTracker.OverlayLockChanged += ApplyOverlayLock;
         _viewModel.ControlSpellTracker.OverlayLockChanged += ApplyOverlayLock;
@@ -80,6 +90,37 @@ public partial class MainWindow : Window, IAsyncDisposable
 
     private void CheckUpdates_Click(object sender, RoutedEventArgs e) =>
         AppUpdateService.CheckForUpdates(this, reportNoUpdate: true);
+
+    private void ManualTimerToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (_manualTimerRunning)
+        {
+            _manualStopwatch.Stop();
+            _manualTimerTick.Stop();
+            _manualTimerRunning = false;
+            if (ManualTimerButton is not null)
+                ManualTimerButton.Content = "START TIMER";
+            RefreshManualTimerDisplay();
+            return;
+        }
+
+        _manualStopwatch.Reset();
+        _manualStopwatch.Start();
+        _manualTimerRunning = true;
+        if (ManualTimerButton is not null)
+            ManualTimerButton.Content = "STOP TIMER";
+        RefreshManualTimerDisplay();
+        _manualTimerTick.Start();
+    }
+
+    private void RefreshManualTimerDisplay()
+    {
+        if (ManualTimerText is null) return;
+        var elapsed = _manualStopwatch.Elapsed;
+        ManualTimerText.Text = elapsed.TotalHours >= 1
+            ? $"{(int)elapsed.TotalHours}:{elapsed.Minutes:00}:{elapsed.Seconds:00}"
+            : $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:00}";
+    }
 
     private void SessionExpand_Click(object sender, RoutedEventArgs e)
     {
@@ -453,6 +494,8 @@ public partial class MainWindow : Window, IAsyncDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _manualTimerTick.Stop();
+        _manualStopwatch.Stop();
         _overlay?.Close();
         _buffOverlay?.Close();
         _dotOverlay?.Close();

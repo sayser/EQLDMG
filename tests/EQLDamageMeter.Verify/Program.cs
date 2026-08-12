@@ -556,6 +556,43 @@ internal static class Program
         var snaps = overlap.GetActiveSnapshots(t0.AddSeconds(4.2));
         Check("Ambiguous land one rule", snaps.Count == 1 && snaps[0].SpellName == "Envenomed Bolt");
 
+        // Pet/group poison lands share "has been poisoned." — must not stack as Envenomed Bolt
+        var petDot = Rule("Envenomed Bolt", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other, 36, 3);
+        var petTracker = new BuffTracker();
+        petTracker.Configure([petDot], _ => ["The poison has run its course."], _ => [],
+            _ => [" has been poisoned."], _ => true);
+        petTracker.Observe(t0, "You begin casting Envenomed Bolt VI.");
+        petTracker.Observe(t0.AddSeconds(2.9),
+            "Bzzazzt hit an essence tamer for 100 points of poison damage by Deadly Poison.");
+        petTracker.Observe(t0.AddSeconds(2.9), "An essence tamer has been poisoned.");
+        Check("Foreign pet poison ignored during pending",
+            petTracker.GetActiveSnapshots(t0.AddSeconds(3)).Count == 0);
+        petTracker.Observe(t0.AddSeconds(3.1),
+            "You hit an essence tamer for 48 points of poison damage by Envenomed Bolt.");
+        petTracker.Observe(t0.AddSeconds(3.1), "An essence tamer has been poisoned.");
+        Check("Local Envenomed Bolt land accepted",
+            petTracker.GetActiveSnapshots(t0.AddSeconds(3.2)).Count == 1);
+        petTracker.Observe(t0.AddSeconds(3.4),
+            "Bzzazzt hit an essence tamer for 100 points of poison damage by Deadly Poison.");
+        petTracker.Observe(t0.AddSeconds(3.4), "An essence tamer has been poisoned.");
+        petTracker.Observe(t0.AddSeconds(3.6),
+            "Bzzazzt hit an essence tamer for 100 points of poison damage by Deadly Poison.");
+        petTracker.Observe(t0.AddSeconds(3.6), "An essence tamer has been poisoned.");
+        Check("Foreign pet poison does not stack DoT rows",
+            petTracker.GetActiveSnapshots(t0.AddSeconds(3.7)).Count == 1);
+
+        // Hit ability picks the matching pending poison when two share land text
+        var hitPick = new BuffTracker();
+        hitPick.Configure([venom, envenom], _ => [], _ => [], _ => [" has been poisoned."], _ => true);
+        hitPick.Observe(t0, "You begin casting Envenomed Bolt.");
+        hitPick.Observe(t0.AddSeconds(0.5), "You begin casting Venom of the Snake.");
+        hitPick.Observe(t0.AddSeconds(3.5),
+            "You hit a rat for 55 points of poison damage by Envenomed Bolt.");
+        hitPick.Observe(t0.AddSeconds(3.5), "a rat has been poisoned.");
+        var hitSnaps = hitPick.GetActiveSnapshots(t0.AddSeconds(3.6));
+        Check("Hit ability selects matching poison DoT",
+            hitSnaps.Count == 1 && hitSnaps[0].SpellName == "Envenomed Bolt");
+
         // Natural expiry removes the instance after configured duration
         var shortDot = Rule("Short Poison", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other, 2, 0);
         var expireTracker = new BuffTracker();
