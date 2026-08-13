@@ -151,9 +151,12 @@ public sealed class SessionEntryViewModel : ObservableObject
     private string _subtitle = string.Empty;
     private string _characterText = string.Empty;
     private string _levelXpText = "0.0%";
+    private string _levelXpRateText = "—/hr";
     private string _levelsText = "0";
     private string _aaPointsText = "0";
+    private string _aaPointsRateText = "—/hr";
     private string _motesText = "0";
+    private string _motesRateText = "—/hr";
     private string _moneyText = "0c";
     private string _deathsText = "0";
     private string _durationText = "—";
@@ -210,6 +213,12 @@ public sealed class SessionEntryViewModel : ObservableObject
         private set => SetProperty(ref _levelXpText, value);
     }
 
+    public string LevelXpRateText
+    {
+        get => _levelXpRateText;
+        private set => SetProperty(ref _levelXpRateText, value);
+    }
+
     public string LevelsText
     {
         get => _levelsText;
@@ -222,10 +231,22 @@ public sealed class SessionEntryViewModel : ObservableObject
         private set => SetProperty(ref _aaPointsText, value);
     }
 
+    public string AaPointsRateText
+    {
+        get => _aaPointsRateText;
+        private set => SetProperty(ref _aaPointsRateText, value);
+    }
+
     public string MotesText
     {
         get => _motesText;
         private set => SetProperty(ref _motesText, value);
+    }
+
+    public string MotesRateText
+    {
+        get => _motesRateText;
+        private set => SetProperty(ref _motesRateText, value);
     }
 
     public string MoneyText
@@ -303,9 +324,12 @@ public sealed class SessionEntryViewModel : ObservableObject
         structural |= !string.Equals(DeathsText, deathsText, StringComparison.Ordinal);
         DeathsText = deathsText;
 
-        // Duration/subtitle always refresh for live clock; do not treat as structural.
+        // Duration/subtitle/rates always refresh for live clock; do not treat as structural.
         Subtitle = FormatSubtitle(record, isLive);
         DurationText = FormatDuration(record, isLive);
+        LevelXpRateText = FormatPercentPerHour(record.LevelXpPercent, record, isLive);
+        AaPointsRateText = FormatCountPerHour(record.AaPointsGained, record, isLive, prefix: "+");
+        MotesRateText = FormatCountPerHour(record.MotesLooted, record, isLive);
 
         var moteRows = record.MotesByName
             .OrderByDescending(pair => pair.Value)
@@ -411,14 +435,40 @@ public sealed class SessionEntryViewModel : ObservableObject
 
     private static string FormatDuration(SessionRecord record, bool isLive)
     {
-        var end = isLive || record.EndedAt is null ? DateTime.Now : record.EndedAt.Value;
-        var span = end - record.StartedAt;
-        if (span < TimeSpan.Zero) span = TimeSpan.Zero;
+        var span = GetElapsed(record, isLive);
         if (span.TotalHours >= 1)
             return $"{(int)span.TotalHours}h {span.Minutes}m";
         if (span.TotalMinutes >= 1)
             return $"{span.Minutes}m {span.Seconds}s";
         return $"{Math.Max(1, (int)span.TotalSeconds)}s";
+    }
+
+    private static TimeSpan GetElapsed(SessionRecord record, bool isLive)
+    {
+        var end = isLive || record.EndedAt is null ? DateTime.Now : record.EndedAt.Value;
+        var span = end - record.StartedAt;
+        return span < TimeSpan.Zero ? TimeSpan.Zero : span;
+    }
+
+    private static string FormatPercentPerHour(double percent, SessionRecord record, bool isLive)
+    {
+        var hours = GetElapsed(record, isLive).TotalHours;
+        if (hours < 1.0 / 60.0)
+            return "—/hr";
+        var rate = percent / hours;
+        return $"{rate.ToString("0.0", CultureInfo.CurrentCulture)}%/hr";
+    }
+
+    private static string FormatCountPerHour(int count, SessionRecord record, bool isLive, string prefix = "")
+    {
+        var hours = GetElapsed(record, isLive).TotalHours;
+        if (hours < 1.0 / 60.0)
+            return "—/hr";
+        var rate = count / hours;
+        var formatted = rate >= 10
+            ? rate.ToString("0", CultureInfo.CurrentCulture)
+            : rate.ToString("0.0", CultureInfo.CurrentCulture);
+        return $"{prefix}{formatted}/hr";
     }
 }
 

@@ -210,7 +210,7 @@ public sealed class EqWikiQuestCatalog
     private static HttpClient CreateClient()
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("EQDM/1.4.3 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("EQDM/1.4.4 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
         return client;
     }
 

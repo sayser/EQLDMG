@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Threading;
 using EQLDamageMeter.Services;
 using EQLDamageMeter.ViewModels;
@@ -99,7 +100,10 @@ public partial class MainWindow : Window, IAsyncDisposable
             _manualTimerTick.Stop();
             _manualTimerRunning = false;
             if (ManualTimerButton is not null)
+            {
                 ManualTimerButton.Content = "START TIMER";
+                ManualTimerButton.Tag = "▶";
+            }
             RefreshManualTimerDisplay();
             return;
         }
@@ -108,7 +112,10 @@ public partial class MainWindow : Window, IAsyncDisposable
         _manualStopwatch.Start();
         _manualTimerRunning = true;
         if (ManualTimerButton is not null)
+        {
             ManualTimerButton.Content = "STOP TIMER";
+            ManualTimerButton.Tag = "■";
+        }
         RefreshManualTimerDisplay();
         _manualTimerTick.Start();
     }
@@ -231,6 +238,40 @@ public partial class MainWindow : Window, IAsyncDisposable
 
     private void QuestOpenWiki_Click(object sender, RoutedEventArgs e) =>
         _viewModel.QuestTracker.OpenSelectedQuestWiki();
+
+    private async void ItemsSearch_Click(object sender, RoutedEventArgs e) =>
+        await _viewModel.Items.SearchAsync();
+
+    private async void ItemsSearch_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+        await _viewModel.Items.SearchAsync();
+    }
+
+    private async void ItemsResult_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ListBox { SelectedItem: string title })
+            await _viewModel.Items.SelectResultAsync(title);
+    }
+
+    private async void ItemsResult_DoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is ListBox { SelectedItem: string title })
+            await _viewModel.Items.SelectResultAsync(title);
+    }
+
+    private void ItemsOpenWiki_Click(object sender, RoutedEventArgs e) =>
+        _viewModel.Items.OpenWiki();
+
+    private void ItemsUseLink_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: ItemsViewModel.WikiUseLink link })
+        {
+            e.Handled = true;
+            _viewModel.Items.OpenUseLink(link);
+        }
+    }
 
     private async void SkyRefreshCatalog_Click(object sender, RoutedEventArgs e) =>
         await _viewModel.SkyTracker.RefreshCatalogAsync();

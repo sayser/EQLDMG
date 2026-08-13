@@ -96,7 +96,7 @@ public static partial class EqWikiItemUses
     private static async Task<string?> FetchWikitextAsync(string page, CancellationToken cancellationToken)
     {
         var url =
-            "https://eqlwiki.com/api.php?action=parse&prop=wikitext&format=json&page=" +
+            "https://eqlwiki.com/api.php?action=parse&prop=wikitext&format=json&redirects=1&page=" +
             Uri.EscapeDataString(page);
         await using var stream = await Http.GetStreamAsync(url, cancellationToken);
         var payload = await JsonSerializer.DeserializeAsync<ParseResponse>(stream,
@@ -132,7 +132,7 @@ public static partial class EqWikiItemUses
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "EQDM/1.4.3 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
+            "EQDM/1.4.4 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
         return client;
     }
 

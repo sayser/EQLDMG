@@ -7,6 +7,13 @@ public static partial class EqWikiLinks
 {
     public const string BaseUrl = "https://eqlwiki.com/";
 
+    public static string ForPage(string title)
+    {
+        var name = WhitespaceRegex().Replace(title.Trim().Replace('`', '\''), " ").Trim();
+        if (name.Length == 0) return BaseUrl;
+        return BaseUrl + name.Replace(' ', '_');
+    }
+
     public static string ForMob(string mobName)
     {
         // Prefer the log name with article kept ("a spite golem" → "A_spite_golem");

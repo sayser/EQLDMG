@@ -114,6 +114,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public SessionHistoryViewModel SessionHistory { get; } = new();
     public QuestTrackerViewModel QuestTracker { get; } = new();
     public SkyTrackerViewModel SkyTracker { get; } = new();
+    public ItemsViewModel Items { get; } = new();
     public ICollectionView BuffRulesView { get; }
     public IReadOnlyList<BuffAlertMode> BuffAlertModes { get; } = BuffAlertModeOptions.ExclusiveChoices;
     public IReadOnlyList<BuffSoundKind> BuffSoundChoices { get; } = Enum.GetValues<BuffSoundKind>();

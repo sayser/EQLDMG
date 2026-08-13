@@ -139,6 +139,108 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- Primary header modules: icon + label, purple neon selected state -->
+        <Style x:Key="PrimaryModuleNavButton" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="#B7CDDA" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="3,0" />
+            <Setter Property="MinWidth" Value="108" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Chrome" Background="Transparent" BorderBrush="Transparent"
+                                BorderThickness="1.5" CornerRadius="10" Padding="10,7" SnapsToDevicePixels="True">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border x:Name="IconBox" Width="28" Height="28" CornerRadius="7"
+                                        Background="#33081420" BorderBrush="#355B73" BorderThickness="1"
+                                        Margin="0,0,8,0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="IconGlyph" Text="{TemplateBinding Tag}"
+                                               FontFamily="Segoe UI Symbol" FontSize="13"
+                                               Foreground="#B7CDDA" HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" />
+                                </Border>
+                                <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True" />
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#33153A50" />
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#5A7F96" />
+                                <Setter Property="Foreground" Value="#E8F5FC" />
+                                <Setter TargetName="IconGlyph" Property="Foreground" Value="#E8F5FC" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#55301A52" />
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#C9A6FF" />
+                                <Setter Property="Foreground" Value="#D8C2FF" />
+                                <Setter TargetName="IconBox" Property="Background" Value="#664B2FA8" />
+                                <Setter TargetName="IconBox" Property="BorderBrush" Value="#A98BFF" />
+                                <Setter TargetName="IconGlyph" Property="Foreground" Value="#D8C2FF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="PanelActionButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Foreground" Value="#C8DCE8" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="3,0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1.5" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10" Padding="{TemplateBinding Padding}">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border x:Name="IconBox" Width="28" Height="28" CornerRadius="7"
+                                        Background="#33081420" BorderBrush="#355B73" BorderThickness="1"
+                                        Margin="0,0,8,0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="IconGlyph" Text="{TemplateBinding Tag}"
+                                               FontFamily="Segoe UI Symbol" FontSize="13"
+                                               Foreground="#C8DCE8" HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" />
+                                </Border>
+                                <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True" />
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#33153A50" />
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#5A7F96" />
+                                <Setter Property="Foreground" Value="#E8F5FC" />
+                                <Setter TargetName="IconGlyph" Property="Foreground" Value="#E8F5FC" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#55301A52" />
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#C9A6FF" />
+                                <Setter Property="Foreground" Value="#D8C2FF" />
+                                <Setter TargetName="IconBox" Property="Background" Value="#664B2FA8" />
+                                <Setter TargetName="IconBox" Property="BorderBrush" Value="#A98BFF" />
+                                <Setter TargetName="IconGlyph" Property="Foreground" Value="#D8C2FF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="TimerActionButton" TargetType="Button" BasedOn="{StaticResource PanelActionButton}">
+            <Setter Property="BorderBrush" Value="#2FD8C7" />
+            <Setter Property="Foreground" Value="#B8F5EE" />
+            <Setter Property="Background" Value="#22102838" />
+        </Style>
         <Style x:Key="HeaderActionButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Padding" Value="12,6" />
             <Setter Property="FontSize" Value="11" />
@@ -429,11 +531,12 @@
         <Grid Margin="20">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="14" />
+                <RowDefinition Height="8" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="14" />
-                <RowDefinition Height="158" />
-                <RowDefinition Height="10" />
+                <RowDefinition Height="8" />
+                <!-- Compact encounter history strip (about half the old 158px band) -->
+                <RowDefinition Height="80" />
+                <RowDefinition Height="8" />
                 <RowDefinition Height="22" />
             </Grid.RowDefinitions>
 
@@ -445,7 +548,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" MinHeight="96" />
                         <RowDefinition Height="2" />
-                        <RowDefinition Height="Auto" MinHeight="38" />
+                        <RowDefinition Height="Auto" MinHeight="52" />
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="300" />
@@ -556,54 +659,65 @@
                                         </ContextMenu>
                                     </Button.ContextMenu>
                                 </Button>
-                                <Button x:Name="OverlaysToggleButton" Style="{StaticResource HeaderActionButton}"
-                                        Content="Open all overlays" Margin="0,0,0,5"
-                                        Click="ToggleAllOverlays_Click"
-                                        ToolTip="Open or close DPS, Buff, DoT, and Control overlays" />
                                 <Button Style="{StaticResource HeaderActionButton}" Content="Updates"
                                         Click="CheckUpdates_Click" ToolTip="{Binding UpdateButtonToolTip}" />
                             </StackPanel>
                         </Grid>
                     </Border>
 
-                    <!-- Module nav + timer share one row (timer aligns with Plane of Sky) -->
-                    <Grid Grid.Row="2" Grid.ColumnSpan="3">
-                        <Border Background="#62071C2D" BorderBrush="#355B73"
-                                BorderThickness="1" CornerRadius="10" HorizontalAlignment="Center"
-                                VerticalAlignment="Center" Padding="6,5">
-                            <StackPanel Orientation="Horizontal">
-                                <RadioButton x:Name="DpsParserButton" Content="DPS Parser" GroupName="PrimaryModule"
-                                             IsChecked="True" Style="{StaticResource ModuleNavigationButton}" />
-                                <RadioButton x:Name="SpellTrackerButton" Content="Spell Tracker" GroupName="PrimaryModule"
-                                             Style="{StaticResource ModuleNavigationButton}" />
-                                <RadioButton x:Name="SessionTrackerButton" Content="Session Tracker" GroupName="PrimaryModule"
-                                             Style="{StaticResource ModuleNavigationButton}" MinWidth="148" />
-                                <RadioButton x:Name="QuestTrackerButton" Content="Quest Tracker" GroupName="PrimaryModule"
-                                             Style="{StaticResource ModuleNavigationButton}" MinWidth="138" />
-                                <RadioButton x:Name="SkyTrackerButton" Content="Plane of Sky" GroupName="PrimaryModule"
-                                             Style="{StaticResource ModuleNavigationButton}" MinWidth="128" />
-                            </StackPanel>
-                        </Border>
-                        <Grid HorizontalAlignment="Right" VerticalAlignment="Center" MinWidth="168" Margin="0,0,4,0">
+                    <!-- Primary module + action panel -->
+                    <Border Grid.Row="2" Grid.ColumnSpan="3" Background="#88071424" BorderBrush="#3D6178"
+                            BorderThickness="1" CornerRadius="14" Padding="8,6" HorizontalAlignment="Stretch">
+                        <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="6" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Button x:Name="ManualTimerButton" Style="{StaticResource HeaderActionButton}"
-                                    Content="START TIMER" MinWidth="0" Padding="8,6"
-                                    Click="ManualTimerToggle_Click"
-                                    ToolTip="Start a stopwatch from 0:00. Stop keeps the time; Start again resets." />
-                            <Border Grid.Column="2" Background="#78091F31" BorderBrush="#4F7891"
-                                    BorderThickness="1" CornerRadius="4" Padding="10,4" MinWidth="52"
-                                    VerticalAlignment="Stretch">
-                                <TextBlock x:Name="ManualTimerText" Text="0:00"
-                                           Foreground="#2ED9C7" FontSize="13" FontWeight="SemiBold"
-                                           VerticalAlignment="Center" HorizontalAlignment="Center"
-                                           FontFamily="Consolas" />
-                            </Border>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <RadioButton x:Name="DpsParserButton" Content="DPS Parser" Tag="⚔"
+                                             GroupName="PrimaryModule" IsChecked="True"
+                                             Style="{StaticResource PrimaryModuleNavButton}" />
+                                <RadioButton x:Name="SpellTrackerButton" Content="Spell Tracker" Tag="✦"
+                                             GroupName="PrimaryModule"
+                                             Style="{StaticResource PrimaryModuleNavButton}" />
+                                <RadioButton x:Name="SessionTrackerButton" Content="Session Tracker" Tag="▥"
+                                             GroupName="PrimaryModule"
+                                             Style="{StaticResource PrimaryModuleNavButton}" MinWidth="128" />
+                                <RadioButton x:Name="QuestTrackerButton" Content="Quest Tracker" Tag="☰"
+                                             GroupName="PrimaryModule"
+                                             Style="{StaticResource PrimaryModuleNavButton}" MinWidth="120" />
+                                <RadioButton x:Name="SkyTrackerButton" Content="Plane of Sky" Tag="☁"
+                                             GroupName="PrimaryModule"
+                                             Style="{StaticResource PrimaryModuleNavButton}" MinWidth="118" />
+                                <RadioButton x:Name="ItemsButton" Content="Items" Tag="◈"
+                                             GroupName="PrimaryModule"
+                                             Style="{StaticResource PrimaryModuleNavButton}" MinWidth="88" />
+                            </StackPanel>
+
+                            <Border Grid.Column="1" Width="1" Background="#2FD8C7" Opacity="0.55"
+                                    Margin="10,8" VerticalAlignment="Stretch" />
+
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button x:Name="OverlaysToggleButton" Style="{StaticResource PanelActionButton}"
+                                        Content="Open all overlays" Tag="⧉"
+                                        Click="ToggleAllOverlays_Click"
+                                        ToolTip="Open or close DPS, Buff, DoT, and Control overlays" />
+                                <Button x:Name="ManualTimerButton" Style="{StaticResource TimerActionButton}"
+                                        Content="START TIMER" Tag="▶" Margin="6,0,6,0"
+                                        Click="ManualTimerToggle_Click"
+                                        ToolTip="Start a stopwatch from 0:00. Stop keeps the time; Start again resets." />
+                                <Border Background="#221A3A28" BorderBrush="#2B7A70" BorderThickness="1.5"
+                                        CornerRadius="10" Padding="12,0" MinWidth="56" Height="42"
+                                        VerticalAlignment="Center">
+                                    <TextBlock x:Name="ManualTimerText" Text="0:00"
+                                               Foreground="#7CFF6A" FontSize="16" FontWeight="Bold"
+                                               VerticalAlignment="Center" HorizontalAlignment="Center"
+                                               FontFamily="Consolas" />
+                                </Border>
+                            </StackPanel>
                         </Grid>
-                    </Grid>
+                    </Border>
                 </Grid>
             </Border>
 
@@ -1831,6 +1945,8 @@
                                         <TextBlock Text="Level XP gained" Style="{StaticResource MetricLabel}" />
                                         <TextBlock Text="{Binding LevelXpText}" FontSize="26" FontWeight="SemiBold"
                                                    Foreground="#2ED9C7" Margin="0,4,0,0" />
+                                        <TextBlock Text="{Binding LevelXpRateText}" Foreground="#7FA3B8" FontSize="12"
+                                                   FontWeight="SemiBold" Margin="0,2,0,0" />
                                     </StackPanel>
                                 </Border>
                                 <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="8,0,0,8">
@@ -1845,6 +1961,8 @@
                                         <TextBlock Text="AA points gained" Style="{StaticResource MetricLabel}" />
                                         <TextBlock Text="{Binding AaPointsText}" FontSize="26" FontWeight="SemiBold"
                                                    Foreground="#A98BFF" Margin="0,4,0,0" />
+                                        <TextBlock Text="{Binding AaPointsRateText}" Foreground="#7FA3B8" FontSize="12"
+                                                   FontWeight="SemiBold" Margin="0,2,0,0" />
                                     </StackPanel>
                                 </Border>
                                 <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="8,8,0,8">
@@ -1852,6 +1970,8 @@
                                         <TextBlock Text="Motes of Potential" Style="{StaticResource MetricLabel}" />
                                         <TextBlock Text="{Binding MotesText}" FontSize="26" FontWeight="SemiBold"
                                                    Foreground="#F2FAFF" Margin="0,4,0,0" />
+                                        <TextBlock Text="{Binding MotesRateText}" Foreground="#7FA3B8" FontSize="12"
+                                                   FontWeight="SemiBold" Margin="0,2,0,0" />
                                     </StackPanel>
                                 </Border>
                                 <Border Style="{StaticResource InnerCard}" Padding="14,12" Margin="0,8,8,0">
@@ -2721,25 +2841,205 @@
                 </Border>
             </Grid>
 
+            <!-- Items wiki lookup -->
+            <Grid Grid.Row="2" Grid.RowSpan="3"
+                  Visibility="{Binding IsChecked, ElementName=ItemsButton, Converter={StaticResource BooleanToVisibility}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.05*" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="1.55*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource GlassCard}" Padding="14,12">
+                    <Grid DataContext="{Binding Items}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel>
+                            <TextBlock Text="ITEM SEARCH" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="Look up base stats on eqlwiki.com, then preview +1…+10 upgrades."
+                                       Foreground="#66879D" FontSize="10" Margin="0,4,0,8" TextWrapping="Wrap" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Style="{StaticResource BuffInput}"
+                                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="Item name (partial matches OK)"
+                                         KeyDown="ItemsSearch_KeyDown" />
+                                <Button Grid.Column="1" Content="Search" Margin="8,0,0,0" Padding="14,7"
+                                        Click="ItemsSearch_Click" />
+                            </Grid>
+                            <TextBlock Text="{Binding StatusText}" Foreground="#8BA9BD" FontSize="11" Margin="0,8,0,0"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <Border Grid.Row="1" Style="{StaticResource InnerCard}" Padding="12,10" Margin="0,14,0,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="RESULTS" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
+                                <ListBox Grid.Row="1" ItemsSource="{Binding SearchResults}"
+                                         Background="Transparent" BorderThickness="0"
+                                         MouseDoubleClick="ItemsResult_DoubleClick"
+                                         SelectionChanged="ItemsResult_SelectionChanged">
+                                    <ListBox.ItemContainerStyle>
+                                        <Style TargetType="ListBoxItem">
+                                            <Setter Property="Padding" Value="8,6" />
+                                            <Setter Property="Margin" Value="0,0,0,4" />
+                                            <Setter Property="Foreground" Value="#EDF7FF" />
+                                            <Setter Property="Background" Value="#4A0C2436" />
+                                            <Setter Property="BorderBrush" Value="#2A4A5E" />
+                                            <Setter Property="BorderThickness" Value="1" />
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="ListBoxItem">
+                                                        <Border Background="{TemplateBinding Background}"
+                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter />
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsSelected" Value="True">
+                                                                <Setter Property="Background" Value="#A51A3152" />
+                                                                <Setter Property="BorderBrush" Value="#9C7CFF" />
+                                                            </Trigger>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="Background" Value="#A5163A50" />
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </ListBox.ItemContainerStyle>
+                                </ListBox>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Column="2" Style="{StaticResource GlassCard}" Padding="14,12">
+                    <Grid DataContext="{Binding Items}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel>
+                            <DockPanel LastChildFill="False">
+                                <TextBlock Text="ITEM DETAILS" Style="{StaticResource SectionLabel}"
+                                           VerticalAlignment="Center" />
+                                <Button DockPanel.Dock="Right" Content="Open wiki" Padding="12,5"
+                                        Click="ItemsOpenWiki_Click"
+                                        IsEnabled="{Binding HasSelection}" />
+                            </DockPanel>
+                            <TextBlock Text="{Binding SelectedTitle}" FontSize="18" FontWeight="SemiBold"
+                                       Margin="0,10,0,0" TextWrapping="Wrap"
+                                       Foreground="#EDF7FF" />
+                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                <TextBlock Text="Upgrade tier" Foreground="#8BA9BD" VerticalAlignment="Center"
+                                           Margin="0,0,10,0" />
+                                <ComboBox Style="{StaticResource BuffCombo}" Width="140"
+                                          ItemsSource="{Binding TierChoices}"
+                                          SelectedItem="{Binding SelectedTierChoice}"
+                                          IsEnabled="{Binding HasSelection}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Label}" Foreground="#EDF7FF" FontWeight="SemiBold" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </StackPanel>
+                            <TextBlock Text="{Binding UpgradeSummary}" Foreground="#66879D" FontSize="11"
+                                       Margin="0,8,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,14,0,0">
+                            <StackPanel>
+                                <Border Style="{StaticResource InnerCard}" Padding="12,10">
+                                    <StackPanel>
+                                        <TextBlock Text="STATS" Style="{StaticResource SectionLabel}" />
+                                        <TextBlock Text="{Binding DisplayStats}" Foreground="#D7EAF5"
+                                                   FontSize="12" Margin="0,10,0,0" TextWrapping="Wrap"
+                                                   FontFamily="Consolas" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource InnerCard}" Padding="12,10" Margin="0,12,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="QUEST / RECIPE USES" Style="{StaticResource SectionLabel}" />
+                                        <TextBlock Text="{Binding UsesEmptyText}" Foreground="#A8C3D4"
+                                                   FontSize="12" Margin="0,10,0,0" TextWrapping="Wrap"
+                                                   Visibility="{Binding UsesEmptyVisibility}" />
+                                        <StackPanel Margin="0,10,0,0" Visibility="{Binding QuestUsesVisibility}">
+                                            <TextBlock Text="Quests" Foreground="#8BA9BD" FontSize="11"
+                                                       FontWeight="SemiBold" Margin="0,0,0,4" />
+                                            <ItemsControl ItemsSource="{Binding QuestUses}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Name}" Margin="0,0,0,4"
+                                                                   Foreground="#3DFF9A" FontSize="12"
+                                                                   FontWeight="SemiBold" Cursor="Hand"
+                                                                   TextDecorations="Underline"
+                                                                   ToolTip="{Binding Url}"
+                                                                   MouseLeftButtonUp="ItemsUseLink_MouseLeftButtonUp" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                        <StackPanel Margin="0,10,0,0" Visibility="{Binding RecipeUsesVisibility}">
+                                            <TextBlock Text="Recipes" Foreground="#8BA9BD" FontSize="11"
+                                                       FontWeight="SemiBold" Margin="0,0,0,4" />
+                                            <ItemsControl ItemsSource="{Binding RecipeUses}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Name}" Margin="0,0,0,4"
+                                                                   Foreground="#3DFF9A" FontSize="12"
+                                                                   FontWeight="SemiBold" Cursor="Hand"
+                                                                   TextDecorations="Underline"
+                                                                   ToolTip="{Binding Url}"
+                                                                   MouseLeftButtonUp="ItemsUseLink_MouseLeftButtonUp" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
             <!-- Horizontal encounter history -->
-            <Border Grid.Row="4" Style="{StaticResource GlassCard}" Padding="14,10,14,6"
+            <Border Grid.Row="4" Style="{StaticResource GlassCard}" Padding="10,4,10,4"
                     Visibility="{Binding IsChecked, ElementName=DpsParserButton, Converter={StaticResource BooleanToVisibility}}">
                 <Grid>
-                    <Grid.RowDefinitions><RowDefinition Height="26" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                    <TextBlock Text="ENCOUNTER HISTORY" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
-                    <ListBox Grid.Row="1" ItemsSource="{Binding EncounterHistory}" SelectedItem="{Binding SelectedHistory}"
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="ENCOUNTER HISTORY" Style="{StaticResource SectionLabel}"
+                               VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <ListBox Grid.Column="1" ItemsSource="{Binding EncounterHistory}" SelectedItem="{Binding SelectedHistory}"
                              Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                             ScrollViewer.VerticalScrollBarVisibility="Disabled" Padding="0,0,0,18">
+                             ScrollViewer.VerticalScrollBarVisibility="Disabled" Padding="0">
                         <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem">
-                                <Setter Property="Padding" Value="0" /><Setter Property="Margin" Value="0,4,9,0" />
+                                <Setter Property="Padding" Value="0" /><Setter Property="Margin" Value="0,0,8,0" />
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="ListBoxItem">
-                                            <Border x:Name="HistoryCard" Width="215" Height="76" VerticalAlignment="Top"
+                                            <Border x:Name="HistoryCard" Width="200" Height="64" VerticalAlignment="Center"
                                                     Background="#76102A3E" BorderBrush="#31566E" BorderThickness="1"
-                                                    CornerRadius="10" Padding="10,7">
+                                                    CornerRadius="8" Padding="8,5">
                                                 <ContentPresenter />
                                             </Border>
                                             <ControlTemplate.Triggers>

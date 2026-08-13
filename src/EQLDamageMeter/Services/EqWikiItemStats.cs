@@ -18,7 +18,7 @@ public static partial class EqWikiItemStats
         try
         {
             var url =
-                "https://eqlwiki.com/api.php?action=parse&prop=wikitext&format=json&page=" +
+                "https://eqlwiki.com/api.php?action=parse&prop=wikitext&format=json&redirects=1&page=" +
                 Uri.EscapeDataString(itemName.Trim());
             await using var stream = await Http.GetStreamAsync(url, cancellationToken);
             var payload = await JsonSerializer.DeserializeAsync<ParseResponse>(stream,
@@ -31,7 +31,7 @@ public static partial class EqWikiItemStats
             if (string.IsNullOrWhiteSpace(stats))
                 return (string.Empty, "No item stats were found on that wiki page.");
 
-            return (stats, null);
+            return (EqWikiItemUpgrade.WithWeaponRatio(stats), null);
         }
         catch (HttpRequestException)
         {
@@ -69,7 +69,7 @@ public static partial class EqWikiItemStats
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "EQDM/1.4.3 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
+            "EQDM/1.4.4 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
         return client;
     }
 
