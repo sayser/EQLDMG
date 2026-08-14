@@ -273,6 +273,21 @@ public partial class MainWindow : Window, IAsyncDisposable
         }
     }
 
+    private async void BisFind_Click(object sender, RoutedEventArgs e) =>
+        await _viewModel.Bis.FindBisAsync();
+
+    private void BisOpenWiki_Click(object sender, RoutedEventArgs e) =>
+        _viewModel.Bis.OpenSelectedWiki();
+
+    private void BisAltWiki_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: BisPickViewModel pick })
+        {
+            pick.OpenWiki();
+            e.Handled = true;
+        }
+    }
+
     private async void SkyRefreshCatalog_Click(object sender, RoutedEventArgs e) =>
         await _viewModel.SkyTracker.RefreshCatalogAsync();
 

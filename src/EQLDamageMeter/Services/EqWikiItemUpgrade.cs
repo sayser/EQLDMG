@@ -94,29 +94,32 @@ public static partial class EqWikiItemUpgrade
             var suffix = match.Groups["suffix"].Value;
             if (!double.TryParse(numberText, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
                 return match.Value;
+            if (sign == "-")
+                value = -value;
 
             if (IsNonScaling(key))
                 return match.Value;
 
             if (IsWeight(key))
             {
-                var reduced = ReduceWeight(value, tier);
+                var reduced = ReduceWeight(Math.Abs(value), tier);
                 return $"{key}: {reduced.ToString("0.0", CultureInfo.InvariantCulture)}{suffix}";
             }
 
             if (IsHaste(key))
             {
-                var haste = (int)value + tier;
-                return string.IsNullOrEmpty(sign)
-                    ? $"{key}: {haste.ToString(CultureInfo.InvariantCulture)}{suffix}"
-                    : $"{key}: {sign}{haste.ToString(CultureInfo.InvariantCulture)}{suffix}";
+                // Haste on gear is always a positive %; keep absolute tier bump.
+                var haste = (int)Math.Abs(value) + tier;
+                return $"{key}: +{haste.ToString(CultureInfo.InvariantCulture)}{suffix}";
             }
 
             var scaled = ScaleStat(value, tier, isWeaponDamage: IsWeaponDamage(key));
             var asInt = (int)scaled;
-            return string.IsNullOrEmpty(sign)
-                ? $"{key}: {asInt.ToString(CultureInfo.InvariantCulture)}{suffix}"
-                : $"{key}: {sign}{asInt.ToString(CultureInfo.InvariantCulture)}{suffix}";
+            if (asInt > 0)
+                return $"{key}: +{asInt.ToString(CultureInfo.InvariantCulture)}{suffix}";
+            if (asInt < 0)
+                return $"{key}: {asInt.ToString(CultureInfo.InvariantCulture)}{suffix}";
+            return $"{key}: 0{suffix}";
         });
 
     /// <summary>Matches eqlegendstools scaledWeaponTooltipStatValue / DMG scaling.</summary>
@@ -172,6 +175,61 @@ public static partial class EqWikiItemUpgrade
     private static bool IsHaste(string key) =>
         key.Equals("Haste", StringComparison.OrdinalIgnoreCase);
 
+    public static Dictionary<string, double> ParseStatValues(string stats)
+    {
+        var map = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(stats)) return map;
+        foreach (Match match in StatTokenRegex().Matches(stats))
+        {
+            var key = match.Groups["key"].Value.Trim();
+            if (!double.TryParse(match.Groups["num"].Value, NumberStyles.Float, CultureInfo.InvariantCulture,
+                    out var value))
+                continue;
+            if (match.Groups["sign"].Value == "-")
+                value = -value;
+            if (IsDelay(key))
+            {
+                map["DELAY"] = Math.Abs(value);
+                continue;
+            }
+            if (IsWeight(key) ||
+                key.Equals("Size", StringComparison.OrdinalIgnoreCase) ||
+                key.Equals("Skill", StringComparison.OrdinalIgnoreCase))
+                continue;
+            var normalized = NormalizeStatKey(key);
+            // SV* keys collapse to one bucket — sum so multi-resist items keep full value.
+            if (normalized.Equals("SV", StringComparison.OrdinalIgnoreCase))
+                map["SV"] = map.GetValueOrDefault("SV") + value;
+            else
+                map[normalized] = value;
+        }
+
+        double? ratio = null;
+        foreach (Match ratioMatch in Regex.Matches(stats, @"Ratio:\s*\(?(\d+(?:\.\d+)?)", RegexOptions.IgnoreCase))
+        {
+            if (double.TryParse(ratioMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture,
+                    out var parsed))
+                ratio = parsed;
+        }
+
+        if (ratio is > 0)
+            map["RATIO"] = ratio.Value;
+        return map;
+    }
+
+    private static string NormalizeStatKey(string key)
+    {
+        if (key.Equals("Damage", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("Base Dmg", StringComparison.OrdinalIgnoreCase))
+            return "DMG";
+        if (key.Equals("END", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("ENDUR", StringComparison.OrdinalIgnoreCase))
+            return "ENDUR";
+        if (key.StartsWith("SV", StringComparison.OrdinalIgnoreCase))
+            return "SV";
+        return key.ToUpperInvariant();
+    }
+
     public static string TierLabel(int tier) => $"+{Math.Clamp(tier, 0, 10)}";
 
     public static string BonusSummary(int tier)
@@ -183,7 +241,7 @@ public static partial class EqWikiItemUpgrade
     }
 
     [GeneratedRegex(
-        @"(?<key>AC|HP|MANA|ENDUR|END|ATK|Attack|STR|STA|AGI|DEX|WIS|INT|CHA|WT|Weight|DMG|Damage|Base\s+Dmg|Haste|Atk\s+Delay|Delay|SVP|SVM|SVC|SVF|SVD|SV\s+[A-Za-z]+)\s*:\s*(?<sign>\+?)(?<num>\d+(?:\.\d+)?)(?<suffix>%?)",
+        @"(?<key>AC|HP|MANA|ENDUR|END|ATK|Attack|STR|STA|AGI|DEX|WIS|INT|CHA|WT|Weight|DMG|Damage|Base\s+Dmg|Haste|Atk\s+Delay|Delay|SVP|SVM|SVC|SVF|SVD|SV\s+[A-Za-z]+)\s*:\s*(?<sign>[+-]?)(?<num>\d+(?:\.\d+)?)(?<suffix>%?)",
         RegexOptions.IgnoreCase)]
     private static partial Regex StatTokenRegex();
 

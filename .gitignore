@@ -18,6 +18,8 @@ questtracker.json
 quest_catalog.json
 skytracker.json
 sky_catalog.json
+bis_catalog.json
+bis_items.json
 Diagnostics/
 *.log
 
@@ -25,6 +27,10 @@ Diagnostics/
 live*.txt
 *_out.txt
 audit*.txt
+tmp_*.cs
+
+# Cursor local workspace rules
+.cursor/
 
 # Release packages
 *.zip

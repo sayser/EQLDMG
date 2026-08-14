@@ -40,6 +40,8 @@ internal static class Program
             RunAppPathsAndGuardTests();
             RunSpellTrackerStoreTests();
             RunAlertModeTests();
+            RunBisScoringTests();
+            RunEqWikiItemSourceTests();
 
             Console.WriteLine($"Run {run}: passed={_passed} failed={_failed}");
             if (_failed > 0)
@@ -1039,6 +1041,424 @@ internal static class Program
             try { Directory.Delete(dir, true); } catch { /* ignore */ }
         }
     }
+
+    private static void RunBisScoringTests()
+    {
+        const string fangol = """
+            MAGIC ITEM  LORE ITEM
+            Slot: PRIMARY
+            Skill: 2H Slashing  Atk Delay: 35  DMG: 29
+            STR: +3  DEX: +10  STA: +10  SV POISON: +5
+            Effect: Fangol's Breath (Combat, Casting Time: Instant) at Level 50
+            Class: WAR
+            """;
+        const string dagas = """
+            MAGIC ITEM  LORE ITEM
+            Slot: PRIMARY SECONDARY
+            Skill: 1H Slashing  Atk Delay: 21  DMG: 11
+            AC: 20  STR: +3  AGI: +2  HP: +100
+            Class: WAR
+            """;
+        const string serpent = """
+            MAGIC ITEM
+            Slot: PRIMARY SECONDARY
+            Skill: Piercing  Atk Delay: 27  DMG: 13
+            STR: +3
+            Class: ALL except CLR PAL DRU MNK SHM
+            """;
+        const string garduk = """
+            MAGIC ITEM  LORE ITEM
+            Slot: PRIMARY
+            Skill: Piercing  Atk Delay: 40  DMG: 23
+            WIS: +15  MANA: +75
+            Effect: Tagar's Insects (Combat, Casting Time: Instant)
+            Class: SHM
+            """;
+        const string rod = """
+            MAGIC ITEM  LORE ITEM
+            Slot: PRIMARY
+            Skill: 2H Blunt  Atk Delay: 45  DMG: 35
+            AC: 10  CHA: +15  INT: +15  MANA: +75
+            Effect: Rune III (Must Equip, Casting Time: Instant)
+            Class: ENC
+            """;
+
+        var fangolW = WeaponAt(fangol, "Fangol", twoHand: true, 10);
+        var dagasW = WeaponAt(dagas, "Dagas", twoHand: false, 10);
+        var serpentW = WeaponAt(serpent, "Serpent's Tooth", twoHand: false, 10);
+        var gardukW = WeaponAt(garduk, "Garduk", twoHand: false, 10);
+        var rodW = WeaponAt(rod, "Rod of the Protecting Winds", twoHand: true, 10);
+
+        Check("Fangol +10 DMG", fangolW.Dmg == 58, $"got {fangolW.Dmg}");
+        Check("Fangol +10 delay", fangolW.Delay == 35, $"got {fangolW.Delay}");
+        Check("Fangol swing ratio", Math.Abs(fangolW.SwingRatio - 58.0 / 35.0) < 0.0001, $"{fangolW.SwingRatio}");
+        Check("Mid-line Effect parse",
+            BisItemEffects.Parse("Slot: PRIMARY  DMG: 29  Effect: Fangol's Breath (Combat)  WT: 8.0").Kind
+            == BisProcKind.CombatDps);
+        Check("Fangol Breath hit 120", fangolW.Proc.EstimatedHit == 120, $"{fangolW.Proc.EstimatedHit}");
+        Check("Fangol proc ratio 120/300", Math.Abs(fangolW.ProcRatio - 0.4) < 0.0001, $"{fangolW.ProcRatio}");
+
+        Check("Insects is utility", gardukW.Proc.Kind == BisProcKind.CombatUtility, gardukW.Proc.Kind.ToString());
+        Check("Garduk proc adds 0", gardukW.ProcRatio == 0);
+        Check("Rune clicky not DPS", rodW.Proc.Kind == BisProcKind.Clicky, rodW.Proc.Kind.ToString());
+        Check("Rod proc adds 0", rodW.ProcRatio == 0);
+
+        const string ivandyr = """
+            MAGIC ITEM LORE ITEM
+            Slot: EAR Charges: 6 AC: 6 WIS: +6 INT: +6 HP: +6
+            Effect: Spirit Tap(Any Slot, Casting Time: Instant) WT: 0.1 Size: TINY
+            Class: ALL except DRU MNK BRD Race: ALL
+            """;
+        const string unchargedTap = """
+            Slot: EAR AC: 6 WIS: +6 INT: +6 HP: +6
+            Effect: Spirit Tap(Any Slot, Casting Time: Instant) WT: 0.1
+            """;
+        const string unlimitedTap = """
+            Slot: EAR Charges: Unlimited AC: 6
+            Effect: Spirit Tap (Any Slot, Casting Time: Instant)
+            """;
+        var ivandyrProc = BisItemEffects.Parse(ivandyr);
+        var ivandyrStats = EqWikiItemUpgrade.ParseStatValues(ivandyr);
+        var hoopWeights = BisGearScorer.MergeWeights("WAR", "SHM", "ENC", BisPlaystyle.DpsDots);
+        var hoopWithEffect = BisGearScorer.Score(ivandyrStats, hoopWeights, ["WAR", "SHM", "ENC"], ivandyrProc);
+        var hoopStatsOnly = BisGearScorer.Score(ivandyrStats, hoopWeights, ["WAR", "SHM", "ENC"]);
+        Check("Ivandyr has limited charges", BisItemEffects.HasLimitedCharges(ivandyr));
+        Check("Ivandyr Spirit Tap ignored", ivandyrProc.Kind == BisProcKind.None, ivandyrProc.Kind.ToString());
+        Check("Ivandyr score ignores Spirit Tap", Math.Abs(hoopWithEffect - hoopStatsOnly) < 0.01,
+            $"{hoopWithEffect} vs {hoopStatsOnly}");
+        Check("Ivandyr summary omits Spirit Tap",
+            !BisGearScorer.Summary(ivandyrStats, ivandyrProc).Contains("Spirit Tap", StringComparison.OrdinalIgnoreCase),
+            BisGearScorer.Summary(ivandyrStats, ivandyrProc));
+        Check("Uncharged Spirit Tap is a clicky, not combat DPS",
+            BisItemEffects.Parse(unchargedTap).Kind == BisProcKind.Clicky);
+        Check("Unlimited charges Spirit Tap is a clicky, not combat DPS",
+            BisItemEffects.Parse(unlimitedTap).Kind == BisProcKind.Clicky);
+        Check("Damage-named Must Equip is clicky",
+            BisItemEffects.Parse("Effect: Firestrike (Must Equip, Casting Time: Instant)").Kind == BisProcKind.Clicky);
+        Check("Charged Fangol Breath ignored",
+            BisItemEffects.Parse("Charges: 5\nEffect: Fangol's Breath (Combat)").Kind == BisProcKind.None);
+
+        var fangolOut = fangolW.MeleeOutput;
+        var dwGarduk = BisMeleeMath.DualWieldOutput(gardukW, dagasW);
+        var dwDagasSerpent = BisMeleeMath.DualWieldOutput(dagasW, serpentW);
+        var expectedGardukDw = (46.0 / 40.0) + 0.5 * (22.0 / 40.0);
+        Check("Garduk+Dagas DW math", Math.Abs(dwGarduk - expectedGardukDw) < 0.0001,
+            $"{dwGarduk} vs {expectedGardukDw}");
+        Check("Fangol+proc beats Garduk+Dagas", fangolOut > dwGarduk,
+            $"{fangolOut:0.000} vs {dwGarduk:0.000}");
+        Check("Fangol+proc beats Dagas+Serpent", fangolOut > dwDagasSerpent,
+            $"{fangolOut:0.000} vs {dwDagasSerpent:0.000}");
+        Check("Prefer 2H Fangol vs Garduk+Dagas", BisMeleeMath.PreferTwoHand(fangolW, gardukW, dagasW));
+        Check("Prefer 2H Fangol vs Dagas+Serpent", BisMeleeMath.PreferTwoHand(fangolW, dagasW, serpentW));
+        Check("Fangol beats Rod on melee", fangolOut > rodW.MeleeOutput,
+            $"{fangolOut:0.000} vs {rodW.MeleeOutput:0.000}");
+
+        Check("Haste cap 75 at 50", BisGearScorer.EffectiveHaste(200, monkUncapped: false) == 75);
+        Check("Monk haste cap 85", BisGearScorer.EffectiveHaste(200, monkUncapped: true) == 85);
+        Check("FBSS 21 is under cap", BisGearScorer.EffectiveHaste(21, monkUncapped: false) == 21);
+
+        Check("WAR STA 4.5 HP at 50", BisGearScorer.StaToHp("WAR") == 4.5);
+        Check("ENC STA 2.0 HP at 50", BisGearScorer.StaToHp("ENC") == 2.0);
+        Check("Combo uses WAR STA rate", BisGearScorer.BestStaToHp(["WAR", "SHM", "ENC"]) == 4.5);
+
+        var tankWeights = BisGearScorer.MergeWeights("WAR", "SHM", "ENC", BisPlaystyle.Tank);
+        var tenHp = BisGearScorer.Score(new Dictionary<string, double> { ["HP"] = 10 }, tankWeights, ["WAR", "SHM", "ENC"]);
+        var tenSta = BisGearScorer.Score(new Dictionary<string, double> { ["STA"] = 10 }, tankWeights, ["WAR", "SHM", "ENC"]);
+        Check("WAR tank 10 STA > 10 HP", tenSta > tenHp, $"{tenSta:0} vs {tenHp:0}");
+        Check("WAR tank 10 STA = 45 HP", Math.Abs(tenSta - tenHp * 4.5) < 0.01, $"{tenSta} vs {tenHp * 4.5}");
+
+        var dotWeights = BisGearScorer.MergeWeights("WAR", "SHM", "ENC", BisPlaystyle.DpsDotsOnly);
+        var tenWis = BisGearScorer.Score(new Dictionary<string, double> { ["WIS"] = 10 }, dotWeights, ["WAR", "SHM", "ENC"]);
+        var wisAsMana = BisGearScorer.Score(
+            new Dictionary<string, double> { ["MANA"] = 10 * BisGearScorer.ManaPerPrimaryStatAt50 },
+            dotWeights, ["WAR", "SHM", "ENC"]);
+        Check("DoT WIS converts to mana", Math.Abs(tenWis - wisAsMana) < 0.01, $"{tenWis} vs {wisAsMana}");
+
+        var shieldItem = new BisCachedItem
+        {
+            Title = "Bladestopper",
+            BaseStats = "Slot: SECONDARY\nAC: 30\nClass: WAR",
+            SlotLine = "Slot: SECONDARY",
+            ClassLine = "Class: WAR"
+        };
+        var shieldStats = EqWikiItemUpgrade.ParseStatValues(shieldItem.BaseStats);
+        Check("Bladestopper is a shield", BisGearCatalog.IsShield(shieldItem, shieldStats));
+        Check("Dagas is not a shield",
+            !BisGearCatalog.IsShield(new BisCachedItem
+            {
+                Title = "Dagas",
+                BaseStats = dagas,
+                SlotLine = "Slot: PRIMARY SECONDARY",
+                ClassLine = "Class: WAR"
+            }, StatsAt(dagas, 0)));
+
+        var meleeWeights = BisGearScorer.WeaponWeights(
+            BisGearScorer.MergeWeights("WAR", "SHM", "ENC", BisPlaystyle.Dps), BisPlaystyle.Dps);
+        Check("Melee INT weight ~0", meleeWeights.GetValueOrDefault("INT") < 0.5,
+            $"{meleeWeights.GetValueOrDefault("INT")}");
+        Check("Melee MANA weight ~0", meleeWeights.GetValueOrDefault("MANA") < 0.5,
+            $"{meleeWeights.GetValueOrDefault("MANA")}");
+
+        var fangolStats = StatsAt(fangol, 10);
+        var rodStats = StatsAt(rod, 10);
+        var fangolScore = BisGearScorer.Score(fangolStats, meleeWeights, ["WAR", "SHM", "ENC"], fangolW.Proc);
+        var rodScore = BisGearScorer.Score(rodStats, meleeWeights, ["WAR", "SHM", "ENC"], rodW.Proc);
+        Check("Fangol weapon score > Rod", fangolScore > rodScore, $"{fangolScore:0} vs {rodScore:0}");
+
+        var dagasStats = StatsAt(dagas, 10);
+        var dagasScore = BisGearScorer.Score(dagasStats, meleeWeights, ["WAR", "SHM", "ENC"]);
+        Check("Dagas HP does not beat Fangol weapon score", fangolScore > dagasScore,
+            $"{fangolScore:0} vs {dagasScore:0}");
+
+        Check("AC hard cap 350 at 50 for WAR", BisGearScorer.AcHardCap("WAR") == 350);
+        Check("AC hard cap 350 at 50 for ENC", BisGearScorer.AcHardCap("ENC") == 350);
+        Check("AC hard cap 350 at 50 for PAL", BisGearScorer.AcHardCap("PAL") == 350);
+        Check("WAR hard cap 430 above 50", BisGearScorer.AcHardCap("WAR", 51) == 430);
+        Check("PAL hard cap 403 above 50", BisGearScorer.AcHardCap("PAL", 51) == 403);
+        Check("Combo hard cap 350 at 50", BisGearScorer.AcHardCap(["WAR", "SHM", "ENC"]) == 350);
+        Check("Hard cap over-cap return is 0", BisGearScorer.AcOverCapReturn("WAR") == 0);
+        Check("Iksar +35 at 50", BisGearScorer.IksarAcBonus(50) == 35);
+        Check("Anti-twink 325 at 50", BisGearScorer.AntiTwinkWornAcCap(50) == 325);
+        Check("Worn AC floor is 263 at 50", BisGearScorer.WornAcFloor(["WAR", "SHM", "ENC"]) == 263);
+        Check("AC under hard cap is full", BisGearScorer.EffectiveAc(40, "WAR") == 40);
+        Check("AC over hard cap is unused", BisGearScorer.EffectiveAc(400, "WAR") == 350);
+
+        Check("WAR is plate", BisGearScorer.IsPlateClass("WAR"));
+        Check("ENC is not plate", !BisGearScorer.IsPlateClass("ENC"));
+        Check("WAR/SHM/ENC is a plate combo", BisGearScorer.HasPlateClass(["WAR", "SHM", "ENC"]));
+        Check("ENC/MAG/WIZ is not a plate combo", !BisGearScorer.HasPlateClass(["ENC", "MAG", "WIZ"]));
+
+        var plateArmor = BisGearScorer.MergeWeights("WAR", "SHM", "ENC", BisPlaystyle.DpsDots);
+        var clothArmor = BisGearScorer.MergeWeights("ENC", "MAG", "WIZ", BisPlaystyle.DpsDots);
+        Check("Plate combo AC weight > cloth combo",
+            plateArmor.GetValueOrDefault("AC") > clothArmor.GetValueOrDefault("AC"));
+
+        var swap = BisGearScorer.BestPlateAcSwap(10, 100, uniqueHaste: 0,
+            [
+                new("Low AC", 12, 99, false, 0),
+                new("High AC cheap", 40, 80, false, 0),
+                new("Tiny AC", 11, 100, false, 0)
+            ],
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        Check("Plate AC swap prefers efficient AC gain", swap?.Name == "High AC cheap", swap?.Name);
+
+        var loreBlocked = BisGearScorer.BestPlateAcSwap(10, 100, 0,
+            [new("Taken", 50, 90, true, 0)],
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Taken" });
+        Check("Plate AC swap skips used lore", loreBlocked is null);
+
+        var dotsWeapons = BisGearScorer.WeaponWeights(plateArmor, BisPlaystyle.DpsDots);
+        var dagasDots = BisGearScorer.Score(dagasStats, dotsWeapons, ["WAR", "SHM", "ENC"]);
+        var fangolDots = BisGearScorer.Score(fangolStats, dotsWeapons, ["WAR", "SHM", "ENC"], fangolW.Proc);
+        Check("Plate AC floor does not make Dagas beat Fangol on weapons",
+            fangolDots > dagasDots, $"{fangolDots:0} vs {dagasDots:0}");
+
+        const string fangOfWolf = """
+            MAGIC ITEM
+            Slot: EAR PRIMARY SECONDARY
+            Skill: Piercing  Atk Delay: 26  DMG: 10
+            Ratio: (0.38)
+            BACKSTAB: 5
+            WT: 0.3 Size: MEDIUM
+            Class: WAR ROG SHM
+            Race: ALL
+            """;
+        var fangStats = EqWikiItemUpgrade.ParseStatValues(fangOfWolf);
+        var earWeights = BisGearScorer.NonWeaponWeights(
+            BisGearScorer.MergeWeights("WAR", "SHM", "ENC", BisPlaystyle.Dps));
+        var earScore = BisGearScorer.Score(BisGearScorer.WithoutWeaponOffense(fangStats), earWeights,
+            ["WAR", "SHM", "ENC"]);
+        var handWeights = BisGearScorer.WeaponWeights(
+            BisGearScorer.MergeWeights("WAR", "SHM", "ENC", BisPlaystyle.Dps), BisPlaystyle.Dps);
+        var handScore = BisGearScorer.Score(fangStats, handWeights, ["WAR", "SHM", "ENC"]);
+        Check("Fang of the Wolf has weapon ratio", fangStats.GetValueOrDefault("RATIO") > 0);
+        Check("Fang of the Wolf scores 0 as jewelry", earScore <= 0, $"{earScore}");
+        Check("Fang of the Wolf scores as a weapon", handScore > 0, $"{handScore}");
+
+        var parser = new LogLineParser("Sayser");
+        Check("Fangol Breath log parses",
+            parser.TryParse(
+                "[Thu Aug 13 18:22:22 2026] You hit Magi P`tasa for 120 points of poison damage by Fangol's Breath.",
+                out var fangolLine) &&
+            fangolLine?.Damage is not null &&
+            fangolLine.Damage.Ability == "Fangol's Breath" &&
+            fangolLine.Damage.Amount == 120 &&
+            fangolLine.Damage.Category == DamageCategory.Spell &&
+            fangolLine.Damage.Source == "Sayser",
+            fangolLine?.Damage is null
+                ? "no damage"
+                : $"{fangolLine.Damage.Ability}/{fangolLine.Damage.Amount}/{fangolLine.Damage.Category}");
+
+        Check("Fangol Breath critical parses",
+            parser.TryParse(
+                "[Thu Aug 13 18:27:53 2026] You hit Avatar of Abhorrence for 150 points of poison damage by Fangol's Breath. (Critical)",
+                out var critLine) &&
+            critLine?.Damage is { Amount: 150, IsCritical: true });
+
+        var group = new GroupStateTracker("Sayser");
+        var encounter = new EncounterTracker("Sayser");
+        var stamp = DateTime.Parse("2026-08-13T18:22:20", CultureInfo.InvariantCulture);
+        encounter.Process(new DamageEvent(stamp, "Sayser", "Magi P`tasa", 200, "Slash", DamageCategory.Melee, false),
+            group);
+        encounter.Process(fangolLine!.Damage!, group);
+        var sayser = encounter.CreateCombatantArray().First(c => c.Name == "Sayser");
+        var breath = sayser.Abilities.Values.FirstOrDefault(a =>
+            a.Name.Equals("Fangol's Breath", StringComparison.OrdinalIgnoreCase));
+        Check("Fangol Breath credited to DPS", breath is { Damage: 120, Hits: 1 },
+            breath is null ? "missing" : $"{breath.Damage}/{breath.Hits}");
+        Check("Fangol Breath credited as proc", breath is { ProcHits: 1, ProcDamage: 120 },
+            breath is null ? "missing" : $"{breath.ProcHits}/{breath.ProcDamage}");
+
+        const string stonemelder = """
+            MAGIC ITEM LORE ITEM
+            Slot: EAR
+            AC: 18
+            DEX: -35
+            AGI: -35
+            WT: 0.1 Size: TINY
+            Class: ALL
+            Race: ALL
+            """;
+        const string fishboneEar = """
+            MAGIC ITEM LORE ITEM
+            Slot: EAR
+            DEX: +3
+            Effect: Enduring Breath (Worn)
+            WT: 0.1 Size: TINY
+            Class: ALL
+            """;
+        var stoneStats = EqWikiItemUpgrade.ParseStatValues(stonemelder);
+        var fishEarStats = EqWikiItemUpgrade.ParseStatValues(fishboneEar);
+        Check("Parses negative DEX", stoneStats.GetValueOrDefault("DEX") == -35, $"{stoneStats.GetValueOrDefault("DEX")}");
+        Check("Parses negative AGI", stoneStats.GetValueOrDefault("AGI") == -35, $"{stoneStats.GetValueOrDefault("AGI")}");
+        var meleeEarWeights = BisGearScorer.NonWeaponWeights(
+            BisGearScorer.MergeWeights("WAR", "SHM", "ENC", BisPlaystyle.Dps));
+        var stoneScore = BisGearScorer.Score(stoneStats, meleeEarWeights, ["WAR", "SHM", "ENC"]);
+        var fishEarScore = BisGearScorer.Score(fishEarStats, meleeEarWeights, ["WAR", "SHM", "ENC"]);
+        Check("Stonemelder Melee DPS score is negative", stoneScore < 0, $"{stoneScore}");
+        Check("Fishbone beats Stonemelder for Melee DPS ears", fishEarScore > stoneScore,
+            $"{fishEarScore} vs {stoneScore}");
+        Check("Stonemelder would be excluded from BiS picks", stoneScore <= 0);
+
+        const string multiResist = """
+            Slot: FINGER
+            AC: 5
+            SV FIRE: +10
+            SV COLD: +8
+            SV MAGIC: +7
+            Class: ALL
+            """;
+        var resistStats = EqWikiItemUpgrade.ParseStatValues(multiResist);
+        Check("Multi-resist SV sums", resistStats.GetValueOrDefault("SV") == 25,
+            $"{resistStats.GetValueOrDefault("SV")}");
+
+        Check("Empty SlotLine does not fit",
+            !BisGearCatalog.FitsSlot(new BisCachedItem { Title = "Bad", SlotLine = "" }, "Category:Head"));
+        Check("EAR SlotLine fits Ear category",
+            BisGearCatalog.FitsSlot(new BisCachedItem { Title = "Ear", SlotLine = "Slot: EAR" }, "Category:Ear"));
+    }
+
+    private static void RunEqWikiItemSourceTests()
+    {
+        const string helm = """
+            {{Itempage
+            |notes =
+            |itemname = Indicolite Helm
+            |statsblock =
+            MAGIC ITEM NO DROP
+            Slot: HEAD
+            AC: 20
+            |dropsfrom =
+
+            [[Plane of Hate]]
+
+            * [[a kiraikuei]]
+
+            }}
+            """;
+        var helmSrc = EqWikiItemSource.Parse(helm);
+        Check("Helm zone is Plane of Hate", helmSrc.Zone == "Plane of Hate", helmSrc.Zone);
+        Check("Helm mob is a kiraikuei", helmSrc.Mob == "a kiraikuei", helmSrc.Mob);
+        Check("Helm display has zone and mob", helmSrc.Display == "Plane of Hate · a kiraikuei", helmSrc.Display);
+
+        const string mask = """
+            {{Itempage
+            |statsblock = Slot: FACE
+            |dropsfrom =
+
+            [[Plane of Hate]]
+
+            * [[Innoruuk_(God)|Innoruuk]]
+
+            }}
+            """;
+        var maskSrc = EqWikiItemSource.Parse(mask);
+        Check("Piped mob link uses display name", maskSrc.Mob == "Innoruuk",
+            $"mob=[{maskSrc.Mob}] display=[{maskSrc.Display}]");
+
+        const string fangol = """
+            {{Itempage
+            |statsblock = Slot: PRIMARY
+            |relatedquests =
+
+            * [[Warrior Plane of Sky Tests|Warrior Test of Bash]]
+
+            }}
+            """;
+        var fangolSrc = EqWikiItemSource.Parse(fangol);
+        Check("Quest item kind", fangolSrc.Kind == "quest", fangolSrc.Kind);
+        Check("Quest item names the quest", fangolSrc.Mob == "Warrior Test of Bash", fangolSrc.Mob);
+        Check("Quest display", fangolSrc.Display == "Quest · Warrior Test of Bash", fangolSrc.Display);
+
+        const string hoop = """
+            {{Itempage
+            |statsblock = Slot: EAR
+            |relatedquests =
+
+            * [[Lynuga's Gem Collection]]
+
+            }}
+            """;
+        Check("Ivandyr quest", EqWikiItemSource.Parse(hoop).Display == "Quest · Lynuga's Gem Collection");
+
+        const string bauble = """
+            {{Itempage
+            |notes = Summoned by [[Summon Brilliant Bauble]].
+            |itemname = Summoned: Jolum's Brilliant Bauble
+            |statsblock = Slot: EAR
+            }}
+            """;
+        var baubleSrc = EqWikiItemSource.Parse(bauble);
+        Check("Summoned kind", baubleSrc.Kind == "summoned", baubleSrc.Kind);
+        Check("Summoned spell", baubleSrc.Mob == "Summon Brilliant Bauble", baubleSrc.Mob);
+
+        const string fishbone = """
+            {{Itempage
+            |statsblock = Slot: EAR
+            |dropsfrom =
+
+            [[Qeynos Hills]]
+
+            * [[Hadden]]
+
+            }}
+            """;
+        var fishSrc = EqWikiItemSource.Parse(fishbone);
+        Check("Fishbone source", fishSrc.Display == "Qeynos Hills · Hadden", fishSrc.Display);
+        Check("Wiki item link", EqWikiLinks.ForPage("Indicolite Helm").EndsWith("Indicolite_Helm", StringComparison.Ordinal));
+        Check("Empty wikitext has no source", string.IsNullOrEmpty(EqWikiItemSource.Parse("").Display));
+    }
+
+    private static BisMeleeMath.Weapon WeaponAt(string baseStats, string name, bool twoHand, int tier)
+    {
+        var scaled = EqWikiItemUpgrade.ApplyTier(baseStats, tier);
+        var stats = EqWikiItemUpgrade.ParseStatValues(scaled);
+        var proc = BisItemEffects.Parse(scaled);
+        return BisMeleeMath.FromStats(name, stats, twoHand, proc);
+    }
+
+    private static Dictionary<string, double> StatsAt(string baseStats, int tier) =>
+        EqWikiItemUpgrade.ParseStatValues(EqWikiItemUpgrade.ApplyTier(baseStats, tier));
 
     private static string MakeSpellLine(int id, string name, int castMs, int formula, int duration, int icon)
     {

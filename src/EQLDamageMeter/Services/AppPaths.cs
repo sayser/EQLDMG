@@ -20,7 +20,9 @@ public static class AppPaths
         "questtracker.json",
         "quest_catalog.json",
         "skytracker.json",
-        "sky_catalog.json"
+        "sky_catalog.json",
+        "bis_catalog.json",
+        "bis_items.json"
     ];
 
     public static string AppDirectory { get; } = ResolveAppDirectory();
