@@ -475,25 +475,28 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     {
         var visible = Rules.Where(rule => rule.IsEnabled && rule.ShowInOverlay)
             .ToDictionary(rule => rule.Id);
-        var snapshots = _tracker.GetActiveSnapshots(now).Where(item => visible.ContainsKey(item.RuleId)).ToArray();
-        var desired = snapshots.Select(BuffOverlayEntryViewModel.CreateKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var snapshots = MezOverlayGrouping.Collapse(
+            _tracker.GetActiveSnapshots(now).Where(item => visible.ContainsKey(item.RuleId)),
+            ruleId => visible[ruleId].ControlType);
+        var desired = snapshots.Select(item => BuffOverlayEntryViewModel.CreateKey(item.Snapshot))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var stale in OverlayEntries.Where(item => !desired.Contains(item.InstanceKey)).ToArray())
             OverlayEntries.Remove(stale);
-        for (var index = 0; index < snapshots.Length; index++)
+        for (var index = 0; index < snapshots.Count; index++)
         {
-            var snapshot = snapshots[index];
+            var (snapshot, stackCount) = snapshots[index];
             var key = BuffOverlayEntryViewModel.CreateKey(snapshot);
             var entry = OverlayEntries.FirstOrDefault(item => item.InstanceKey.Equals(key, StringComparison.OrdinalIgnoreCase));
             if (entry is null)
             {
                 var rule = visible[snapshot.RuleId];
                 entry = new BuffOverlayEntryViewModel(snapshot, _category, rule.ControlType,
-                    rule.Icon ?? _catalog()?.GetIcon(snapshot.SpellName));
+                    rule.Icon ?? _catalog()?.GetIcon(snapshot.SpellName), stackCount);
                 OverlayEntries.Insert(Math.Min(index, OverlayEntries.Count), entry);
             }
             else
             {
-                entry.Update(snapshot);
+                entry.Update(snapshot, stackCount);
                 var current = OverlayEntries.IndexOf(entry);
                 if (current != index) OverlayEntries.Move(current, index);
             }

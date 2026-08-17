@@ -8,11 +8,43 @@ namespace EQLDamageMeter;
 
 public partial class OverlayWindow : Window
 {
+    public static readonly DependencyProperty ShowDamageMetricProperty =
+        DependencyProperty.Register(nameof(ShowDamageMetric), typeof(bool), typeof(OverlayWindow),
+            new PropertyMetadata(true));
+
+    public static readonly DependencyProperty ShowMetricUnitsProperty =
+        DependencyProperty.Register(nameof(ShowMetricUnits), typeof(bool), typeof(OverlayWindow),
+            new PropertyMetadata(true));
+
     public OverlayWindow()
     {
         InitializeComponent();
         Tag = OverlayWindowPlacement.DpsKey;
-        Loaded += (_, _) => OverlayClickThrough.ApplySaved(this, OverlayWindowPlacement.DpsKey);
+        Loaded += (_, _) =>
+        {
+            OverlayClickThrough.ApplySaved(this, OverlayWindowPlacement.DpsKey);
+            UpdateMetricLayout();
+        };
+    }
+
+    public bool ShowDamageMetric
+    {
+        get => (bool)GetValue(ShowDamageMetricProperty);
+        set => SetValue(ShowDamageMetricProperty, value);
+    }
+
+    public bool ShowMetricUnits
+    {
+        get => (bool)GetValue(ShowMetricUnitsProperty);
+        set => SetValue(ShowMetricUnitsProperty, value);
+    }
+
+    private void Overlay_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateMetricLayout();
+
+    private void UpdateMetricLayout()
+    {
+        ShowDamageMetric = ActualWidth >= 280;
+        ShowMetricUnits = ActualWidth < 280 || ActualWidth >= 390;
     }
 
     private void Overlay_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Windows.Media;
 using EQLDamageMeter.Services;
 
 namespace EQLDamageMeter.ViewModels;
@@ -44,7 +45,11 @@ public sealed class CombatantViewModel : ObservableObject
     public string Name
     {
         get => _name;
-        set => SetProperty(ref _name, value);
+        set
+        {
+            if (!SetProperty(ref _name, value)) return;
+            RaisePropertyChanged(nameof(BarBrush));
+        }
     }
 
     public string? OwnerName
@@ -251,6 +256,7 @@ public sealed class CombatantViewModel : ObservableObject
     public int Rank { get => _rank; set => SetProperty(ref _rank, value); }
     public string DpsText { get => _dpsText; set => SetProperty(ref _dpsText, value); }
     public string HpsText { get => _hpsText; set => SetProperty(ref _hpsText, value); }
+    public Brush BarBrush => OverlayBarPalette.ForName(Name);
 
     public AbilityViewModel[] Abilities
     {
@@ -342,4 +348,41 @@ public sealed class CombatantViewModel : ObservableObject
 
     private static string FormatRate(int criticals, int total) =>
         total == 0 ? "0.0%" : $"{criticals * 100d / total:0.0}%";
+}
+
+internal static class OverlayBarPalette
+{
+    private static readonly Brush[] Brushes = Create();
+
+    public static Brush ForName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || Brushes.Length == 0)
+            return Brushes[0];
+        var hash = 2166136261;
+        foreach (var ch in name.Trim().ToUpperInvariant())
+            hash = (hash ^ ch) * 16777619;
+        return Brushes[(int)(hash % (uint)Brushes.Length)];
+    }
+
+    private static Brush[] Create()
+    {
+        Color[] colors =
+        [
+            Color.FromRgb(124, 92, 252),
+            Color.FromRgb(41, 211, 194),
+            Color.FromRgb(64, 156, 255),
+            Color.FromRgb(255, 183, 77),
+            Color.FromRgb(255, 99, 132),
+            Color.FromRgb(155, 112, 255),
+            Color.FromRgb(63, 205, 118),
+            Color.FromRgb(255, 126, 80),
+            Color.FromRgb(88, 204, 255)
+        ];
+        return colors.Select(color =>
+        {
+            var brush = new SolidColorBrush(color);
+            brush.Freeze();
+            return (Brush)brush;
+        }).ToArray();
+    }
 }

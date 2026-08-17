@@ -521,6 +521,44 @@ internal static class Program
         Check("Mez death clears one same-name",
             mezDeathTracker.GetActiveSnapshots(t0.AddSeconds(5.1)).Count == 1);
 
+        var mezRuleId = Guid.NewGuid();
+        BuffInstanceSnapshot MezSnap(string key, string name, int extraExpireSeconds = 0) =>
+            new(mezRuleId, key, "Mesmerization", name, false, t0.AddSeconds(3),
+                t0.AddSeconds(27 + extraExpireSeconds), TimeSpan.FromSeconds(24 + extraExpireSeconds), false, false);
+        var stackedRats = MezOverlayGrouping.Collapse(
+            [MezSnap("1", "a rat"), MezSnap("2", "a rat"), MezSnap("3", "a rat")],
+            _ => ControlEffectType.Mez);
+        Check("Mez overlay stacks same name",
+            stackedRats.Count == 1 && stackedRats[0].StackCount == 3 &&
+            stackedRats[0].Snapshot.TargetName == "a rat");
+        Check("Mez overlay stack drops on break",
+            MezOverlayGrouping.Collapse([MezSnap("1", "a rat"), MezSnap("2", "a rat")], _ => ControlEffectType.Mez)
+                is { Count: 1 } dropped && dropped[0].StackCount == 2);
+        var mixedNames = MezOverlayGrouping.Collapse(
+            [MezSnap("1", "a rat"), MezSnap("2", "a rat"), MezSnap("3", "a goblin")],
+            _ => ControlEffectType.Mez);
+        Check("Mez overlay keeps distinct names",
+            mixedNames.Count == 2 &&
+            mixedNames.Any(item => item.Snapshot.TargetName == "a rat" && item.StackCount == 2) &&
+            mixedNames.Any(item => item.Snapshot.TargetName == "a goblin" && item.StackCount == 1));
+        var soonest = MezOverlayGrouping.Collapse(
+            [MezSnap("later", "a rat", 10), MezSnap("soon", "a rat")],
+            _ => ControlEffectType.Mez);
+        Check("Mez overlay uses soonest timer",
+            soonest.Count == 1 && soonest[0].Snapshot.ExpiresAt == t0.AddSeconds(27));
+        var stackedVm = new BuffOverlayEntryViewModel(stackedRats[0].Snapshot, SpellTrackerCategory.Control,
+            ControlEffectType.Mez, stackCount: stackedRats[0].StackCount);
+        Check("Mez overlay label is name X3",
+            stackedVm.OverlayTargetText == "a rat  X3" && stackedVm.StackCountText == "X3" && stackedVm.HasStackCount);
+        stackedVm.Update(stackedRats[0].Snapshot, 2);
+        Check("Mez overlay label updates to X2",
+            stackedVm.OverlayTargetText == "a rat  X2" && stackedVm.StackCountText == "X2");
+        var charmRows = MezOverlayGrouping.Collapse(
+            [MezSnap("1", "a rat"), MezSnap("2", "a rat")],
+            _ => ControlEffectType.Charm);
+        Check("Charm overlay does not mez-stack",
+            charmRows.Count == 2 && charmRows.All(item => item.StackCount == 1));
+
         // Worn-off must not cancel a pending recast of the same spell
         var recast = Rule("Odium", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other, 30, 3);
         var recastTracker = new BuffTracker();

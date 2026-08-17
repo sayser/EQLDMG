@@ -8,11 +8,13 @@ public sealed class BuffOverlayEntryViewModel : ObservableObject
     private string _remainingText = string.Empty;
     private bool _isExpiringSoon;
     private bool _isOverdue;
+    private int _stackCount = 1;
 
     public BuffOverlayEntryViewModel(BuffInstanceSnapshot snapshot,
         SpellTrackerCategory category = SpellTrackerCategory.Buff,
         ControlEffectType controlType = ControlEffectType.Other,
-        ImageSource? icon = null)
+        ImageSource? icon = null,
+        int stackCount = 1)
     {
         RuleId = snapshot.RuleId;
         RuntimeInstanceKey = snapshot.InstanceKey;
@@ -22,7 +24,7 @@ public sealed class BuffOverlayEntryViewModel : ObservableObject
         Category = category;
         ControlType = controlType;
         Icon = icon;
-        Update(snapshot);
+        Update(snapshot, stackCount);
     }
 
     public Guid RuleId { get; }
@@ -42,6 +44,10 @@ public sealed class BuffOverlayEntryViewModel : ObservableObject
     };
     public string InstanceKey => $"{RuleId:N}|{RuntimeInstanceKey}";
     public string TargetLabel => IsSelf ? "SELF" : $"OTHER  ·  {TargetName}";
+    public int StackCount => _stackCount;
+    public bool HasStackCount => _stackCount > 1;
+    public string StackCountText => $"X{_stackCount}";
+    public string OverlayTargetText => HasStackCount ? $"{TargetName}  {StackCountText}" : TargetName;
     public string StatusText => IsOverdue ? "Past expected duration" : IsExpiringSoon ? "Expiring soon" : "Active";
     public string RemainingText { get => _remainingText; private set => SetProperty(ref _remainingText, value); }
     public bool IsExpiringSoon
@@ -61,11 +67,16 @@ public sealed class BuffOverlayEntryViewModel : ObservableObject
         }
     }
 
-    public void Update(BuffInstanceSnapshot snapshot)
+    public void Update(BuffInstanceSnapshot snapshot, int stackCount = 1)
     {
         RemainingText = snapshot.IsOverdue ? $"+{FormatDuration(snapshot.Remaining)}" : FormatDuration(snapshot.Remaining);
         IsExpiringSoon = snapshot.IsExpiringSoon;
         IsOverdue = snapshot.IsOverdue;
+        var count = Math.Max(1, stackCount);
+        if (!SetProperty(ref _stackCount, count, nameof(StackCount))) return;
+        RaisePropertyChanged(nameof(HasStackCount));
+        RaisePropertyChanged(nameof(StackCountText));
+        RaisePropertyChanged(nameof(OverlayTargetText));
     }
 
     public static string CreateKey(BuffInstanceSnapshot snapshot) =>
