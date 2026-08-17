@@ -1,0 +1,1876 @@
+{
+  "FetchedAtUtc": "2026-08-08T16:14:51.8250886Z",
+  "Classes": [
+    {
+      "ClassName": "Bard",
+      "QuestGiver": "Cilin Spellsinger",
+      "Rewards": [
+        {
+          "RewardName": "Mask of Song",
+          "QuestName": "Bard Test of Tone",
+          "TriggerPhrase": "tone",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Meda",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Light Woolen Mask",
+              "Note": "3-Gorga",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Mantle of the Songweaver",
+          "QuestName": "Bard Test of Voice",
+          "TriggerPhrase": "voice",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Kala",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Light Woolen Mantle",
+              "Note": "4-KoS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Ervaj\u0027s Flute of Flight",
+          "QuestName": "Bard Test of Pitch",
+          "TriggerPhrase": "pitch",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Azia",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Crude Wooden Flute",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Fae Amulet",
+          "QuestName": "Bard Test of Wind",
+          "TriggerPhrase": "wind",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Caza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Amulet of Woven Hair",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Denon\u0027s Horn of Disaster",
+          "QuestName": "Bard Test of Brass",
+          "TriggerPhrase": "brass",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Fana",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Glowing Diamond",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti War Horn",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Harmonic Spear",
+          "QuestName": "Bard Test of Harmony",
+          "TriggerPhrase": "harmony",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Heda",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Nebulous Diamond",
+              "Note": "8-EoV",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti War Spear",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ClassName": "Beastlord",
+      "QuestGiver": "Animist Kratho",
+      "Rewards": [
+        {
+          "RewardName": "Spiroc Beak Earcuff",
+          "QuestName": "Beastlord Test of Aviak",
+          "TriggerPhrase": "aviak",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Beza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Spiroc Elder\u0027s Totem",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Azarack Skin Wristwraps",
+          "QuestName": "Beastlord Test of Azarack",
+          "TriggerPhrase": "azarack",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Heda",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Azarack Skin",
+              "Note": "2-PoS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Windhowl",
+          "QuestName": "Beastlord Test of Claw",
+          "TriggerPhrase": "claw",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Izah",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Sphinx Claw",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Mithril Bands",
+              "Note": "8-EoV",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Brass Knuckles",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Griffon-Hide Armguards",
+          "QuestName": "Beastlord Test of Harpy",
+          "TriggerPhrase": "harpy",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Kala",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Leather Cord",
+              "Note": "3-Gorga",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Diaphonous Waistband",
+          "QuestName": "Beastlord Test of Wind",
+          "TriggerPhrase": "wind",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Geza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Silken Wrap",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ClassName": "Berserker",
+      "QuestGiver": "Stragen The Hewer",
+      "Rewards": [
+        {
+          "RewardName": "Skycleaver",
+          "QuestName": "Berserker Test of Sharpness",
+          "TriggerPhrase": "sharpness",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Jaka",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Djinni War Blade",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti Standard",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Molten Coil",
+          "QuestName": "Berserker Test of Will",
+          "TriggerPhrase": "will",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Ena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Pulsating Ruby",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Sash of Ferocity",
+          "QuestName": "Berserker Test of Ferocity",
+          "TriggerPhrase": "ferocity",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Ozah",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "High Quality Raiment",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Shroud of the Sky",
+          "QuestName": "Berserker Test of Burden",
+          "TriggerPhrase": "burden",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Azia",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Feathered Cape",
+              "Note": "3-Gorga",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Blood-Drawn Runes",
+          "QuestName": "Berserker Test of Blood",
+          "TriggerPhrase": "blood",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Lena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Azarack Blood",
+              "Note": "2-PoS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Cudgel of the Fool",
+          "QuestName": "Berserker Test of Fools Errand",
+          "TriggerPhrase": "fools errand",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Dena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Jester\u0027s Mask",
+              "Note": "4-KoS",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti Great Staff",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ClassName": "Cleric",
+      "QuestGiver": "Josin Faithbringer",
+      "Rewards": [
+        {
+          "RewardName": "Truewind Earring",
+          "QuestName": "Cleric Test of Courage",
+          "TriggerPhrase": "courage",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Lena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Silver Hoop",
+              "Note": "3-Gorga",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Aegis of the Wind",
+          "QuestName": "Cleric Test of Skill",
+          "TriggerPhrase": "skill",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Meda",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Small Shield",
+              "Note": "4-KoS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Pauldrons of Piety",
+          "QuestName": "Cleric Test of Protection",
+          "TriggerPhrase": "protection",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Caza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Shiny Pauldrons",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Necklace of Resolution",
+          "QuestName": "Cleric Test of Resolution",
+          "TriggerPhrase": "resolution",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Neza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Silvered Spiroc Necklace",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Theurgist\u0027s Star",
+          "QuestName": "Cleric Test of Theurgy",
+          "TriggerPhrase": "theurgy",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Kala",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Djinni Aura",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti Mace",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Baton of the Sky",
+          "QuestName": "Cleric Test of The Weak",
+          "TriggerPhrase": "weak",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Ena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Mithril Bands",
+              "Note": "8-EoV",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti Standard",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ClassName": "Druid",
+      "QuestGiver": "Strandar Pinemist",
+      "Rewards": [
+        {
+          "RewardName": "Drake-Hide Mask",
+          "QuestName": "Druid Test of Wolf",
+          "TriggerPhrase": "wolf",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Meda",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Worn Leather Mask",
+              "Note": "3-Gorga",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Nature Walker\u0027s Mantle",
+          "QuestName": "Druid Test of Bear",
+          "TriggerPhrase": "bear",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Kala",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Mantle of Woven Grass",
+              "Note": "4-KoS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Shillelagh",
+          "QuestName": "Druid Test of Tree",
+          "TriggerPhrase": "tree",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Azia",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Spiroc Battle Staff",
+              "Note": "5-SL",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti Statuette",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Honeycomb Belt",
+          "QuestName": "Druid Test of The Bee",
+          "TriggerPhrase": "bee",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Dena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Divine Honeycomb",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Spiroc Banisher Focus",
+          "QuestName": "Druid Test of Eagle",
+          "TriggerPhrase": "eagle",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Ena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Ethereal Ruby",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Spiroc Elder\u0027s Totem",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Espri",
+          "QuestName": "Druid Test of Nature",
+          "TriggerPhrase": "nature",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Izah",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Storm Sky Opal",
+              "Note": "8-EoV",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti Scimitar",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ClassName": "Enchanter",
+      "QuestGiver": "Enchanter Jolas",
+      "Rewards": [
+        {
+          "RewardName": "Sphinx Hair Cord",
+          "QuestName": "Enchanter Test of Illusion",
+          "TriggerPhrase": "illusion",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Meda",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Finely Woven Cloth Cord",
+              "Note": "3-Gorga",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Wind Walker\u0027s Mantle",
+          "QuestName": "Enchanter Test of Metamorphism",
+          "TriggerPhrase": "metamorphism",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Ozah",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Light Cloth Mantle",
+              "Note": "4-KoS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Ivory Mask",
+          "QuestName": "Enchanter Test of Deception",
+          "TriggerPhrase": "deception",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Beza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Silken Mask",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Earring of Displacement",
+          "QuestName": "Enchanter Test of Disillusion",
+          "TriggerPhrase": "disillusion",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Caza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Adamantium Earring",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Necklace of Whispering Winds",
+          "QuestName": "Enchanter Test of Memorization",
+          "TriggerPhrase": "memorization",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Fana",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Glowing Necklace",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Rod of the Protecting Winds",
+          "QuestName": "Enchanter Test of Incapacitation",
+          "TriggerPhrase": "incapacitation",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Izah",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Large Sky Sapphire",
+              "Note": "8-EoV",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti Wind Staff",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ClassName": "Magician",
+      "QuestGiver": "Magus Frinon",
+      "Rewards": [
+        {
+          "RewardName": "Bracelet of Clarification",
+          "QuestName": "Magician Test of Clarification",
+          "TriggerPhrase": "clarification",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Lena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Feathered Cape",
+              "Note": "3-Gorga",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Mask of Empowerment",
+          "QuestName": "Magician Test of Empowerment",
+          "TriggerPhrase": "empowerment",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Neza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Ceramic Mask",
+              "Note": "4-KoS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Gold White Pendant",
+          "QuestName": "Magician Test of Shielding",
+          "TriggerPhrase": "shielding",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Azia",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Golden Coffer",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Drake-Hide Amice",
+          "QuestName": "Magician Test of Summoning",
+          "TriggerPhrase": "summoning",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Dena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Large Diamond",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Duennan Shielding Ring",
+          "QuestName": "Magician Test of Interpretation",
+          "TriggerPhrase": "interpretation",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Ena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Golden Efreeti Ring",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Staff of The Magister",
+          "QuestName": "Magician Test of Gesticulation",
+          "TriggerPhrase": "gesticulation",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Jaka",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Hazy Opal",
+              "Note": "8-EoV",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti Magi Staff",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Staff of Elemental Mastery: Air",
+          "QuestName": "Magician Test of Displacement",
+          "TriggerPhrase": "displacement",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Heda",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Crown Of Elemental Mastery",
+              "Note": "7-Trash",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Large Opal",
+              "Note": "8-EoV",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Djinni Stave",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ClassName": "Monk",
+      "QuestGiver": "Holwin",
+      "Rewards": [
+        {
+          "RewardName": "Back Straps of Mastery",
+          "QuestName": "Monk Test of Strength",
+          "TriggerPhrase": "strength",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Caza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Silken Strands",
+              "Note": "3-Gorga",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Ton Po\u0027s Eye Patch",
+          "QuestName": "Monk Test of Sight",
+          "TriggerPhrase": "sight",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Geza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Cracked Leather Eyepatch",
+              "Note": "4-KoS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Sandals of Alacrity",
+          "QuestName": "Monk Test of Speed",
+          "TriggerPhrase": "speed",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Jaka",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Dove Slippers",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Ton Po\u0027s Shoulder Wraps",
+          "QuestName": "Monk Test of Tears",
+          "TriggerPhrase": "tears",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Beza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Silken Wrap",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Wu\u0027s Fist of Mastery",
+          "QuestName": "Monk Test of Fists",
+          "TriggerPhrase": "fists",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Neza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Nebulous Sapphire",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Brass Knuckles",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Golden Sash of Tranquility",
+          "QuestName": "Monk Test of Tranquility",
+          "TriggerPhrase": "tranquility",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Lena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Tear of Quellious",
+              "Note": "8-EoV",
+              "NeededCount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ClassName": "Necromancer",
+      "QuestGiver": "Drakis Bloodcaster",
+      "Rewards": [
+        {
+          "RewardName": "Bloody Griffon-Hide Wrist Guard",
+          "QuestName": "Necromancer Test of Flight",
+          "TriggerPhrase": "flight",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Lena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Griffon\u0027s Beak",
+              "Note": "3-Gorga",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Cloak of Spiroc Feathers",
+          "QuestName": "Necromancer Test of Power",
+          "TriggerPhrase": "power",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Neza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Black Silk Cape",
+              "Note": "4-KoS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Bloodsoaked Raiment",
+          "QuestName": "Necromancer Test of Mind",
+          "TriggerPhrase": "mind",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Ozah",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Fine Cloth Raiment",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Sphinx Heart Amulet",
+          "QuestName": "Necromancer Test of Heart",
+          "TriggerPhrase": "heart",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Azia",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Pulsating Ruby",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Band of Wailing Winds",
+          "QuestName": "Necromancer Test of Finger",
+          "TriggerPhrase": "finger",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Caza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Ring of Veeshan",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Gorgon Head Staff",
+          "QuestName": "Necromancer Test of Hands",
+          "TriggerPhrase": "hands",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Fana",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Gorgon Head",
+              "Note": "3-Gorga",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti Great Staff",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ClassName": "Paladin",
+      "QuestGiver": "Dason Goldblade",
+      "Rewards": [
+        {
+          "RewardName": "Girdle of Faith",
+          "QuestName": "Paladin Test of Spirit",
+          "TriggerPhrase": "spirit",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Lena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Ivory Sky Diamond",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Aldryn, Blade of the Ocean",
+          "QuestName": "Paladin Test of Sacrifice",
+          "TriggerPhrase": "sacrifice",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Ozah",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Bixie Sword Blade",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Thelvorn, Blade of Light",
+          "QuestName": "Paladin Test of Love",
+          "TriggerPhrase": "love",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Geza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Golden Hilt",
+              "Note": "7",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Sphinx Claw",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Truvinan",
+          "QuestName": "Paladin Test of Compassion",
+          "TriggerPhrase": "compassion",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Izah",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Large Sky Diamond",
+              "Note": "8-EoV",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti Zweihander",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ClassName": "Ranger",
+      "QuestGiver": "Ranger Spirit",
+      "Rewards": [
+        {
+          "RewardName": "Griffon Talon Necklace",
+          "QuestName": "Ranger Test of Body",
+          "TriggerPhrase": "body",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Meda",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Griffon Talon",
+              "Note": "3-Gorga",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Dark Cloak of the Sky",
+          "QuestName": "Ranger Test of Defense",
+          "TriggerPhrase": "defense",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Neza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Fine Velvet Cloak",
+              "Note": "4-KoS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Earthshaker\u0027s Mantle",
+          "QuestName": "Ranger Test of The Earth",
+          "TriggerPhrase": "elemental earth",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Kala",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Spiroc Earth Totem",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Thunderforged Earring",
+          "QuestName": "Ranger Test of Thunder",
+          "TriggerPhrase": "elemental thunder",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Azia",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "White Gold Earring",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Arydryidriyorn",
+          "QuestName": "Ranger Test of Blade",
+          "TriggerPhrase": "blade",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Ena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Circlet of Brambles",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti Long Sword",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Windstriker",
+          "QuestName": "Ranger Test of Ranged Attack",
+          "TriggerPhrase": "ranged attack",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Heda",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Shimmering Pearl",
+              "Note": "8-EoV",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti War Bow",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ClassName": "Rogue",
+      "QuestGiver": "Thalik Silenthand",
+      "Rewards": [
+        {
+          "RewardName": "Wispy Choker of Vigor",
+          "QuestName": "Rogue Test of Thievery",
+          "TriggerPhrase": "thievery",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Ozah",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Inlaid Choker",
+              "Note": "3-Gorga",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Renard\u0027s Belt of Quickness",
+          "QuestName": "Rogue Test of Trickery",
+          "TriggerPhrase": "trickery",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Izah",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Sphinxian Circlet",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Griffon Wing Spauldors",
+          "QuestName": "Rogue Test of Silence",
+          "TriggerPhrase": "silence",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Ena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Spiroc Sky Totem",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Crystal Mask",
+          "QuestName": "Rogue Test of Cunning",
+          "TriggerPhrase": "cunning",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Dena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Jester\u0027s Mask",
+              "Note": "4-KoS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Scintillating Bracer of Protection",
+          "QuestName": "Rogue Test of Stealth",
+          "TriggerPhrase": "stealth",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Geza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Fine Wool Cloak",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Thornstinger",
+          "QuestName": "Rogue Test of Deception",
+          "TriggerPhrase": "deception",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Jaka",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Bixie Stinger",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Bloodsky Sapphire",
+              "Note": "8-EoV",
+              "NeededCount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ClassName": "Shadow Knight",
+      "QuestGiver": "Sarkis Ebonblade",
+      "Rewards": [
+        {
+          "RewardName": "Amulet of the Sphinx Eye",
+          "QuestName": "Shadow Knight Test of Bash",
+          "TriggerPhrase": "bash",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Ozah",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Finely Crafted Amulet",
+              "Note": "3-Gorga",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Crimson Ring of the Djinni",
+          "QuestName": "Shadow Knight Test of Smash",
+          "TriggerPhrase": "smash",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Beza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Silvery Ring",
+              "Note": "4-KoS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Pegasus-Hide Belt",
+          "QuestName": "Shadow Knight Test of Slash",
+          "TriggerPhrase": "slash",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Dena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Finely Woven Cloth Belt",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Blood Sky Face Plate",
+          "QuestName": "Shadow Knight Test of Disempowerment",
+          "TriggerPhrase": "disempowerment",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Fana",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Rusted Pauldrons",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Obtenebrate Mithril Guard",
+          "QuestName": "Shadow Knight Test of Envenoming",
+          "TriggerPhrase": "envenoming",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Heda",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti War Shield",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Pearlescent Pauldrons",
+          "QuestName": "Shadow Knight Raising of the Dead",
+          "TriggerPhrase": "raising of the dead",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Izah",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Sphinxian Ring",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Fae Pauldrons",
+              "Note": "8-EoV",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Khyldorn the Blood Drinker",
+          "QuestName": "Shadow Knight Test of Necropotence",
+          "TriggerPhrase": "necropotence",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Kala",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Blood Sky Ruby",
+              "Note": "8-EoV",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti War Axe",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ClassName": "Shaman",
+      "QuestGiver": "Medicine Man Veetra",
+      "Rewards": [
+        {
+          "RewardName": "Amulet of the Fang",
+          "QuestName": "Shaman Test of Might",
+          "TriggerPhrase": "might",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Meda",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Leather Cord",
+              "Note": "3-Gorga",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Bracelet of the Spirits",
+          "QuestName": "Shaman Test of Health",
+          "TriggerPhrase": "health",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Kala",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Ceremonial Belt",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Fairy-Hide Mantle",
+          "QuestName": "Shaman Test of Sight",
+          "TriggerPhrase": "sight",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Beza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Light Damask Mantle",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Warhammer of the Wind",
+          "QuestName": "Shaman Test of Shrink",
+          "TriggerPhrase": "shrink",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Ena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Corrosive Venom",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti War Club",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Vermilion Sky Ring",
+          "QuestName": "Shaman Test of Snake",
+          "TriggerPhrase": "snake",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Heda",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Bixie Essence",
+              "Note": "6",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Spiritualist\u0060s Ring",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Garduk",
+          "QuestName": "Shaman Test of The Witch Doctor",
+          "TriggerPhrase": "witch doctor",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Geza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Symbol of Veeshan",
+              "Note": "8-EoV",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti War Maul",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ClassName": "Warrior",
+      "QuestGiver": "Torgon Blademaster",
+      "Rewards": [
+        {
+          "RewardName": "Azure Ruby Ring",
+          "QuestName": "Warrior Test of Skill",
+          "TriggerPhrase": "skill",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Neza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Azure Ring",
+              "Note": "3-Gorga",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Runed Wind Amulet",
+          "QuestName": "Warrior Test of Strength",
+          "TriggerPhrase": "strength",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Azia",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Stone Amulet",
+              "Note": "4-KoS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Pauldrons of the Blue Sky",
+          "QuestName": "Warrior Test of Force",
+          "TriggerPhrase": "force",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Beza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Spiroc Air Totem",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Belt of the Four Winds",
+          "QuestName": "Warrior Test of Think",
+          "TriggerPhrase": "think",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Fana",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Wind Tablet",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti Belt",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Dagas",
+          "QuestName": "Warrior Test of Smash",
+          "TriggerPhrase": "smash",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Jaka",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Djinni War Blade",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Gem of Invigoration",
+              "Note": "7-Trash",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Fangol",
+          "QuestName": "Warrior Test of Bash",
+          "TriggerPhrase": "bash",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Dena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Ethereal Emerald",
+              "Note": "8-EoV",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti Battle Axe",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ClassName": "Wizard",
+      "QuestGiver": "Wizard Schrock",
+      "Rewards": [
+        {
+          "RewardName": "Augmentor\u0027s Mask",
+          "QuestName": "Wizard Test of Concentration",
+          "TriggerPhrase": "concentration",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Dena",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Grey Damask Cloak",
+              "Note": "3-Gorga",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Al\u0060Kabor\u0027s Cap of Binding",
+          "QuestName": "Wizard Test of Focus",
+          "TriggerPhrase": "focus",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Fana",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Woven Skull Cap",
+              "Note": "4-KoS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Raiment of Thunder",
+          "QuestName": "Wizard Test of Meditation",
+          "TriggerPhrase": "meditation",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Geza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "High Quality Raiment",
+              "Note": "5-SL",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Solidate Mithril Ring",
+          "QuestName": "Wizard Test of Conception",
+          "TriggerPhrase": "conception",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Izah",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Box of Winds",
+              "Note": "6-BZ",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti Statuette",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Amulet of the Void",
+          "QuestName": "Wizard Test of Visualization",
+          "TriggerPhrase": "visualization",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Jaka",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Amethyst Amulet",
+              "Note": "7-SotS",
+              "NeededCount": 1
+            }
+          ]
+        },
+        {
+          "RewardName": "Nargon\u0027s Staff",
+          "QuestName": "Wizard Test of Preparation",
+          "TriggerPhrase": "preparation",
+          "RequiredItems": [
+            {
+              "ItemName": "Wind Rune Caza",
+              "Note": "",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Large Sky Lapis",
+              "Note": "8-EoV",
+              "NeededCount": 1
+            },
+            {
+              "ItemName": "Efreeti War Staff",
+              "Note": "",
+              "NeededCount": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

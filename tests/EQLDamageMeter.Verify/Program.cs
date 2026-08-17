@@ -37,6 +37,7 @@ internal static class Program
             RunSessionAndLootTests();
             RunLatestKillVsHistoryTests();
             RunQuestSkyStoreTests();
+            RunSkyCatalogParserTests();
             RunAppPathsAndGuardTests();
             RunSpellTrackerStoreTests();
             RunAlertModeTests();
@@ -983,6 +984,112 @@ internal static class Program
         {
             try { Directory.Delete(dir, true); } catch { /* ignore */ }
         }
+    }
+
+    private static void RunSkyCatalogParserTests()
+    {
+        const string modernSnippet = """
+            === [[Bard]] Tests ===
+
+            '''Quest Giver:''' [[Cilin Spellsinger]]
+
+            {| class="eoTable3"
+            |-
+            ! Quest || Trigger Phrases || Rune || Quest Items || Reward
+            |-
+            | Bard Test of Tone
+            | tone
+            | <div class="checkbox-list"><ul><li>[[Wind Rune Meda]]</li></ul></div>
+            | <div class="checkbox-list"><ul><li>'''{{SkyNoDrop|[[Light Woolen Mask]]}}''' (3-Gorga)</li></ul></div>
+            | {{:Mask of Song}}
+            |}
+
+            === [[Warrior]] Tests ===
+
+            '''Quest Giver:''' [[Korin Thunderstaff]]
+
+            {| class="eoTable3"
+            |-
+            ! Quest || Trigger Phrases || Rune || Quest Items || Reward
+            |-
+            | Warrior Test of Strength
+            | strength
+            | <div class="checkbox-list"><ul><li>[[Wind Rune Kala]]</li></ul></div>
+            | <div class="checkbox-list"><ul><li>'''{{SkyNoDrop|[[Glowing Red Stone]]}}''' (4-KoS)</li></ul></div>
+            | {{:Blade of Strategy}}
+            |}
+            """;
+
+        var modern = EqWikiSkyCatalog.Parse(modernSnippet);
+        Check("Sky modern parser finds classes", modern.Count == 2);
+        var bard = modern.FirstOrDefault(entry => entry.ClassName == "Bard");
+        Check("Sky modern bard giver",
+            bard is not null && bard.QuestGiver.Equals("Cilin Spellsinger", StringComparison.OrdinalIgnoreCase));
+        Check("Sky modern bard reward",
+            bard?.Rewards.Any(reward => reward.RewardName == "Mask of Song" &&
+                                        reward.TriggerPhrase == "tone" &&
+                                        reward.RequiredItems.Any(item =>
+                                            item.ItemName == "Light Woolen Mask")) == true);
+
+        const string legacySnippet = """
+            <h3>[[Cleric]] (Lelulean the Wise)</h3>
+            {|
+            |-
+            | Cleric Test of Healing
+            | healing
+            | [[Wind Rune Meda]]
+            | [[Silver Disc]]
+            | {{:Necklace of Resolution}}
+            |}
+            """;
+        var legacy = EqWikiSkyCatalog.Parse(legacySnippet);
+        Check("Sky legacy parser still works", legacy.Count == 1 &&
+            legacy[0].ClassName == "Cleric" &&
+            legacy[0].QuestGiver == "Lelulean the Wise" &&
+            legacy[0].Rewards.Any(reward => reward.RewardName == "Necklace of Resolution"));
+
+        var wikiPath = Path.Combine(Path.GetTempPath(), "pos_sky.json");
+        if (File.Exists(wikiPath))
+        {
+            var payload = JsonSerializer.Deserialize<WikiParsePayload>(File.ReadAllText(wikiPath));
+            var wikitext = payload?.Parse?.Wikitext?.Text;
+            if (!string.IsNullOrWhiteSpace(wikitext))
+            {
+                var live = EqWikiSkyCatalog.Parse(wikitext);
+                Check("Sky live wiki class count", live.Count == 16);
+                Check("Sky live wiki has Warrior",
+                    live.Any(entry => entry.ClassName.Equals("Warrior", StringComparison.OrdinalIgnoreCase) &&
+                                      entry.Rewards.Count > 0));
+                if (string.Equals(Environment.GetEnvironmentVariable("EQDM_EXPORT_SKY"), "1",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    var exportPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+                        "..", "..", "..", "..", "src", "EQLDamageMeter", "Assets", "Data", "sky_catalog.json"));
+                    var document = new SkyCatalogDocument
+                    {
+                        FetchedAtUtc = DateTime.UtcNow,
+                        Classes = live.Select(entry => entry).ToList()
+                    };
+                    File.WriteAllText(exportPath,
+                        JsonSerializer.Serialize(document, new JsonSerializerOptions { WriteIndented = true }));
+                }
+            }
+        }
+    }
+
+    private sealed class WikiParsePayload
+    {
+        public WikiParseBlock? Parse { get; set; }
+    }
+
+    private sealed class WikiParseBlock
+    {
+        public WikiWikitextBlock? Wikitext { get; set; }
+    }
+
+    private sealed class WikiWikitextBlock
+    {
+        public string? Text { get; set; }
     }
 
     private static void RunAppPathsAndGuardTests()

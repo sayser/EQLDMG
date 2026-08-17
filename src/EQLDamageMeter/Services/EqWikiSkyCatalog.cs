@@ -21,18 +21,49 @@ public sealed partial class EqWikiSkyCatalog
 
     public void LoadCached()
     {
+        if (TryLoadFromFile(CachePath)) return;
+        TryLoadEmbedded();
+    }
+
+    private bool TryLoadFromFile(string path)
+    {
         try
         {
-            if (!File.Exists(CachePath)) return;
-            var document = JsonSerializer.Deserialize<SkyCatalogDocument>(File.ReadAllText(CachePath), JsonOptions);
+            if (!File.Exists(path)) return false;
+            var document = JsonSerializer.Deserialize<SkyCatalogDocument>(File.ReadAllText(path), JsonOptions);
+            if (document?.Classes is not { Count: > 0 }) return false;
+            _classes = Normalize(document.Classes);
+            FetchedAtUtc = document.FetchedAtUtc;
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private void TryLoadEmbedded()
+    {
+        try
+        {
+            using var stream = typeof(EqWikiSkyCatalog).Assembly
+                .GetManifestResourceStream("EQLDamageMeter.Assets.Data.sky_catalog.json");
+            if (stream is null) return;
+            using var reader = new StreamReader(stream);
+            var document = JsonSerializer.Deserialize<SkyCatalogDocument>(reader.ReadToEnd(), JsonOptions);
             if (document?.Classes is not { Count: > 0 }) return;
             _classes = Normalize(document.Classes);
             FetchedAtUtc = document.FetchedAtUtc;
         }
         catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
         {
         }
         catch (JsonException)
@@ -112,8 +143,37 @@ public sealed partial class EqWikiSkyCatalog
 
     public static IReadOnlyList<SkyClassCatalog> Parse(string wikitext)
     {
+        var classes = ParseModern(wikitext);
+        if (classes.Count == 0)
+            classes = ParseLegacy(wikitext);
+        return Normalize(classes);
+    }
+
+    private static List<SkyClassCatalog> ParseModern(string wikitext)
+    {
         var classes = new List<SkyClassCatalog>();
-        foreach (Match block in ClassBlockRegex().Matches(wikitext))
+        foreach (Match block in ModernClassBlockRegex().Matches(wikitext))
+        {
+            var className = block.Groups["class"].Value.Trim();
+            var table = block.Groups["table"].Value;
+            var questGiver = QuestGiverRegex().Match(block.Groups["preamble"].Value).Groups["giver"].Value.Trim();
+            var rewards = ParseRewards(table);
+            if (rewards.Count == 0) continue;
+            classes.Add(new SkyClassCatalog
+            {
+                ClassName = className,
+                QuestGiver = questGiver,
+                Rewards = rewards
+            });
+        }
+
+        return classes;
+    }
+
+    private static List<SkyClassCatalog> ParseLegacy(string wikitext)
+    {
+        var classes = new List<SkyClassCatalog>();
+        foreach (Match block in LegacyClassBlockRegex().Matches(wikitext))
         {
             var className = block.Groups["class"].Value.Trim();
             var questGiver = block.Groups["giver"].Value.Trim();
@@ -128,7 +188,7 @@ public sealed partial class EqWikiSkyCatalog
             });
         }
 
-        return Normalize(classes);
+        return classes;
     }
 
     private static List<SkyRewardCatalog> ParseRewards(string table)
@@ -149,11 +209,12 @@ public sealed partial class EqWikiSkyCatalog
                 .Where(cell => cell.Length > 0)
                 .Where(cell => !cell.Contains("checkbox-list", StringComparison.OrdinalIgnoreCase))
                 .Where(cell => !cell.StartsWith("{{:", StringComparison.Ordinal))
+                .Where(cell => cell is not "}" and not "]")
                 .ToList();
 
             var questName = plainCells.ElementAtOrDefault(0) ?? string.Empty;
-            var trigger = plainCells.Count >= 3 ? plainCells[2] : plainCells.ElementAtOrDefault(1) ?? string.Empty;
-            // When giver is a plain cell, trigger is index 2; quest/giver/trigger are first three non-checklist cells.
+            var trigger = plainCells.ElementAtOrDefault(1) ?? string.Empty;
+            // Legacy tables put giver in column 2; quest name then lacks "Test".
             if (plainCells.Count >= 3 &&
                 !questName.Contains("Test", StringComparison.OrdinalIgnoreCase) &&
                 plainCells[1].Contains("Test", StringComparison.OrdinalIgnoreCase))
@@ -252,14 +313,22 @@ public sealed partial class EqWikiSkyCatalog
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "EQDM/1.4.7 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
+            "EQDM/1.4.8 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
         return client;
     }
 
     [GeneratedRegex(
+        @"===\s*\[\[(?<class>[^\]|#]+)(?:\|[^\]]+)?\]\]\s+Tests\s*===\s*(?<preamble>.*?)(?<table>\{\|.*?^\|\})",
+        RegexOptions.Singleline | RegexOptions.Multiline)]
+    private static partial Regex ModernClassBlockRegex();
+
+    [GeneratedRegex(
         @"<h3>\s*\[\[(?<class>[^\]]+)\]\]\s*\((?<giver>[^)]+)\)\s*</h3>\s*(?<table>\{\|.*?^\|\})",
         RegexOptions.Singleline | RegexOptions.Multiline)]
-    private static partial Regex ClassBlockRegex();
+    private static partial Regex LegacyClassBlockRegex();
+
+    [GeneratedRegex(@"Quest Giver:.*? \[\[(?<giver>[^\]|#]+)(?:\|[^\]]+)?\]\]", RegexOptions.IgnoreCase)]
+    private static partial Regex QuestGiverRegex();
 
     [GeneratedRegex(@"(?m)^\s*\|-\s*$")]
     private static partial Regex RowSplitRegex();

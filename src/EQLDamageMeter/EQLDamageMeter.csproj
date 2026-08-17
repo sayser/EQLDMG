@@ -7,11 +7,16 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>Assets\EQDM.ico</ApplicationIcon>
-    <Version>1.4.7</Version>
-    <AssemblyVersion>1.4.7.0</AssemblyVersion>
-    <FileVersion>1.4.7.0</FileVersion>
+    <Version>1.4.8</Version>
+    <AssemblyVersion>1.4.8.0</AssemblyVersion>
+    <FileVersion>1.4.8.0</FileVersion>
     <Product>EQDM</Product>
     <AssemblyTitle>EQDM</AssemblyTitle>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,6 +27,10 @@
     <Resource Include="Assets\EQDM.ico" />
     <Resource Include="Assets\EQDM.png" />
     <Resource Include="Assets\ArcaneBackdrop.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\Data\sky_catalog.json" />
   </ItemGroup>
 
 </Project>
