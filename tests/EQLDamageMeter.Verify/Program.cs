@@ -583,6 +583,43 @@ internal static class Program
         Check("Foreign pet poison does not stack DoT rows",
             petTracker.GetActiveSnapshots(t0.AddSeconds(3.7)).Count == 1);
 
+        // Unique Odium land must not be blocked by a pet proc on the same target.
+        var odium = Rule("Odium", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other, 42, 1.73);
+        var odiumTracker = new BuffTracker();
+        odiumTracker.Configure([odium], _ => [], _ => [],
+            _ => [" staggers under a dark curse."], _ => false);
+        odiumTracker.Observe(t0, "You begin casting Odium VIII.");
+        odiumTracker.Observe(t0.AddSeconds(1),
+            "Innoruuk`s Chosen hit a forsaken revenant for 154 points of prismatic damage by Puma Maw.");
+        odiumTracker.Observe(t0.AddSeconds(1), "a forsaken revenant staggers under a dark curse.");
+        var odiumSnaps = odiumTracker.GetActiveSnapshots(t0.AddSeconds(1.1));
+        Check("Odium land survives pet Puma Maw",
+            odiumSnaps.Count == 1 &&
+            odiumSnaps[0].SpellName == "Odium" &&
+            odiumSnaps[0].TargetName.Equals("a forsaken revenant", StringComparison.OrdinalIgnoreCase),
+            odiumSnaps.Count == 0 ? "missing" : $"{odiumSnaps[0].SpellName}/{odiumSnaps[0].TargetName}");
+
+        // Tick line is enough when land text never confirms.
+        var tickOnly = Rule("Odium", SpellTrackerCategory.DamageOverTime, ControlEffectType.Other, 42, 1.73);
+        var tickTracker = new BuffTracker();
+        tickTracker.Configure([tickOnly], _ => [], _ => [],
+            _ => [" staggers under a dark curse."], _ => false);
+        tickTracker.Observe(t0, "You begin casting Odium VIII.");
+        tickTracker.Observe(t0.AddSeconds(4),
+            "A forsaken revenant has taken 420 damage from your Odium VIII.");
+        var tickSnaps = tickTracker.GetActiveSnapshots(t0.AddSeconds(4.1));
+        Check("Odium tick opens overlay without land text",
+            tickSnaps.Count == 1 &&
+            tickSnaps[0].TargetName.Equals("A forsaken revenant", StringComparison.OrdinalIgnoreCase),
+            tickSnaps.Count == 0 ? "missing" : tickSnaps[0].TargetName);
+        var remainingBefore = tickSnaps[0].Remaining;
+        tickTracker.Observe(t0.AddSeconds(10),
+            "A forsaken revenant has taken 412 damage from your Odium VIII.");
+        var remainingAfter = tickTracker.GetActiveSnapshots(t0.AddSeconds(10)).First().Remaining;
+        Check("Odium ticks do not refresh duration",
+            remainingAfter < remainingBefore,
+            $"{remainingBefore} -> {remainingAfter}");
+
         // Hit ability picks the matching pending poison when two share land text
         var hitPick = new BuffTracker();
         hitPick.Configure([venom, envenom], _ => [], _ => [], _ => [" has been poisoned."], _ => true);

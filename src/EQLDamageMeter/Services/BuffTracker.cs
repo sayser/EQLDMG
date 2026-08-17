@@ -87,6 +87,9 @@ public sealed class BuffTracker
     private static readonly Regex NamedSpellHit = new(
         @"^(?<source>.+?) hit (?<target>.+?) for (?<amount>\d+) points? of \S+ damage by (?<ability>.+?)\.(?: \([^)]+\))*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex LocalDotTick = new(
+        @"^(?<target>.+?) has taken (?<amount>\d+) damage from your (?<ability>.+?)\.(?: \([^)]+\))*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly TimeSpan SpellHitAttributionWindow = TimeSpan.FromSeconds(1.5);
 
     private readonly Dictionary<Guid, BuffRuleSettings> _rules = [];
@@ -193,6 +196,7 @@ public sealed class BuffTracker
         // confirmation paths stay ungated.
         if (ConfirmSelfApplication(timestamp, message)) return;
         if (ConfirmOtherApplication(timestamp, message)) return;
+        if (ConfirmOwnedDotTick(timestamp, message)) return;
         if (ExpireByFadeMessage(timestamp, message)) return;
 
         if (message.Contains("worn off", StringComparison.OrdinalIgnoreCase))
@@ -575,27 +579,78 @@ public sealed class BuffTracker
         source.Equals("YOUR", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Unique land text: reject when a foreign caster just hit this target (group/pet/NPC
-    /// same-spell land). Otherwise allow the pending cast window to confirm.
+    /// Unique land text proves the spell. A pet/group hit only blocks when it is the
+    /// same spell family (their Odium, not Puma Maw). Unrelated procs must not hide yours.
     /// </summary>
     private bool AcceptsLandAttribution(BuffRuleSettings rule, string target, DateTime timestamp,
         bool requireAbilityMatch)
     {
         if (!TryGetRecentSpellHit(target, timestamp, out var source, out var ability))
             return !requireAbilityMatch;
-        if (!IsLocalHitSource(source)) return false;
-        if (!requireAbilityMatch) return true;
-        return SpellNameNormalizer.BelongsToFamily(ability, rule.SpellName);
+        var sameFamily = SpellNameNormalizer.BelongsToFamily(ability, rule.SpellName);
+        if (!IsLocalHitSource(source))
+            return !sameFamily;
+        return !requireAbilityMatch || sameFamily;
     }
 
     private LandAttribution ClassifyLandAttribution(BuffRuleSettings rule, string target, DateTime timestamp)
     {
         if (!TryGetRecentSpellHit(target, timestamp, out var source, out var ability))
             return LandAttribution.Unattributed;
-        if (!IsLocalHitSource(source)) return LandAttribution.Foreign;
+        // Shared land text ("has been poisoned.") — any other caster on this target
+        // could own the line. Unrelated *your* procs must not hide a pending DoT.
+        if (!IsLocalHitSource(source))
+            return LandAttribution.Foreign;
         return SpellNameNormalizer.BelongsToFamily(ability, rule.SpellName)
             ? LandAttribution.LocalMatchingAbility
-            : LandAttribution.Foreign;
+            : LandAttribution.Unattributed;
+    }
+
+    /// <summary>
+    /// "X has taken N damage from your Odium VIII" is unambiguous. Use it to open the
+    /// overlay when land text was missed (pet procs, delayed messages, no catalog suffix).
+    /// Ticks never refresh an existing timer.
+    /// </summary>
+    private bool ConfirmOwnedDotTick(DateTime timestamp, string message)
+    {
+        if (!message.Contains("from your", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var match = LocalDotTick.Match(message);
+        if (!match.Success)
+            return false;
+
+        var target = match.Groups["target"].Value.Trim();
+        var ability = match.Groups["ability"].Value.Trim();
+        if (target.Length == 0 || ability.Length == 0)
+            return false;
+
+        var matched = false;
+        foreach (var rule in MatchingEnabledRules(ability))
+        {
+            if (!rule.TrackOthers || rule.Category != SpellTrackerCategory.DamageOverTime)
+                continue;
+
+            var state = _states[rule.Id];
+            if (FindTargetInstanceKey(state, target) is not null)
+            {
+                matched = true;
+                continue;
+            }
+
+            var isPending = state.PendingCastStartedAt is { } castStarted && timestamp >= castStarted &&
+                            state.PendingStart is { } expected &&
+                            timestamp <= (state.PendingConfirmationEndsAt ?? expected + ConfirmationGrace);
+            var startedAt = isPending ? state.PendingStart ?? timestamp : timestamp;
+            var targetKey = ResolveEnemyLandTargetKey(state, rule, target);
+            state.Instances.Remove(UnconfirmedTargetKey);
+            Activate(state, rule, targetKey, target, false, startedAt, clearPending: false,
+                clearsOnTargetDeath: true);
+            if (isPending)
+                NoteLandConfirmation(state, rule, timestamp);
+            matched = true;
+        }
+
+        return matched;
     }
 
     private void ClearOtherPendingAmbiguousEnemyCasts(Guid confirmedRuleId, string target, string message)

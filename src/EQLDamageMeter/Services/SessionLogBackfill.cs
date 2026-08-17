@@ -12,6 +12,10 @@ public static class SessionLogBackfill
     public static string BackfillId(string character, string server) =>
         $"backfill:{character}:{server}";
 
+    public static bool IsBackfillId(string? id) =>
+        !string.IsNullOrWhiteSpace(id) &&
+        id.StartsWith("backfill:", StringComparison.OrdinalIgnoreCase);
+
     public static SessionRecord? TryBuild(string path, string character, string server, TimeSpan lookback)
     {
         if (!File.Exists(path) || lookback <= TimeSpan.Zero) return null;

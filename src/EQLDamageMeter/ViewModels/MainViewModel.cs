@@ -101,6 +101,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         ApplyBuffConfiguration();
         _sessionHistory.AddRange(SessionInfoStore.TryLoadSessions()
             .Where(item => item.EndedAt.HasValue)
+            .Where(item => !SessionLogBackfill.IsBackfillId(item.Id))
             .OrderByDescending(item => item.StartedAt));
         SessionHistory.LoadHistory(_sessionHistory, current: null);
         QuestTracker.Initialize();
@@ -601,10 +602,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             liveStart = await LogFileMonitor.CaptureLiveStartAsync(path, cancellationToken);
             var groupRestoreTask = Task.Run(() => GroupContextRestorer.RestoreAsync(path, liveStart.ResumePosition,
                 parser, group, cancellationToken), cancellationToken);
-            var backfillTask = Task.Run(
-                () => SessionLogBackfill.TryBuild(path, identity.Character, identity.Server, TimeSpan.FromHours(3)),
-                cancellationToken);
-            await Task.WhenAll(spellCatalogTask, groupRestoreTask, backfillTask, levelTask);
+            await Task.WhenAll(spellCatalogTask, groupRestoreTask, levelTask);
             _spellDataCatalog = await spellCatalogTask;
             if (await levelTask is { } level) _characterLevel = level;
             RaisePropertyChanged(nameof(SpellCatalog));
@@ -616,7 +614,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             DotSpellTracker.RefreshConfiguration();
             ControlSpellTracker.RefreshConfiguration();
             HostileSpellTracker.RefreshConfiguration();
-            ApplyBackfillSession(await backfillTask);
         }
         catch (IOException)
         {
@@ -1552,6 +1549,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private List<SessionRecord> BuildPersistableSessions()
     {
         var records = _sessionHistory
+            .Where(item => !SessionLogBackfill.IsBackfillId(item.Id))
             .Select(SessionTracker.Clone)
             .ToList();
         if (_sessionTracker.CreateSnapshot() is { } current)

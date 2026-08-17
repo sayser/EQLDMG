@@ -290,7 +290,7 @@ public sealed class SessionEntryViewModel : ObservableObject
 
         var title = isLive
             ? "Current session"
-            : record.Id.StartsWith("backfill:", StringComparison.OrdinalIgnoreCase)
+            : SessionLogBackfill.IsBackfillId(record.Id)
                 ? "Last 3h from log"
                 : FormatTitle(record.StartedAt);
         structural |= !string.Equals(Title, title, StringComparison.Ordinal);
