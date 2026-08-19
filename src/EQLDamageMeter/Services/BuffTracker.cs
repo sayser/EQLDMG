@@ -21,12 +21,21 @@ public sealed class BuffTracker
     private static readonly TimeSpan CharmMaxOverdue = TimeSpan.FromMinutes(3);
     /// <summary>Overlay rows pulse when remaining time is at or below this.</summary>
     private static readonly TimeSpan ExpiringSoonWindow = TimeSpan.FromSeconds(10);
+    private static readonly DateTime IndefiniteSongExpiresAt = DateTime.MaxValue;
+    /// <summary>Fallback pulse silence when a pulse-tracked song has no configured duration.</summary>
+    private static readonly TimeSpan DefaultSongLandPulseSilence = TimeSpan.FromSeconds(12);
+
+    private static TimeSpan SongLandPulseSilence(BuffRuleSettings rule) =>
+        rule.DurationSeconds > 0
+            ? TimeSpan.FromSeconds(rule.DurationSeconds)
+            : DefaultSongLandPulseSilence;
     private sealed class ActiveInstance
     {
         public required string TargetName { get; set; }
         public required bool IsSelf { get; init; }
         public required DateTime StartedAt { get; set; }
         public required DateTime ExpiresAt { get; set; }
+        public DateTime LastLandPulseAt { get; set; }
         public bool Alerted { get; set; }
         /// <summary>
         /// False when the land message is shared by many spells (e.g. "yawns.") or the
@@ -53,6 +62,8 @@ public sealed class BuffTracker
 
     private static readonly Regex LocalCast = new(
         @"^You begin casting (?<spell>.+?)\.$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex LocalSongBegin = new(
+        @"^You begin singing (?<spell>.+?)\.$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex LocalFailure = new(
         @"^Your (?<spell>.+?) spell (?:is interrupted\.|fizzles!|did not take hold(?: on .+?)?\..*)$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -60,6 +71,12 @@ public sealed class BuffTracker
         @"^.+? resisted your (?<spell>.+?)!$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex LocalWornOff = new(
         @"^Your (?<spell>.+?) spell has worn off of (?<target>.+?)\.$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex LocalWornOffSelf = new(
+        @"^Your (?<spell>.+?) spell has worn off\.$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex LocalSongEnds = new(
+        @"^Your song ends(?: abruptly)?\.$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex LocalDeath = new(
         @"^(?:You died\.|You have been slain by .+?!)$",
@@ -91,6 +108,10 @@ public sealed class BuffTracker
         @"^(?<target>.+?) has taken (?<amount>\d+) damage from your (?<ability>.+?)\.(?: \([^)]+\))*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly TimeSpan SpellHitAttributionWindow = TimeSpan.FromSeconds(1.5);
+    /// <summary>
+    /// After "Your song ends." the next self land line is treated as the local bard's twist.
+    /// </summary>
+    private static readonly TimeSpan OwnSongLandWindow = TimeSpan.FromSeconds(6);
 
     private readonly Dictionary<Guid, BuffRuleSettings> _rules = [];
     private readonly Dictionary<Guid, RuleRuntime> _states = [];
@@ -100,7 +121,11 @@ public sealed class BuffTracker
     private readonly Dictionary<Guid, string[]> _ambiguousOtherSuffixes = [];
     private readonly Queue<BuffExpirationAlert> _queuedAlerts = [];
     private DateTime? _lastSpecificFadeAt;
+    private DateTime? _ownSongLandWindowUntil;
     private RecentSpellHit? _lastSpellHit;
+    private Func<string, bool>? _isAmbiguousSelfAppliedMessage;
+    private readonly HashSet<Guid> _pulseSongRuleIds = [];
+    private readonly HashSet<Guid> _songDamageRuleIds = [];
 
     private readonly record struct RecentSpellHit(
         string Target, string Source, string Ability, DateTime Timestamp);
@@ -112,8 +137,14 @@ public sealed class BuffTracker
         Func<string, IReadOnlyList<string>>? selfAppliedMessageResolver = null,
         Func<string, IReadOnlyList<string>>? otherAppliedMessageResolver = null,
         Func<string, bool>? isAmbiguousOtherSuffix = null,
+        Func<string, bool>? isAmbiguousSelfAppliedMessage = null,
+        Func<string, bool>? isPulseTrackedSong = null,
+        Func<string, bool>? isSongDamageSong = null,
         bool pruneMissing = true)
     {
+        _isAmbiguousSelfAppliedMessage = isAmbiguousSelfAppliedMessage;
+        _pulseSongRuleIds.Clear();
+        _songDamageRuleIds.Clear();
         var configured = rules.ToDictionary(rule => rule.Id);
         if (pruneMissing)
         {
@@ -131,6 +162,10 @@ public sealed class BuffTracker
         foreach (var rule in configured.Values)
         {
             _rules[rule.Id] = rule;
+            if (IsIndefiniteSong(rule) && isPulseTrackedSong?.Invoke(rule.SpellName) == true)
+                _pulseSongRuleIds.Add(rule.Id);
+            if (isSongDamageSong?.Invoke(rule.SpellName) == true)
+                _songDamageRuleIds.Add(rule.Id);
             _fadeMessages[rule.Id] = new HashSet<string>(
                 fadeMessageResolver?.Invoke(rule.SpellName) ?? [], StringComparer.OrdinalIgnoreCase);
             _selfAppliedMessages[rule.Id] = new HashSet<string>(
@@ -166,6 +201,7 @@ public sealed class BuffTracker
         foreach (var state in _states.Values) ResetState(state);
         _queuedAlerts.Clear();
         _lastSpecificFadeAt = null;
+        _ownSongLandWindowUntil = null;
         _lastSpellHit = null;
     }
 
@@ -191,16 +227,27 @@ public sealed class BuffTracker
         // Remember caster+ability hits before land text so shared lines like
         // "has been poisoned." can be attributed (or rejected as foreign).
         NoteSpellHit(timestamp, message);
+        NoteOwnSongEnds(timestamp, message);
+
+        if (ConfirmSongDamageFromOwnedHit(timestamp, message)) return;
 
         // Land/fade texts are spell-specific and often have no shared keywords, so these
         // confirmation paths stay ungated.
         if (ConfirmSelfApplication(timestamp, message)) return;
+        if (TryConfirmTimedDamageSongEnemyLand(timestamp, message)) return;
         if (ConfirmOtherApplication(timestamp, message)) return;
         if (ConfirmOwnedDotTick(timestamp, message)) return;
         if (ExpireByFadeMessage(timestamp, message)) return;
 
         if (message.Contains("worn off", StringComparison.OrdinalIgnoreCase))
         {
+            var wornOffSelf = LocalWornOffSelf.Match(message);
+            if (wornOffSelf.Success)
+            {
+                ExpireSelfBySpellName(wornOffSelf.Groups["spell"].Value);
+                return;
+            }
+
             var wornOff = LocalWornOff.Match(message);
             if (wornOff.Success)
             {
@@ -246,6 +293,16 @@ public sealed class BuffTracker
             if (cast.Success)
             {
                 BeginMatchingRules(timestamp, cast.Groups["spell"].Value);
+                return;
+            }
+        }
+
+        if (message.Contains("begin singing", StringComparison.OrdinalIgnoreCase))
+        {
+            var song = LocalSongBegin.Match(message);
+            if (song.Success)
+            {
+                BeginMatchingRules(timestamp, song.Groups["spell"].Value);
                 return;
             }
         }
@@ -297,6 +354,15 @@ public sealed class BuffTracker
             foreach (var pair in state.Instances.ToArray())
             {
                 var instance = pair.Value;
+                if (IsIndefiniteSong(rule))
+                {
+                    if (_pulseSongRuleIds.Contains(rule.Id) &&
+                        now > instance.LastLandPulseAt + SongLandPulseSilence(rule))
+                    {
+                        StopSelf(rule.Id, BuffStopReason.Expired, preserveNewerPending: true);
+                    }
+                    continue;
+                }
                 if (now < instance.ExpiresAt) continue;
                 var isCharm = rule.Category == SpellTrackerCategory.Control &&
                               rule.ControlType == ControlEffectType.Charm;
@@ -314,6 +380,13 @@ public sealed class BuffTracker
                     state.StopReason = BuffStopReason.Expired;
             }
         }
+
+        while (_queuedAlerts.TryDequeue(out var queued))
+        {
+            alerts ??= [];
+            alerts.Add(queued);
+        }
+
         return alerts ?? [];
     }
 
@@ -324,21 +397,24 @@ public sealed class BuffTracker
 
         var rule = _rules.GetValueOrDefault(ruleId);
         var isCharm = rule?.Category == SpellTrackerCategory.Control &&
-                      rule.ControlType == ControlEffectType.Charm;
+                      rule?.ControlType == ControlEffectType.Charm;
+        var isSong = rule is not null && IsIndefiniteSong(rule);
         var active = state.Instances.Values
-            .Where(instance => now < instance.ExpiresAt ||
-                               isCharm && now < instance.ExpiresAt + CharmMaxOverdue)
-            .OrderBy(instance => instance.ExpiresAt).ToArray();
+            .Where(instance => isSong ||
+                               now < instance.ExpiresAt ||
+                               isCharm == true && now < instance.ExpiresAt + CharmMaxOverdue)
+            .OrderBy(instance => isSong ? instance.StartedAt : instance.ExpiresAt).ToArray();
         var isCasting = state.PendingStart is { } pending && now < pending + ConfirmationGrace;
         if (active.Length == 0)
             return new BuffRuntimeSnapshot(ruleId, null, null, TimeSpan.Zero, isCasting, false,
                 state.StopReason == BuffStopReason.Expired, false, false, state.StopReason);
 
         var next = active[0];
-        var isOverdue = isCharm && now >= next.ExpiresAt;
-        var remaining = isOverdue ? TimeSpan.Zero : next.ExpiresAt - now;
-        return new BuffRuntimeSnapshot(ruleId, next.StartedAt, next.ExpiresAt, remaining, isCasting, true, false,
-            !isOverdue && remaining <= ExpiringSoonWindow, isOverdue, state.StopReason);
+        var isOverdue = !isSong && isCharm == true && now >= next.ExpiresAt;
+        var remaining = isSong ? TimeSpan.Zero : isOverdue ? TimeSpan.Zero : next.ExpiresAt - now;
+        return new BuffRuntimeSnapshot(ruleId, next.StartedAt, isSong ? next.StartedAt : next.ExpiresAt,
+            remaining, isCasting, true, false,
+            false, isOverdue, state.StopReason);
     }
 
     public IReadOnlyList<BuffInstanceSnapshot> GetActiveSnapshots(DateTime now) =>
@@ -347,14 +423,23 @@ public sealed class BuffTracker
             {
                 var isCharm = rule.Category == SpellTrackerCategory.Control &&
                               rule.ControlType == ControlEffectType.Charm;
+                var isIndefiniteSong = IsIndefiniteSong(rule);
+                var showsPlaying = isIndefiniteSong || IsTimedDamageSong(rule);
                 return _states[rule.Id].Instances
-                    .Where(pair => now < pair.Value.ExpiresAt ||
+                    .Where(pair => isIndefiniteSong ||
+                                   now < pair.Value.ExpiresAt ||
                                    isCharm && now < pair.Value.ExpiresAt + CharmMaxOverdue)
-                    .Select(pair => new BuffInstanceSnapshot(rule.Id, pair.Key, rule.SpellName,
-                        pair.Value.TargetName, pair.Value.IsSelf, pair.Value.StartedAt, pair.Value.ExpiresAt,
-                        pair.Value.ExpiresAt > now ? pair.Value.ExpiresAt - now : now - pair.Value.ExpiresAt,
-                        pair.Value.ExpiresAt > now && pair.Value.ExpiresAt - now <= ExpiringSoonWindow,
-                        pair.Value.ExpiresAt <= now));
+                    .Select(pair =>
+                        new BuffInstanceSnapshot(rule.Id, pair.Key, rule.SpellName,
+                            pair.Value.TargetName, pair.Value.IsSelf, pair.Value.StartedAt,
+                            showsPlaying ? pair.Value.StartedAt : pair.Value.ExpiresAt,
+                            showsPlaying ? TimeSpan.Zero : pair.Value.ExpiresAt > now
+                                ? pair.Value.ExpiresAt - now
+                                : now - pair.Value.ExpiresAt,
+                            !showsPlaying && pair.Value.ExpiresAt > now &&
+                            pair.Value.ExpiresAt - now <= ExpiringSoonWindow,
+                            !showsPlaying && pair.Value.ExpiresAt <= now,
+                            showsPlaying));
             })
             // Self first, then others grouped by target, soonest expiry within each group.
             .OrderByDescending(snapshot => snapshot.IsSelf)
@@ -372,10 +457,18 @@ public sealed class BuffTracker
 
     private void BeginMatchingRules(DateTime timestamp, string spell)
     {
-        foreach (var rule in MatchingEnabledRules(spell))
+        var matched = MatchingEnabledRules(spell).ToArray();
+        var startingDamageSong = matched.FirstOrDefault(IsTimedDamageSong);
+        if (startingDamageSong is not null)
+            ClearOtherTimedDamageSongInstances(startingDamageSong.Id, silent: true);
+
+        foreach (var rule in matched)
         {
             // Hostile timers start from enemy land text on you — never from your cast bar.
             if (rule.Category == SpellTrackerCategory.Hostile) continue;
+            // Songs start from self land after a twist, not from cast lines (when present).
+            if (rule.TrackingMode == BuffTrackingMode.Song &&
+                rule.Category == SpellTrackerCategory.Buff) continue;
 
             var state = _states[rule.Id];
             state.PendingCastStartedAt = timestamp;
@@ -400,13 +493,52 @@ public sealed class BuffTracker
         foreach (var rule in MatchingEnabledRules(spell))
         {
             if (rule.Category == SpellTrackerCategory.Hostile) continue;
+            if (rule.TrackingMode == BuffTrackingMode.Song &&
+                rule.Category == SpellTrackerCategory.Buff) continue;
             ClearPendingCast(_states[rule.Id]);
         }
     }
 
     private bool ConfirmSelfApplication(DateTime timestamp, string message)
     {
+        var songMatches = _rules.Values.Where(rule =>
+            rule.IsEnabled &&
+            rule.TrackingMode == BuffTrackingMode.Song &&
+            rule.Category == SpellTrackerCategory.Buff &&
+            rule.TrackSelf &&
+            _selfAppliedMessages.GetValueOrDefault(rule.Id)?.Contains(message) == true &&
+            AcceptsOwnSongLand(rule, timestamp, message)).ToArray();
+        if (songMatches.Length > 1)
+            songMatches = ResolveAmbiguousSongLand(songMatches);
+        if (songMatches.Length == 1)
+        {
+            var songRule = songMatches[0];
+            var songState = _states[songRule.Id];
+            ClearPendingCast(songState);
+            ActivateAndAlert(songState, songRule, SelfTargetKey, "Self", true, timestamp,
+                clearsOnTargetDeath: true);
+            // Keep the twist window open through the next song change.
+            _ownSongLandWindowUntil = timestamp + OwnSongLandWindow;
+            return true;
+        }
+        if (songMatches.Length > 1) return false;
+
+        var damageSongSelf = _rules.Values.Where(rule =>
+            rule.IsEnabled &&
+            IsTimedDamageSong(rule) &&
+            rule.TrackSelf &&
+            _selfAppliedMessages.GetValueOrDefault(rule.Id)?.Contains(message) == true &&
+            AcceptsOwnDamageSongLand(rule, timestamp)).ToArray();
+        if (damageSongSelf.Length > 1)
+            damageSongSelf = ResolveAmbiguousSongLand(damageSongSelf);
+        if (damageSongSelf.Length == 1)
+        {
+            ActivateSongDamage(_states[damageSongSelf[0].Id], damageSongSelf[0], timestamp);
+            return true;
+        }
+
         var matches = PendingRules(timestamp).Where(rule =>
+            rule.TrackingMode != BuffTrackingMode.Song &&
             _selfAppliedMessages.GetValueOrDefault(rule.Id)?.Contains(message) == true).ToArray();
         if (matches.Length == 0)
         {
@@ -437,7 +569,8 @@ public sealed class BuffTracker
         string? bestAmbiguousTarget = null;
         var bestAmbiguousFromHit = false;
 
-        foreach (var rule in _rules.Values.Where(rule => rule.IsEnabled && rule.TrackOthers).ToArray())
+        foreach (var rule in _rules.Values.Where(rule =>
+                     rule.IsEnabled && rule.TrackOthers && !IsTimedDamageSong(rule)).ToArray())
         {
             var state = _states[rule.Id];
             var isPending = state.PendingCastStartedAt is { } castStarted && timestamp >= castStarted &&
@@ -560,6 +693,186 @@ public sealed class BuffTracker
             timestamp);
     }
 
+    private void NoteOwnSongEnds(DateTime timestamp, string message)
+    {
+        if (!LocalSongEnds.IsMatch(message)) return;
+        _ownSongLandWindowUntil = timestamp + OwnSongLandWindow;
+    }
+
+    private static bool IsIndefiniteSong(BuffRuleSettings rule) =>
+        rule.TrackingMode == BuffTrackingMode.Song && rule.Category == SpellTrackerCategory.Buff;
+
+    private static bool IsTimedDamageSong(BuffRuleSettings rule, IReadOnlySet<Guid> songDamageRuleIds) =>
+        songDamageRuleIds.Contains(rule.Id);
+
+    private bool IsTimedDamageSong(BuffRuleSettings rule) => IsTimedDamageSong(rule, _songDamageRuleIds);
+
+    private static int SongDurationSeconds(BuffRuleSettings rule) =>
+        rule.DurationSeconds > 0 ? rule.DurationSeconds : 3;
+
+    /// <summary>
+    /// Chords, Denon, and other AE songs share the same " winces." land suffix.
+    /// Only the song with a pending "begin singing" (or a sole tracked match) may start.
+    /// </summary>
+    private bool TryConfirmTimedDamageSongEnemyLand(DateTime timestamp, string message)
+    {
+        var timedRules = _rules.Values.Where(rule => rule.IsEnabled && rule.TrackOthers && IsTimedDamageSong(rule))
+            .ToArray();
+        if (timedRules.Length == 0) return false;
+
+        string? suffix = null;
+        foreach (var rule in timedRules)
+        {
+            suffix = _uniqueOtherSuffixes.GetValueOrDefault(rule.Id)?
+                .Concat(_ambiguousOtherSuffixes.GetValueOrDefault(rule.Id) ?? [])
+                .FirstOrDefault(value => message.EndsWith(value, StringComparison.OrdinalIgnoreCase));
+            if (suffix is not null) break;
+        }
+        if (suffix is null) return false;
+
+        var target = message[..^suffix.Length].Trim();
+        if (target.Length == 0) return false;
+
+        var matching = timedRules.Where(rule =>
+            _uniqueOtherSuffixes.GetValueOrDefault(rule.Id)?.Contains(suffix) == true ||
+            _ambiguousOtherSuffixes.GetValueOrDefault(rule.Id)?.Contains(suffix) == true).ToArray();
+        if (matching.Length == 0) return false;
+
+        var pending = matching.Where(rule => IsPendingCast(rule, timestamp)).ToArray();
+        if (pending.Length > 0)
+        {
+            var rule = pending.OrderByDescending(item => _states[item.Id].PendingCastStartedAt).First();
+            ActivateSongDamage(_states[rule.Id], rule, timestamp);
+            return true;
+        }
+
+        if (matching.Length == 1)
+        {
+            ActivateSongDamage(_states[matching[0].Id], matching[0], timestamp);
+            return true;
+        }
+
+        var active = matching.Where(rule => _states[rule.Id].Instances.ContainsKey(SelfTargetKey)).ToArray();
+        if (active.Length == 1)
+        {
+            RefreshSongDamage(_states[active[0].Id], active[0], timestamp);
+            return true;
+        }
+
+        var attributed = matching
+            .Where(rule => AcceptsLandAttribution(rule, target, timestamp, requireAbilityMatch: true)).ToArray();
+        if (attributed.Length == 1)
+        {
+            ActivateSongDamage(_states[attributed[0].Id], attributed[0], timestamp);
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool AcceptsOwnDamageSongLand(BuffRuleSettings rule, DateTime timestamp)
+    {
+        if (IsPendingCast(rule, timestamp)) return true;
+        if (_states[rule.Id].Instances.ContainsKey(SelfTargetKey)) return true;
+        return CountEnabledTimedSongRules() == 1;
+    }
+
+    private void ClearOtherTimedDamageSongInstances(Guid exceptRuleId, bool silent = true)
+    {
+        foreach (var rule in _rules.Values.Where(item => item.IsEnabled && IsTimedDamageSong(item) &&
+                                                         item.Id != exceptRuleId))
+        {
+            var state = _states[rule.Id];
+            if (!state.Instances.Remove(SelfTargetKey)) continue;
+            if (!silent && state.StopReason == BuffStopReason.None)
+                state.StopReason = BuffStopReason.Expired;
+        }
+    }
+
+    private void RefreshSongDamage(RuleRuntime state, BuffRuleSettings rule, DateTime timestamp)
+    {
+        if (!state.Instances.TryGetValue(SelfTargetKey, out var instance)) return;
+        instance.StartedAt = timestamp;
+        instance.ExpiresAt = timestamp.AddSeconds(SongDurationSeconds(rule));
+        instance.LastLandPulseAt = timestamp;
+        state.StopReason = BuffStopReason.None;
+        ClearPendingCast(state);
+    }
+
+    private void ActivateSongDamage(RuleRuntime state, BuffRuleSettings rule, DateTime timestamp)
+    {
+        ClearOtherTimedDamageSongInstances(rule.Id);
+        ClearPendingCast(state);
+        Activate(state, rule, SelfTargetKey, "Self", true, timestamp, clearsOnTargetDeath: false);
+    }
+
+    private int CountEnabledTimedSongRules() =>
+        _rules.Values.Count(rule => rule.IsEnabled && IsTimedDamageSong(rule));
+
+    private bool ConfirmSongDamageFromOwnedHit(DateTime timestamp, string message)
+    {
+        if (!message.Contains(" damage by ", StringComparison.OrdinalIgnoreCase)) return false;
+        var match = NamedSpellHit.Match(message);
+        if (!match.Success || !IsLocalHitSource(match.Groups["source"].Value)) return false;
+
+        var ability = match.Groups["ability"].Value.Trim();
+        if (ability.Length == 0) return false;
+
+        var matched = false;
+        foreach (var rule in MatchingEnabledRules(ability).Where(IsTimedDamageSong))
+        {
+            ActivateSongDamage(_states[rule.Id], rule, timestamp);
+            matched = true;
+        }
+
+        return matched;
+    }
+
+    private bool AcceptsOwnSongLand(BuffRuleSettings rule, DateTime timestamp, string message)
+    {
+        var state = _states[rule.Id];
+        if (state.Instances.ContainsKey(SelfTargetKey)) return true;
+        if (IsPendingCast(rule, timestamp)) return true;
+        if (_ownSongLandWindowUntil is { } until && timestamp <= until) return true;
+        // Unique catalog land text (e.g. Anthem de Arms) needs no prior "Your song ends."
+        if (_isAmbiguousSelfAppliedMessage?.Invoke(message) == false) return true;
+        // Shared Selo-style text: accept when only one enabled song rule uses this line.
+        return CountEnabledSongRulesMatchingSelfMessage(message) == 1;
+    }
+
+    private int CountEnabledSongRulesMatchingSelfMessage(string message) =>
+        _rules.Values.Count(rule =>
+            rule.IsEnabled &&
+            rule.TrackingMode == BuffTrackingMode.Song &&
+            rule.Category == SpellTrackerCategory.Buff &&
+            rule.TrackSelf &&
+            _selfAppliedMessages.GetValueOrDefault(rule.Id)?.Contains(message) == true);
+
+    private BuffRuleSettings[] ResolveAmbiguousSongLand(IReadOnlyList<BuffRuleSettings> matches)
+    {
+        var withActive = matches.Where(rule => _states[rule.Id].Instances.ContainsKey(SelfTargetKey)).ToArray();
+        if (withActive.Length == 1) return withActive;
+        return matches.Count == 1 ? matches.ToArray() : [];
+    }
+
+    private bool IsPendingCast(BuffRuleSettings rule, DateTime timestamp)
+    {
+        var state = _states[rule.Id];
+        return state.PendingCastStartedAt is { } castStarted && timestamp >= castStarted &&
+               state.PendingStart is { } expected &&
+               timestamp <= (state.PendingConfirmationEndsAt ?? expected + ConfirmationGrace);
+    }
+
+    private void ExpireSelfBySpellName(string spell)
+    {
+        foreach (var rule in MatchingEnabledRules(spell))
+        {
+            var state = _states[rule.Id];
+            if (!state.Instances.ContainsKey(SelfTargetKey)) continue;
+            StopSelf(rule.Id, BuffStopReason.Expired, preserveNewerPending: true);
+        }
+    }
+
     private bool TryGetRecentSpellHit(string target, DateTime timestamp, out string source, out string ability)
     {
         source = string.Empty;
@@ -627,26 +940,37 @@ public sealed class BuffTracker
         var matched = false;
         foreach (var rule in MatchingEnabledRules(ability))
         {
+            if (IsTimedDamageSong(rule))
+            {
+                var state = _states[rule.Id];
+                if (state.Instances.ContainsKey(SelfTargetKey))
+                    RefreshSongDamage(state, rule, timestamp);
+                else
+                    ActivateSongDamage(state, rule, timestamp);
+                matched = true;
+                continue;
+            }
+
             if (!rule.TrackOthers || rule.Category != SpellTrackerCategory.DamageOverTime)
                 continue;
 
-            var state = _states[rule.Id];
-            if (FindTargetInstanceKey(state, target) is not null)
+            var dotState = _states[rule.Id];
+            if (FindTargetInstanceKey(dotState, target) is not null)
             {
                 matched = true;
                 continue;
             }
 
-            var isPending = state.PendingCastStartedAt is { } castStarted && timestamp >= castStarted &&
-                            state.PendingStart is { } expected &&
-                            timestamp <= (state.PendingConfirmationEndsAt ?? expected + ConfirmationGrace);
-            var startedAt = isPending ? state.PendingStart ?? timestamp : timestamp;
-            var targetKey = ResolveEnemyLandTargetKey(state, rule, target);
-            state.Instances.Remove(UnconfirmedTargetKey);
-            Activate(state, rule, targetKey, target, false, startedAt, clearPending: false,
+            var isPending = dotState.PendingCastStartedAt is { } castStarted && timestamp >= castStarted &&
+                            dotState.PendingStart is { } expected &&
+                            timestamp <= (dotState.PendingConfirmationEndsAt ?? expected + ConfirmationGrace);
+            var startedAt = isPending ? dotState.PendingStart ?? timestamp : timestamp;
+            var targetKey = ResolveEnemyLandTargetKey(dotState, rule, target);
+            dotState.Instances.Remove(UnconfirmedTargetKey);
+            Activate(dotState, rule, targetKey, target, false, startedAt, clearPending: false,
                 clearsOnTargetDeath: true);
             if (isPending)
-                NoteLandConfirmation(state, rule, timestamp);
+                NoteLandConfirmation(dotState, rule, timestamp);
             matched = true;
         }
 
@@ -731,6 +1055,10 @@ public sealed class BuffTracker
         }
     }
 
+    private static bool UsesTimedSongDuration(BuffRuleSettings rule) =>
+        rule.TrackingMode == BuffTrackingMode.Song &&
+        rule.Category == SpellTrackerCategory.DamageOverTime;
+
     private static void Activate(RuleRuntime state, BuffRuleSettings rule, string targetKey,
         string targetName, bool isSelf, DateTime startedAt, bool clearPending = true,
         bool clearsOnTargetDeath = true)
@@ -741,7 +1069,10 @@ public sealed class BuffTracker
             TargetName = targetName,
             IsSelf = isSelf,
             StartedAt = startedAt,
-            ExpiresAt = startedAt.AddSeconds(rule.DurationSeconds),
+            ExpiresAt = IsIndefiniteSong(rule) ? IndefiniteSongExpiresAt
+                : UsesTimedSongDuration(rule) ? startedAt.AddSeconds(SongDurationSeconds(rule))
+                : startedAt.AddSeconds(rule.DurationSeconds),
+            LastLandPulseAt = startedAt,
             ClearsOnTargetDeath = clearsOnTargetDeath
         };
         state.StopReason = BuffStopReason.None;
@@ -775,7 +1106,9 @@ public sealed class BuffTracker
     private void StopSelf(Guid ruleId, BuffStopReason reason, bool preserveNewerPending = false)
     {
         var state = _states[ruleId];
+        var hadSelf = state.Instances.ContainsKey(SelfTargetKey);
         if (preserveNewerPending &&
+            hadSelf &&
             state.Instances.TryGetValue(SelfTargetKey, out var self) &&
             state.PendingCastStartedAt is { } pending &&
             pending > self.StartedAt)
@@ -785,6 +1118,9 @@ public sealed class BuffTracker
         else ClearPendingCast(state);
         state.Instances.Remove(SelfTargetKey);
         state.StopReason = reason;
+        if (hadSelf && reason == BuffStopReason.Expired &&
+            _rules.TryGetValue(ruleId, out var rule) && IsIndefiniteSong(rule))
+            _queuedAlerts.Enqueue(new BuffExpirationAlert(rule, BuffAlertPhase.Expired));
     }
 
     private void StopAll(BuffStopReason reason)

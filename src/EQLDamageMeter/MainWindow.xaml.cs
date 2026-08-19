@@ -503,6 +503,12 @@ public partial class MainWindow : Window, IAsyncDisposable
 
     private void AddBuffRule_Click(object sender, RoutedEventArgs e) => _viewModel.AddBuffRule();
 
+    private void BuffTrackingMode_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_viewModel.SelectedBuffRule is not { SpellName.Length: > 0 } rule) return;
+        _viewModel.ValidateBuffSpell(rule);
+    }
+
     private async void DeleteBuffRule_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: BuffRuleViewModel rule }) return;

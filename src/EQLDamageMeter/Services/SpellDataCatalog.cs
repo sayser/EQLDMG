@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Windows.Media;
 using EQLDamageMeter.Models;
 
@@ -14,8 +15,39 @@ public sealed record SpellDataEntry(
     double CastTimeSeconds = 0,
     int DurationSeconds = 0,
     int DurationFormula = 0,
-    int DurationCap = 0)
+    int DurationCap = 0,
+    int SkillId = 0,
+    int BardLevel = 255,
+    bool HasCatalogFadeMessage = false)
 {
+    public bool IsBardSong =>
+        BardLevel > 0 && BardLevel <= SpellDataCatalog.MaxEqlBardSongLevel &&
+        (SpellDataCatalog.IsBardSongSkill(SkillId) ||
+         SpellDataCatalog.IsEqlBardSongSkill(SkillId) && SpellDataCatalog.LooksLikeBardSongName(Name));
+
+    /// <summary>
+    /// Classic bard direct-damage songs (AE) with a timed duration — tracked by mob land
+    /// or "damage by Your Song" log lines.
+    /// </summary>
+    public bool IsBardDamageSong =>
+        IsBardSong && OtherAppliedMessageSuffixes.Count > 0 &&
+        !SpellDataCatalog.LooksLikeBardBuffSongName(Name) &&
+        DurationSecondsFor(SpellDataCatalog.DefaultCasterLevel) > 0;
+
+    /// <summary>Instant AE songs (e.g. Brusco's Boastful Bellow) — not supported in the tracker.</summary>
+    public bool IsInstantBardDamageSong =>
+        IsBardSong && OtherAppliedMessageSuffixes.Count > 0 &&
+        !SpellDataCatalog.LooksLikeBardBuffSongName(Name) &&
+        DurationSecondsFor(SpellDataCatalog.DefaultCasterLevel) <= 0;
+
+    public bool IsTrackableBardSong => IsBardSong && !IsInstantBardDamageSong;
+
+    /// <summary>
+    /// Bard songs with no fade line in spells_us_str.txt — active while the land text
+    /// repeats in the log, stopped after it goes silent.
+    /// </summary>
+    public bool UsesLandPulseTracking => IsBardSong && !HasCatalogFadeMessage && !IsBardDamageSong;
+
     /// <summary>Duration in seconds for a caster of the given level (EQ tick formulas).</summary>
     public int DurationSecondsFor(int casterLevel) =>
         DurationFormula == 0 && DurationCap == 0
@@ -29,21 +61,51 @@ public sealed class SpellDataCatalog
     private const int CastTimeFieldIndex = 8;
     private const int DurationFormulaFieldIndex = 11;
     private const int DurationValueFieldIndex = 12;
+    private const int SkillFieldIndex = 100;
+    /// <summary>classes[7] in full EQEmu spells_us.txt — bard minimum level.</summary>
+    private const int BardLevelFieldIndex = 111;
+    /// <summary>EQL/LIVE truncated spells_us.txt stores casting skill here when field 100 is unused.</summary>
+    private const int EqlSkillFieldIndex = 30;
+    private const int EqlBardLevelFieldA = 107;
+    private const int EqlBardLevelFieldB = 108;
+    public const int MaxEqlBardSongLevel = 50;
+    private static readonly HashSet<int> EqlBardSongSkillIds =
+    [
+        2, 3, 4, 5, 6, 8, 33, 41, 42, 45
+    ];
+    private static readonly Regex BardSongNamePattern = new(
+        @"^(?:Song|Hymn|Chant|Anthem|Melody|Lyric|Lullaby|Aria|Psalm|Selo|Carol|Ballad|Harmony|Cantata|Serenade|" +
+        @"Sonata|Prelude|Requiem|Nocturne|Operetta|Warsong|Chorus|Crescendo|Virtuoso|Echo|McVaxius|Brusco|Largo|" +
+        @"Guardian|Elemental|Purifying|Agilmente|Shauri|Lyssa|Cassindra|Kelin|Alenia|Tarew|Denon|Niv'?s|" +
+        @"Breath of|Wind of|Call of|Whispers of|Crispin|Briar|Vilia|Aldor|Garnet|Kazumi|Silisia|Tuyen|Zuriki|" +
+        @"Jonth|Innoruuk|Veeshan|Trakanon|Combine|Vishrant|Armee|Arms|Travel|Sionachie|Kaficus|Accelerando|" +
+        @"Sonorous|Lucid|Lament|Aquatic|Disenchanting|Clouding|Binding|Warmth|Cooling|Vitality|Purity|Mystic|" +
+        @"Bellow|Boastful|Rhythms|Discord|Solidarity|Locating|Lugubrious|Melodic|Regen|Charming|Mesmer|Speed|" +
+        @"Haste|Selo|Jaxan|Jig|Dirge|Dance of|Composition|Ervaj|Shield of Songs|Nillipus|Spry Sonata|Warble|" +
+        @"Concordia|Katta|Symphony|Staccato|March of the Wee|Chords|Dissonance)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     /// <summary>Level used when seeding catalog durations (caps match high-level play).</summary>
     public const int DefaultCasterLevel = 60;
     private const int SecondsPerTick = 6;
 
     private readonly Dictionary<string, SpellDataEntry> _byName;
     private readonly HashSet<string> _ambiguousOtherSuffixes;
+    private readonly Dictionary<string, HashSet<string>> _selfAppliedMessageFamilies;
+    private readonly HashSet<string> _eqlBardSongFamilies;
+    private readonly HashSet<string> _trackableBardSongFamilies;
     private string[]? _familyNames;
     private SpellIconAtlas? _icons;
 
     private SpellDataCatalog(string sourceDirectory, Dictionary<string, SpellDataEntry> byName,
-        HashSet<string> ambiguousOtherSuffixes, SpellIconAtlas? icons)
+        HashSet<string> ambiguousOtherSuffixes, Dictionary<string, HashSet<string>> selfAppliedMessageFamilies,
+        HashSet<string> eqlBardSongFamilies, HashSet<string> trackableBardSongFamilies, SpellIconAtlas? icons)
     {
         SourceDirectory = sourceDirectory;
         _byName = byName;
         _ambiguousOtherSuffixes = ambiguousOtherSuffixes;
+        _selfAppliedMessageFamilies = selfAppliedMessageFamilies;
+        _eqlBardSongFamilies = eqlBardSongFamilies;
+        _trackableBardSongFamilies = trackableBardSongFamilies;
         _icons = icons;
     }
 
@@ -58,8 +120,143 @@ public sealed class SpellDataCatalog
     public bool IsAmbiguousOtherAppliedSuffix(string suffix) =>
         !string.IsNullOrWhiteSpace(suffix) && _ambiguousOtherSuffixes.Contains(suffix.Trim());
 
+    /// <summary>
+    /// True when the same self land line is shared by multiple spell families (common among Selo songs).
+    /// </summary>
+    public bool IsAmbiguousSelfAppliedMessage(string message) =>
+        !string.IsNullOrWhiteSpace(message) &&
+        _selfAppliedMessageFamilies.TryGetValue(message.Trim(), out var families) &&
+        families.Count > 1;
+
+    public bool IsEqlBardSongFamily(string spellOrFamilyName)
+    {
+        var family = SpellNameNormalizer.GetFamilyName(spellOrFamilyName);
+        return family.Length > 0 && _eqlBardSongFamilies.Contains(family);
+    }
+
+    public bool IsTrackableBardSong(string spellOrFamilyName) =>
+        TryResolveFamily(spellOrFamilyName, out var entry) && entry!.IsTrackableBardSong;
+
+    public bool UsesLandPulseTracking(string spellOrFamilyName) =>
+        TryResolveFamily(spellOrFamilyName, out var entry) && entry!.UsesLandPulseTracking;
+
+    public bool IsBardDamageSong(string spellOrFamilyName) =>
+        TryResolveFamily(spellOrFamilyName, out var entry) && entry!.IsBardDamageSong;
+
+    public bool MatchesTrackingMode(string spellOrFamilyName, BuffTrackingMode trackingMode)
+    {
+        if (!TryResolveFamily(spellOrFamilyName, out var entry) || entry is null) return false;
+        return trackingMode == BuffTrackingMode.Song
+            ? entry.IsTrackableBardSong
+            : !entry.IsBardSong;
+    }
+
+    public static bool IsBardSongSkill(int skillId) =>
+        skillId is >= 35 and <= 39;
+
+    public static bool IsEqlBardSongSkill(int skillId) =>
+        EqlBardSongSkillIds.Contains(skillId);
+
+    public static bool LooksLikeBardSongName(string spellName) =>
+        !string.IsNullOrWhiteSpace(spellName) &&
+        BardSongNamePattern.IsMatch(spellName.Trim());
+
+    /// <summary>Buff/heal twist songs — excluded from damage-song heuristics.</summary>
+    public static bool LooksLikeBardBuffSongName(string spellName)
+    {
+        if (string.IsNullOrWhiteSpace(spellName)) return false;
+        var name = spellName.Trim();
+        return name.Contains("Chant of Clarity", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("Chant of Flame", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("Replenishment", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("Accelerando", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("Anthem de Arms", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("Song of Sustenance", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("Jig o", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("Selo", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("Warsong of the Vah Shir", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("Composition of Ervaj", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static HashSet<string> BuildEqlBardSongFamilies(Dictionary<string, SpellDataEntry> entries)
+    {
+        var families = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries.Values)
+        {
+            if (!entry.IsBardSong) continue;
+            families.Add(SpellNameNormalizer.GetFamilyName(entry.Name));
+        }
+        return families;
+    }
+
+    private static HashSet<string> BuildTrackableBardSongFamilies(Dictionary<string, SpellDataEntry> entries)
+    {
+        var families = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries.Values)
+        {
+            if (!entry.IsTrackableBardSong) continue;
+            families.Add(SpellNameNormalizer.GetFamilyName(entry.Name));
+        }
+        return families;
+    }
+
+    internal static int ReadEqlBardLevel(IReadOnlyList<string> fields)
+    {
+        static int At(IReadOnlyList<string> row, int index) =>
+            int.TryParse(row.ElementAtOrDefault(index), NumberStyles.Integer, CultureInfo.InvariantCulture,
+                out var value)
+                ? value
+                : 0;
+
+        var a = At(fields, EqlBardLevelFieldA);
+        var b = At(fields, EqlBardLevelFieldB);
+        if (a is >= 1 and <= MaxEqlBardSongLevel && b is >= 1 and <= MaxEqlBardSongLevel)
+            return Math.Max(a, b);
+        if (a is >= 1 and <= MaxEqlBardSongLevel) return a;
+        if (b is >= 1 and <= MaxEqlBardSongLevel) return b;
+        var c = At(fields, BardLevelFieldIndex);
+        if (c is >= 1 and <= MaxEqlBardSongLevel) return c;
+        var skillAt30 = At(fields, EqlSkillFieldIndex);
+        var levelAt31 = At(fields, 31);
+        if (IsEqlBardSongSkill(skillAt30) && levelAt31 is >= 1 and <= MaxEqlBardSongLevel)
+            return levelAt31;
+        return 0;
+    }
+
+    private static (int SkillId, int BardLevel) ReadSkillAndBardLevel(string[] fields)
+    {
+        _ = int.TryParse(fields.ElementAtOrDefault(SkillFieldIndex), NumberStyles.Integer,
+            CultureInfo.InvariantCulture, out var skillAt100);
+        _ = int.TryParse(fields.ElementAtOrDefault(EqlSkillFieldIndex), NumberStyles.Integer,
+            CultureInfo.InvariantCulture, out var skillAt30);
+
+        int bardLevel;
+        if (IsBardSongSkill(skillAt100))
+            _ = int.TryParse(fields.ElementAtOrDefault(BardLevelFieldIndex), NumberStyles.Integer,
+                CultureInfo.InvariantCulture, out bardLevel);
+        else
+            bardLevel = ReadEqlBardLevel(fields);
+
+        var skillId = IsBardSongSkill(skillAt100) ? skillAt100 : skillAt30;
+        return (skillId, bardLevel);
+    }
+
+    /// <summary>Unranked bard song families learnable at or below <paramref name="maxBardLevel"/>.</summary>
+    public IReadOnlyList<SpellDataEntry> GetEqlBardSongFamilies(int maxBardLevel = MaxEqlBardSongLevel)
+    {
+        var results = new List<SpellDataEntry>();
+        foreach (var family in _eqlBardSongFamilies.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
+        {
+            if (!TryResolveFamily(family, out var entry) || entry is null) continue;
+            if (!entry.IsTrackableBardSong) continue;
+            if (entry.BardLevel > maxBardLevel) continue;
+            results.Add(entry);
+        }
+        return results;
+    }
+
     public bool TryFind(string spellName, out SpellDataEntry? entry) =>
-        _byName.TryGetValue(spellName.Trim(), out entry);
+        _byName.TryGetValue(SpellNameNormalizer.NormalizeEqName(spellName), out entry);
 
     /// <summary>
     /// Resolves a typed spell name to its unranked family entry. "Inner Fire",
@@ -69,7 +266,7 @@ public sealed class SpellDataCatalog
     public bool TryResolveFamily(string spellName, out SpellDataEntry? entry)
     {
         entry = null;
-        var trimmed = spellName.Trim();
+        var trimmed = SpellNameNormalizer.NormalizeEqName(spellName);
         if (trimmed.Length == 0) return false;
 
         var family = SpellNameNormalizer.GetFamilyName(trimmed);
@@ -127,12 +324,19 @@ public sealed class SpellDataCatalog
     /// Case-insensitive contains search over unranked family names for autocomplete.
     /// Starts-with matches are listed first.
     /// </summary>
-    public IReadOnlyList<string> FindMatches(string spellName, int limit = 40)
+    public IReadOnlyList<string> FindMatches(string spellName, int limit = 40,
+        BuffTrackingMode? trackingMode = null)
     {
-        var search = spellName.Trim();
+        var search = SpellNameNormalizer.NormalizeEqName(spellName);
         if (search.Length == 0 || limit <= 0) return [];
 
-        var families = GetFamilyNames();
+        IEnumerable<string> families = trackingMode switch
+        {
+            BuffTrackingMode.Song => _trackableBardSongFamilies,
+            BuffTrackingMode.Spell => GetFamilyNames().Where(name => !_eqlBardSongFamilies.Contains(name)),
+            _ => GetFamilyNames()
+        };
+
         var startsWith = new List<string>();
         var contains = new List<string>();
         foreach (var name in families)
@@ -225,9 +429,15 @@ public sealed class SpellDataCatalog
             .ToArray();
 
         var timing = ResolveFamilyTiming(members, familyName, preferredMemberName);
+        var skillId = members.Select(member => member.SkillId).FirstOrDefault(id => id > 0);
+        var bardLevel = members.Where(member => member.BardLevel is > 0 and <= 255)
+            .Select(member => member.BardLevel)
+            .DefaultIfEmpty(255)
+            .Min();
         return new SpellDataEntry(familyName, iconId, self, other, fades,
             timing.CastTimeSeconds, timing.DurationSecondsFor(DefaultCasterLevel),
-            timing.DurationFormula, timing.DurationCap);
+            timing.DurationFormula, timing.DurationCap, skillId, bardLevel,
+            members.Any(member => member.HasCatalogFadeMessage));
     }
 
     private static SpellDataEntry ResolveFamilyTiming(IReadOnlyList<SpellDataEntry> members,
@@ -267,14 +477,15 @@ public sealed class SpellDataCatalog
             var namesById = ReadSpellRecords(spellsPath);
             var messagesById = ReadSpellMessages(stringsPath);
             var names = new Dictionary<string, (string CanonicalName, int IconId, double CastTimeSeconds,
-                int DurationSeconds, int DurationFormula, int DurationCap, HashSet<string> SelfApplied,
+                int DurationSeconds, int DurationFormula, int DurationCap, int SkillId, int BardLevel,
+                bool HasCatalogFade, HashSet<string> SelfApplied,
                 HashSet<string> OtherApplied, HashSet<string> Fades)>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var (id, record) in namesById)
             {
                 if (!names.TryGetValue(record.Name, out var aggregate))
                     aggregate = (record.Name, record.IconId, record.CastTimeSeconds, record.DurationSeconds,
-                        record.DurationFormula, record.DurationCap,
+                        record.DurationFormula, record.DurationCap, record.SkillId, record.BardLevel, false,
                         new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                         new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                         new HashSet<string>(StringComparer.OrdinalIgnoreCase));
@@ -282,6 +493,12 @@ public sealed class SpellDataCatalog
                 {
                     if (aggregate.IconId <= 0 && record.IconId > 0)
                         aggregate = aggregate with { IconId = record.IconId };
+                    if (record.SkillId > 0 && aggregate.SkillId <= 0)
+                        aggregate = aggregate with { SkillId = record.SkillId };
+                    if (record.BardLevel is > 0 and <= MaxEqlBardSongLevel &&
+                        (aggregate.BardLevel is <= 0 or > MaxEqlBardSongLevel ||
+                         record.BardLevel < aggregate.BardLevel))
+                        aggregate = aggregate with { BardLevel = record.BardLevel };
                     if (record.DurationSeconds > aggregate.DurationSeconds)
                         aggregate = aggregate with
                         {
@@ -300,21 +517,29 @@ public sealed class SpellDataCatalog
                         aggregate.SelfApplied.Add(messages.SelfApplied.Trim());
                     if (!string.IsNullOrWhiteSpace(messages.OtherApplied))
                         aggregate.OtherApplied.Add(messages.OtherApplied.Trim());
-                    if (!string.IsNullOrWhiteSpace(messages.Fade)) aggregate.Fades.Add(messages.Fade.Trim());
+                    if (!string.IsNullOrWhiteSpace(messages.Fade))
+                    {
+                        aggregate.Fades.Add(messages.Fade.Trim());
+                        aggregate = aggregate with { HasCatalogFade = true };
+                    }
                 }
                 names[record.Name] = aggregate;
             }
 
-            var entries = names.ToDictionary(
+            var entries = EnrichMissingBardSongFades(names.ToDictionary(
                 pair => pair.Key,
                 pair => new SpellDataEntry(pair.Value.CanonicalName, pair.Value.IconId,
                     pair.Value.SelfApplied.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToArray(),
                     pair.Value.OtherApplied.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToArray(),
                     pair.Value.Fades.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToArray(),
                     pair.Value.CastTimeSeconds, pair.Value.DurationSeconds,
-                    pair.Value.DurationFormula, pair.Value.DurationCap),
-                StringComparer.OrdinalIgnoreCase);
+                    pair.Value.DurationFormula, pair.Value.DurationCap,
+                    pair.Value.SkillId, pair.Value.BardLevel, pair.Value.HasCatalogFade),
+                StringComparer.OrdinalIgnoreCase));
             return new SpellDataCatalog(installDirectory, entries, BuildAmbiguousOtherSuffixes(entries.Values),
+                BuildSelfAppliedMessageFamilies(entries.Values),
+                BuildEqlBardSongFamilies(entries),
+                BuildTrackableBardSongFamilies(entries),
                 SpellIconAtlas.TryCreate(installDirectory, iconStyle));
         }
         catch (IOException)
@@ -335,6 +560,29 @@ public sealed class SpellDataCatalog
         Directory.CreateDirectory(Path.GetDirectoryName(logsStub)!);
         if (!File.Exists(logsStub)) File.WriteAllText(logsStub, string.Empty);
         return TryLoadForLog(logsStub, iconStyle);
+    }
+
+    private static Dictionary<string, HashSet<string>> BuildSelfAppliedMessageFamilies(
+        IEnumerable<SpellDataEntry> entries)
+    {
+        var familiesByMessage = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries)
+        {
+            var family = SpellNameNormalizer.GetFamilyName(entry.Name);
+            foreach (var message in entry.SelfAppliedMessages)
+            {
+                if (string.IsNullOrWhiteSpace(message)) continue;
+                var key = message.Trim();
+                if (!familiesByMessage.TryGetValue(key, out var families))
+                {
+                    families = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    familiesByMessage[key] = families;
+                }
+                families.Add(family);
+            }
+        }
+
+        return familiesByMessage;
     }
 
     private static HashSet<string> BuildAmbiguousOtherSuffixes(IEnumerable<SpellDataEntry> entries)
@@ -362,18 +610,135 @@ public sealed class SpellDataCatalog
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// EQL spells_us_str.txt leaves fade empty for many classic bard songs. Infer stop lines from
+    /// related songs (same name prefix), thematic keywords, and shared land text.
+    /// </summary>
+    internal static Dictionary<string, SpellDataEntry> EnrichMissingBardSongFades(
+        Dictionary<string, SpellDataEntry> entries)
+    {
+        var fadesBySelfLand = BuildFadesBySelfLand(entries.Values);
+        var enriched = new Dictionary<string, SpellDataEntry>(entries, StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, entry) in entries)
+        {
+            if (!entry.IsBardSong || entry.FadeMessages.Count > 0) continue;
+
+            var inferred = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            inferred.UnionWith(InferFadesFromNamePrefix(entry.Name, entries.Values));
+            inferred.UnionWith(InferThematicFades(entry.Name));
+
+            if (inferred.Count == 0)
+            {
+                foreach (var self in entry.SelfAppliedMessages)
+                {
+                    if (string.IsNullOrWhiteSpace(self)) continue;
+                    if (fadesBySelfLand.TryGetValue(self.Trim(), out var shared))
+                        inferred.UnionWith(shared);
+                }
+            }
+
+            if (inferred.Count == 0) continue;
+            enriched[key] = entry with
+            {
+                FadeMessages = inferred.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToArray()
+            };
+        }
+
+        return enriched;
+    }
+
+    private static Dictionary<string, HashSet<string>> BuildFadesBySelfLand(IEnumerable<SpellDataEntry> entries)
+    {
+        var map = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries)
+        {
+            foreach (var self in entry.SelfAppliedMessages)
+            {
+                if (string.IsNullOrWhiteSpace(self)) continue;
+                foreach (var fade in entry.FadeMessages)
+                {
+                    if (string.IsNullOrWhiteSpace(fade)) continue;
+                    if (!map.TryGetValue(self.Trim(), out var fades))
+                    {
+                        fades = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        map[self.Trim()] = fades;
+                    }
+                    fades.Add(fade.Trim());
+                }
+            }
+        }
+
+        return map;
+    }
+
+    private static IEnumerable<string> InferFadesFromNamePrefix(string spellName,
+        IEnumerable<SpellDataEntry> entries)
+    {
+        var prefix = ExtractSongNamePrefix(spellName);
+        if (prefix is null) yield break;
+
+        foreach (var entry in entries)
+        {
+            if (!entry.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+            foreach (var fade in entry.FadeMessages)
+            {
+                if (!string.IsNullOrWhiteSpace(fade))
+                    yield return fade.Trim();
+            }
+        }
+    }
+
+    private static string? ExtractSongNamePrefix(string spellName)
+    {
+        var normalized = SpellNameNormalizer.NormalizeEqName(spellName);
+        var marker = normalized.IndexOf("'s ", StringComparison.OrdinalIgnoreCase);
+        if (marker > 0)
+            return normalized[..(marker + 3)];
+        return null;
+    }
+
+    private static IEnumerable<string> InferThematicFades(string spellName)
+    {
+        var name = SpellNameNormalizer.NormalizeEqName(spellName);
+        if (name.Contains("Clarity", StringComparison.OrdinalIgnoreCase))
+        {
+            yield return "Your clarity of mind fades.";
+            yield return "The clarity of mind fades.";
+        }
+
+        if (name.Contains("Replenish", StringComparison.OrdinalIgnoreCase))
+        {
+            yield return "The chorus of replenishment fades.";
+            yield return "The cantata of replenishment fades.";
+            yield return "The chorus of life fades.";
+            yield return "The replenishment of life fades.";
+        }
+
+        if (name.Contains("Vigor", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("Jig", StringComparison.OrdinalIgnoreCase))
+            yield return "You are no longer invigorated.";
+
+        if (name.Contains("Inspiration", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("Ervaj", StringComparison.OrdinalIgnoreCase))
+            yield return "The inspiration fades.";
+
+        if (name.Contains("Warsong", StringComparison.OrdinalIgnoreCase) &&
+            name.Contains("Vah Shir", StringComparison.OrdinalIgnoreCase))
+            yield return "The acceleration fades.";
+    }
+
     private static Dictionary<int, (string Name, int IconId, double CastTimeSeconds, int DurationSeconds,
-            int DurationFormula, int DurationCap)>
+            int DurationFormula, int DurationCap, int SkillId, int BardLevel)>
         ReadSpellRecords(string path)
     {
         var names = new Dictionary<int, (string Name, int IconId, double CastTimeSeconds, int DurationSeconds,
-            int DurationFormula, int DurationCap)>();
+            int DurationFormula, int DurationCap, int SkillId, int BardLevel)>();
         foreach (var line in File.ReadLines(path))
         {
             var fields = line.Split('^');
             if (fields.Length <= IconFieldIndex) continue;
             if (!int.TryParse(fields[0], NumberStyles.None, CultureInfo.InvariantCulture, out var id)) continue;
-            var name = fields[1].Trim();
+            var name = SpellNameNormalizer.NormalizeEqName(fields[1]);
             if (name.Length == 0) continue;
             _ = int.TryParse(fields[IconFieldIndex], NumberStyles.Integer, CultureInfo.InvariantCulture,
                 out var iconId);
@@ -383,8 +748,10 @@ public sealed class SpellDataCatalog
                 CultureInfo.InvariantCulture, out var durationFormula);
             _ = int.TryParse(fields[DurationValueFieldIndex], NumberStyles.Integer,
                 CultureInfo.InvariantCulture, out var durationValue);
+            var (skillId, bardLevel) = ReadSkillAndBardLevel(fields);
             names[id] = (name, iconId, CastTimeMsToSeconds(castMs),
-                DurationFieldsToSeconds(durationFormula, durationValue), durationFormula, durationValue);
+                DurationFieldsToSeconds(durationFormula, durationValue), durationFormula, durationValue,
+                skillId, bardLevel);
         }
         return names;
     }

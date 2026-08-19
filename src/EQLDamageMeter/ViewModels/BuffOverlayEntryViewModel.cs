@@ -8,6 +8,7 @@ public sealed class BuffOverlayEntryViewModel : ObservableObject
     private string _remainingText = string.Empty;
     private bool _isExpiringSoon;
     private bool _isOverdue;
+    private bool _showsPlayingLabel;
     private int _stackCount = 1;
 
     public BuffOverlayEntryViewModel(BuffInstanceSnapshot snapshot,
@@ -24,6 +25,7 @@ public sealed class BuffOverlayEntryViewModel : ObservableObject
         Category = category;
         ControlType = controlType;
         Icon = icon;
+        _showsPlayingLabel = snapshot.ShowsPlayingLabel;
         Update(snapshot, stackCount);
     }
 
@@ -35,6 +37,7 @@ public sealed class BuffOverlayEntryViewModel : ObservableObject
     public SpellTrackerCategory Category { get; }
     public ControlEffectType ControlType { get; }
     public ImageSource? Icon { get; }
+    public bool ShowsPlayingLabel => _showsPlayingLabel;
     public string EffectTypeLabel => Category switch
     {
         SpellTrackerCategory.DamageOverTime => "DoT",
@@ -43,12 +46,19 @@ public sealed class BuffOverlayEntryViewModel : ObservableObject
         _ => IsSelf ? "SELF" : "OTHER"
     };
     public string InstanceKey => $"{RuleId:N}|{RuntimeInstanceKey}";
-    public string TargetLabel => IsSelf ? "SELF" : $"OTHER  ·  {TargetName}";
+    public string TargetLabel => _showsPlayingLabel
+        ? string.Empty
+        : IsSelf ? "SELF" : $"OTHER  ·  {TargetName}";
+    public string CompactRightText => _showsPlayingLabel
+        ? "Playing"
+        : IsSelf ? "SELF" : TargetName;
     public int StackCount => _stackCount;
     public bool HasStackCount => _stackCount > 1;
     public string StackCountText => $"X{_stackCount}";
     public string OverlayTargetText => HasStackCount ? $"{TargetName}  {StackCountText}" : TargetName;
-    public string StatusText => IsOverdue ? "Past expected duration" : IsExpiringSoon ? "Expiring soon" : "Active";
+    public string StatusText => _showsPlayingLabel ? "Playing"
+        : IsOverdue ? "Past expected duration"
+        : IsExpiringSoon ? "Expiring soon" : "Active";
     public string RemainingText { get => _remainingText; private set => SetProperty(ref _remainingText, value); }
     public bool IsExpiringSoon
     {
@@ -69,9 +79,16 @@ public sealed class BuffOverlayEntryViewModel : ObservableObject
 
     public void Update(BuffInstanceSnapshot snapshot, int stackCount = 1)
     {
-        RemainingText = snapshot.IsOverdue ? $"+{FormatDuration(snapshot.Remaining)}" : FormatDuration(snapshot.Remaining);
+        _showsPlayingLabel = snapshot.ShowsPlayingLabel;
+        RaisePropertyChanged(nameof(ShowsPlayingLabel));
+        RaisePropertyChanged(nameof(TargetLabel));
+        RaisePropertyChanged(nameof(CompactRightText));
+        RemainingText = _showsPlayingLabel
+            ? string.Empty
+            : snapshot.IsOverdue ? $"+{FormatDuration(snapshot.Remaining)}" : FormatDuration(snapshot.Remaining);
         IsExpiringSoon = snapshot.IsExpiringSoon;
         IsOverdue = snapshot.IsOverdue;
+        RaisePropertyChanged(nameof(StatusText));
         var count = Math.Max(1, stackCount);
         if (!SetProperty(ref _stackCount, count, nameof(StackCount))) return;
         RaisePropertyChanged(nameof(HasStackCount));

@@ -120,6 +120,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ICollectionView BuffRulesView { get; }
     public IReadOnlyList<BuffAlertMode> BuffAlertModes { get; } = BuffAlertModeOptions.ExclusiveChoices;
     public IReadOnlyList<BuffSoundKind> BuffSoundChoices { get; } = Enum.GetValues<BuffSoundKind>();
+    public IReadOnlyList<BuffTrackingMode> BuffTrackingModes { get; } = Enum.GetValues<BuffTrackingMode>();
     public SpellRuleSetViewModel DotSpellTracker { get; }
     public SpellRuleSetViewModel ControlSpellTracker { get; }
     public SpellRuleSetViewModel HostileSpellTracker { get; }
@@ -368,7 +369,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     var displayName = string.IsNullOrWhiteSpace(rule.SpellName) ? "New buff" : rule.SpellName;
                     return $"{displayName}: {error}";
                 }
-                if (!TryResolveSpell(rule.SpellName, out var spell, out error))
+                if (!TryResolveSpell(rule.SpellName, rule.TrackingMode, out var spell, out error))
                 {
                     SelectedBuffRule = rule;
                     rule.SetSpellValidation(error);
@@ -387,7 +388,24 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     var displayName = string.IsNullOrWhiteSpace(rule.SpellName) ? "New buff" : rule.SpellName;
                     return $"{displayName}: {error}";
                 }
-                settings.Add(configured! with { SpellName = spell.Name });
+                if (rule.TrackingMode == BuffTrackingMode.Song &&
+                    spell!.IsBardDamageSong &&
+                    configured!.DurationSeconds <= 0)
+                {
+                    SelectedBuffRule = rule;
+                    return
+                        $"{spell.Name}: Enter duration (m:ss) for the damage song active window (e.g. 0:12).";
+                }
+                if (rule.TrackingMode == BuffTrackingMode.Song &&
+                    !spell!.IsBardDamageSong &&
+                    _spellDataCatalog?.UsesLandPulseTracking(spell.Name) == true &&
+                    configured!.DurationSeconds <= 0)
+                {
+                    SelectedBuffRule = rule;
+                    return
+                        $"{spell.Name}: Enter land silence (m:ss) — how long to wait after the last land message before the expire alert.";
+                }
+                settings.Add(NormalizeBuffRuleSettings(configured! with { SpellName = spell.Name }));
             }
 
             var duplicate = settings.GroupBy(rule => SpellNameNormalizer.GetFamilyName(rule.SpellName),
@@ -397,7 +415,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
             _buffTracker.Configure(settings, ResolveFadeMessages, ResolveSelfAppliedMessages,
                 ResolveOtherAppliedMessages,
-                suffix => _spellDataCatalog?.IsAmbiguousOtherAppliedSuffix(suffix) == true);
+                suffix => _spellDataCatalog?.IsAmbiguousOtherAppliedSuffix(suffix) == true,
+                message => _spellDataCatalog?.IsAmbiguousSelfAppliedMessage(message) == true,
+                spell => _spellDataCatalog?.UsesLandPulseTracking(spell) == true,
+                spell => _spellDataCatalog?.IsBardDamageSong(spell) == true);
             RefreshBuffRuleIcons();
             RefreshOverlayEntries(DateTime.Now);
             BuffRulesView.Refresh();
@@ -427,7 +448,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             rule.SetSpellValidation("Enter a spell name.");
             return "Enter a spell name.";
         }
-        if (!TryResolveSpell(rule.SpellName, out var spell, out var error))
+        if (!TryResolveSpell(rule.SpellName, rule.TrackingMode, out var spell, out var error))
         {
             rule.SetSpellValidation(error);
             return error;
@@ -436,6 +457,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         rule.SpellName = spell!.Name;
         rule.SetSpellValidation(null);
         rule.SetIcon(_spellDataCatalog?.GetIcon(spell));
+        if (rule.TrackingMode == BuffTrackingMode.Song && spell!.IsBardDamageSong)
+        {
+            rule.Category = SpellTrackerCategory.DamageOverTime;
+            rule.TrackOthers = true;
+            if (spell.SelfAppliedMessages.Count > 0)
+                rule.TrackSelf = true;
+            rule.NotifyDamageSongLayout();
+        }
         rule.ApplyCatalogTimings(spell,
             force: string.IsNullOrWhiteSpace(previousFamily) ||
                    !previousFamily.Equals(spell.Name, StringComparison.OrdinalIgnoreCase),
@@ -446,7 +475,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public string? ResetSelectedBuffTimingsToCatalog()
     {
         if (SelectedBuffRule is null) return "Select a buff first.";
-        if (!TryResolveSpell(SelectedBuffRule.SpellName, out var spell, out var error))
+        if (!TryResolveSpell(SelectedBuffRule.SpellName, SelectedBuffRule.TrackingMode, out var spell, out var error))
         {
             SelectedBuffRule.SetSpellValidation(error);
             return error;
@@ -978,15 +1007,88 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void ApplyBuffConfiguration(bool pruneMissing = true)
     {
+        SyncDamageSongRulesFromCatalog();
         var settings = BuffRules.Select(rule => rule.TryCreateSettings(out var configured, out _)
-            ? configured
+            ? NormalizeBuffRuleSettings(configured!)
             : null).OfType<BuffRuleSettings>().ToArray();
         _buffTracker.Configure(settings, ResolveFadeMessages, ResolveSelfAppliedMessages,
             ResolveOtherAppliedMessages,
             suffix => _spellDataCatalog?.IsAmbiguousOtherAppliedSuffix(suffix) == true,
+            message => _spellDataCatalog?.IsAmbiguousSelfAppliedMessage(message) == true,
+            spell => _spellDataCatalog?.UsesLandPulseTracking(spell) == true,
+            spell => _spellDataCatalog?.IsBardDamageSong(spell) == true,
             pruneMissing: pruneMissing);
         RefreshBuffRuleIcons();
         RefreshOverlayEntries(DateTime.Now);
+    }
+
+    private void SyncDamageSongRulesFromCatalog()
+    {
+        if (_spellDataCatalog is null) return;
+        foreach (var rule in BuffRules)
+        {
+            if (rule.TrackingMode != BuffTrackingMode.Song) continue;
+            if (!_spellDataCatalog.TryResolveFamily(rule.SpellName, out var spell) || spell is null) continue;
+            if (spell.IsInstantBardDamageSong)
+            {
+                rule.IsEnabled = false;
+                rule.SetSpellValidation("Instant AE songs cannot be tracked (no duration).");
+                continue;
+            }
+            if (!spell.IsBardDamageSong) continue;
+            rule.Category = SpellTrackerCategory.DamageOverTime;
+            rule.TrackOthers = true;
+            if (spell.SelfAppliedMessages.Count > 0)
+                rule.TrackSelf = true;
+            var catalogDuration = spell.DurationSecondsFor(_characterLevel);
+            if (catalogDuration > 0 && (string.IsNullOrWhiteSpace(rule.DurationText) ||
+                                        rule.DurationText == BuffRuleViewModel.SongDurationPlaceholderText))
+                rule.DurationText = BuffRuleViewModel.FormatDurationStatic(TimeSpan.FromSeconds(catalogDuration));
+            rule.NotifyDamageSongLayout();
+        }
+    }
+
+    private BuffRuleSettings NormalizeBuffRuleSettings(BuffRuleSettings configured)
+    {
+        if (configured.TrackingMode == BuffTrackingMode.Song &&
+            configured.Category == SpellTrackerCategory.DamageOverTime)
+        {
+            var duration = configured.DurationSeconds;
+            if (_spellDataCatalog?.TryResolveFamily(configured.SpellName, out var dotSpell) == true &&
+                dotSpell is not null)
+            {
+                duration = duration > 0 ? duration : dotSpell.DurationSecondsFor(_characterLevel);
+                return configured with
+                {
+                    Category = SpellTrackerCategory.DamageOverTime,
+                    TrackOthers = true,
+                    TrackSelf = dotSpell.SelfAppliedMessages.Count > 0 || configured.TrackSelf,
+                    DurationSeconds = duration
+                };
+            }
+
+            return configured with
+            {
+                TrackOthers = true,
+                TrackSelf = true,
+                DurationSeconds = duration > 0 ? duration : configured.DurationSeconds
+            };
+        }
+
+        if (_spellDataCatalog?.TryResolveFamily(configured.SpellName, out var spell) != true || spell is null)
+            return configured;
+        if (configured.TrackingMode != BuffTrackingMode.Song || !spell.IsBardDamageSong)
+            return configured;
+        var resolvedDuration = configured.DurationSeconds > 0
+            ? configured.DurationSeconds
+            : spell.DurationSecondsFor(_characterLevel);
+        return configured with
+        {
+            Category = SpellTrackerCategory.DamageOverTime,
+            TrackOthers = true,
+            TrackSelf = spell.SelfAppliedMessages.Count > 0 || configured.TrackSelf,
+            DurationSeconds = resolvedDuration
+        };
     }
 
     private void RefreshBuffRuleIcons()
@@ -1009,10 +1111,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RefreshDisplay(force: true);
     }
 
-    private IReadOnlyList<string> ResolveFadeMessages(string spellName) =>
-        _spellDataCatalog is not null && _spellDataCatalog.TryResolveFamily(spellName, out var spell)
+    private IReadOnlyList<string> ResolveFadeMessages(string spellName)
+    {
+        if (_spellDataCatalog is null) return [];
+        if (_spellDataCatalog.UsesLandPulseTracking(spellName)) return [];
+        return _spellDataCatalog.TryResolveFamily(spellName, out var spell)
             ? spell!.FadeMessages
             : [];
+    }
 
     private IReadOnlyList<string> ResolveSelfAppliedMessages(string spellName) =>
         _spellDataCatalog is not null && _spellDataCatalog.TryResolveFamily(spellName, out var spell)
@@ -1024,7 +1130,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             ? spell!.OtherAppliedMessageSuffixes
             : [];
 
-    private bool TryResolveSpell(string spellName, out SpellDataEntry? spell, out string error)
+    private bool TryResolveSpell(string spellName, BuffTrackingMode trackingMode,
+        out SpellDataEntry? spell, out string error)
     {
         spell = null;
         if (_spellDataCatalog is null)
@@ -1032,14 +1139,32 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             error = "EverQuest Legends spell data is not available. Select the game's Logs folder and try again.";
             return false;
         }
-        if (_spellDataCatalog.TryResolveFamily(spellName, out spell))
+        if (!_spellDataCatalog.TryResolveFamily(spellName, out spell))
         {
-            error = string.Empty;
-            return true;
+            error = trackingMode == BuffTrackingMode.Song
+                ? "Bard song not found (level 50 and below)."
+                : "Spell not found.";
+            return false;
         }
 
-        error = "Spell not found";
-        return false;
+        if (trackingMode == BuffTrackingMode.Song && !spell!.IsTrackableBardSong)
+        {
+            error = spell.IsInstantBardDamageSong
+                ? "Instant damage songs (no duration) cannot be tracked — e.g. Brusco's Boastful Bellow."
+                : "Choose a bard song (level 50 or below). Regular spells use Spell tracking mode.";
+            spell = null;
+            return false;
+        }
+
+        if (trackingMode == BuffTrackingMode.Spell && spell!.IsBardSong)
+        {
+            error = "Bard songs use Song tracking mode. Switch mode or pick a non-song spell.";
+            spell = null;
+            return false;
+        }
+
+        error = string.Empty;
+        return true;
     }
 
     private void RefreshOverlayEntries(DateTime now)

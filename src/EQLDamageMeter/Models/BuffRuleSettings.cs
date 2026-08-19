@@ -91,6 +91,15 @@ public enum SpellTimingSource
     Manual
 }
 
+/// <summary>
+/// Spells arm on cast lines; bard songs arm on self land and clear on fade, worn off, or twist.
+/// </summary>
+public enum BuffTrackingMode
+{
+    Spell,
+    Song
+}
+
 public sealed record BuffRuleSettings(
     Guid Id,
     string SpellName,
@@ -116,7 +125,8 @@ public sealed record BuffRuleSettings(
     /// <summary>Hostile only: Sound or TTS for the land alert. Defaults to Sound.</summary>
     BuffAlertMode? LandAlertMode = null,
     /// <summary>Hostile only: spoken text when land alert uses TTS.</summary>
-    string? LandVoiceText = null);
+    string? LandVoiceText = null,
+    BuffTrackingMode TrackingMode = BuffTrackingMode.Spell);
 
 public sealed record BuffRuntimeSnapshot(
     Guid RuleId,
@@ -148,4 +158,5 @@ public sealed record BuffInstanceSnapshot(
     DateTime ExpiresAt,
     TimeSpan Remaining,
     bool IsExpiringSoon,
-    bool IsOverdue);
+    bool IsOverdue,
+    bool ShowsPlayingLabel = false);

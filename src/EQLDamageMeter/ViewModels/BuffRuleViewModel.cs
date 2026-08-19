@@ -8,6 +8,8 @@ namespace EQLDamageMeter.ViewModels;
 
 public sealed class BuffRuleViewModel : ObservableObject
 {
+    private const string SongDurationPlaceholder = "—";
+    internal const string SongDurationPlaceholderText = SongDurationPlaceholder;
     private string _spellName;
     private string _durationText;
     private string _castTimeText;
@@ -32,6 +34,7 @@ public sealed class BuffRuleViewModel : ObservableObject
     private ImageSource? _icon;
     private SpellTimingSource _castSource;
     private SpellTimingSource _durationSource;
+    private BuffTrackingMode _trackingMode;
     private bool _suppressManualMark;
 
     public BuffRuleViewModel(BuffRuleSettings settings)
@@ -59,6 +62,14 @@ public sealed class BuffRuleViewModel : ObservableObject
         _durationSource = settings.DurationSource == SpellTimingSource.Learned
             ? SpellTimingSource.Manual
             : settings.DurationSource;
+        _trackingMode = settings.TrackingMode;
+        if (_trackingMode == BuffTrackingMode.Song)
+        {
+            _trackSelf = true;
+            _trackOthers = false;
+            if (settings.DurationSeconds <= 0)
+                _durationText = string.Empty;
+        }
     }
 
     public Guid Id { get; }
@@ -83,6 +94,7 @@ public sealed class BuffRuleViewModel : ObservableObject
             if (!SetProperty(ref _durationText, value)) return;
             if (!_suppressManualMark) DurationSource = SpellTimingSource.Manual;
             RaisePropertyChanged(nameof(DurationSourceHint));
+            RaisePropertyChanged(nameof(DurationListText));
         }
     }
     public string CastTimeText
@@ -125,6 +137,45 @@ public sealed class BuffRuleViewModel : ObservableObject
         get => _showInOverlay;
         set => SetProperty(ref _showInOverlay, value);
     }
+    public BuffTrackingMode TrackingMode
+    {
+        get => _trackingMode;
+        set
+        {
+            if (!SetProperty(ref _trackingMode, value)) return;
+            if (value == BuffTrackingMode.Song)
+            {
+                TrackSelf = true;
+                TrackOthers = false;
+                CastTimeText = "0";
+            }
+            RaisePropertyChanged(nameof(TrackingModeSummary));
+            RaisePropertyChanged(nameof(TargetSummary));
+            RaisePropertyChanged(nameof(TrackOthersEnabled));
+            RaisePropertyChanged(nameof(ShowCastTime));
+            RaisePropertyChanged(nameof(ShowTrackTargets));
+            RaisePropertyChanged(nameof(DurationLabel));
+            RaisePropertyChanged(nameof(SongDurationHintVisibility));
+            RaisePropertyChanged(nameof(SongDurationHintText));
+            RaisePropertyChanged(nameof(DurationListText));
+        }
+    }
+    public bool TrackOthersEnabled =>
+        TrackingMode != BuffTrackingMode.Song || Category == SpellTrackerCategory.DamageOverTime;
+    public bool ShowCastTime => TrackingMode != BuffTrackingMode.Song;
+    public bool ShowTrackTargets => TrackingMode != BuffTrackingMode.Song;
+    public string DurationLabel => "Duration (m:ss)";
+    public Visibility SongDurationHintVisibility =>
+        TrackingMode == BuffTrackingMode.Song ? Visibility.Visible : Visibility.Collapsed;
+    public string SongDurationHintText =>
+        Category == SpellTrackerCategory.DamageOverTime
+            ? "Damage songs show in the overlay while active (mob land or self AE). Timer refreshes on each land."
+            : "For songs with no stop line in the log: expire alert fires after this long without another land message (e.g. 0:18). Songs with a fade line ignore this.";
+    public string DurationListText => DurationText;
+    public string TrackingModeSummary =>
+        TrackingMode == BuffTrackingMode.Song
+            ? "Song (land → fade or silence)"
+            : "Spell (cast land)";
     public bool TrackSelf
     {
         get => _trackSelf;
@@ -138,6 +189,7 @@ public sealed class BuffRuleViewModel : ObservableObject
         get => _trackOthers;
         set
         {
+            if (TrackingMode == BuffTrackingMode.Song && value) return;
             if (SetProperty(ref _trackOthers, value)) RaisePropertyChanged(nameof(TargetSummary));
         }
     }
@@ -259,6 +311,9 @@ public sealed class BuffRuleViewModel : ObservableObject
         SpellTrackerCategory.DamageOverTime => "Enemy targets",
         SpellTrackerCategory.Control => $"{ControlType} · Enemy targets",
         SpellTrackerCategory.Hostile => "On me",
+        _ when TrackingMode == BuffTrackingMode.Song && Category == SpellTrackerCategory.DamageOverTime =>
+            "Self · Damage song",
+        _ when TrackingMode == BuffTrackingMode.Song => "Self · Song",
         _ => (TrackSelf, TrackOthers) switch
         {
             (true, true) => "Self + Others",
@@ -269,6 +324,20 @@ public sealed class BuffRuleViewModel : ObservableObject
     };
 
     public void SetSpellValidation(string? error) => SpellValidationText = error ?? string.Empty;
+
+    public void NotifyDamageSongLayout()
+    {
+        RaisePropertyChanged(nameof(TrackOthersEnabled));
+        RaisePropertyChanged(nameof(SongDurationHintText));
+        RaisePropertyChanged(nameof(TargetSummary));
+    }
+
+    public void ApplySongDefaults()
+    {
+        TrackingMode = BuffTrackingMode.Song;
+        TrackSelf = true;
+        TrackOthers = false;
+    }
 
     public void ApplyCatalogTimings(SpellDataEntry spell, bool force = false,
         int casterLevel = SpellDataCatalog.DefaultCasterLevel)
@@ -286,7 +355,7 @@ public sealed class BuffRuleViewModel : ObservableObject
         _suppressManualMark = true;
         try
         {
-            if (fillCast && spell.CastTimeSeconds >= 0)
+            if (fillCast && TrackingMode != BuffTrackingMode.Song && spell.CastTimeSeconds >= 0)
             {
                 CastTimeText = spell.CastTimeSeconds.ToString("0.0#", CultureInfo.InvariantCulture);
                 CastSource = SpellTimingSource.Catalog;
@@ -311,19 +380,40 @@ public sealed class BuffRuleViewModel : ObservableObject
             error = "Enter a spell name.";
             return false;
         }
-        if (!TryParseDuration(DurationText, out var duration) || duration <= TimeSpan.Zero)
+        if (!TryParseDuration(DurationText, out var duration))
+        {
+            if (TrackingMode == BuffTrackingMode.Song)
+                duration = TimeSpan.Zero;
+            else
+            {
+                error = "Duration must use minutes:seconds or minutes.seconds, such as 9:06 or 9.06.";
+                return false;
+            }
+        }
+        else if (duration <= TimeSpan.Zero && TrackingMode != BuffTrackingMode.Song)
         {
             error = "Duration must use minutes:seconds or minutes.seconds, such as 9:06 or 9.06.";
             return false;
         }
-        if (!TrackSelf && !TrackOthers)
+        if (TrackingMode == BuffTrackingMode.Song)
+        {
+            TrackSelf = true;
+            if (Category == SpellTrackerCategory.DamageOverTime)
+                TrackOthers = true;
+            else
+                TrackOthers = false;
+        }
+        else if (!TrackSelf && !TrackOthers)
         {
             error = "Enable Self, Others, or both under Track Targets.";
             return false;
         }
         var normalizedCastTime = CastTimeText.Trim().Replace(':', '.');
-        if (!double.TryParse(normalizedCastTime, NumberStyles.Float, CultureInfo.InvariantCulture,
-                out var castTime) || castTime < 0 || castTime > 120)
+        double castTime;
+        if (TrackingMode == BuffTrackingMode.Song)
+            castTime = 0;
+        else if (!double.TryParse(normalizedCastTime, NumberStyles.Float, CultureInfo.InvariantCulture,
+                     out castTime) || castTime < 0 || castTime > 120)
         {
             error = "Cast time must be from 0 to 120 seconds; use either 3.4 or 3:4.";
             return false;
@@ -338,7 +428,8 @@ public sealed class BuffRuleViewModel : ObservableObject
             TrackOthers, Category, ControlType, CastSource, DurationSource, 0, 0, 0, 0,
             Category == SpellTrackerCategory.Hostile ? LandSound : null,
             Category == SpellTrackerCategory.Hostile ? BuffAlertModeOptions.Normalize(LandAlertMode) : null,
-            Category == SpellTrackerCategory.Hostile ? landVoice : null);
+            Category == SpellTrackerCategory.Hostile ? landVoice : null,
+            TrackingMode);
         error = string.Empty;
         return true;
     }
@@ -365,8 +456,10 @@ public sealed class BuffRuleViewModel : ObservableObject
         }
         else if (snapshot.IsActive)
         {
-            RemainingText = FormatDuration(snapshot.Remaining);
-            StatusText = snapshot.IsExpiringSoon ? "Expiring soon" : "Active";
+            RemainingText = TrackingMode == BuffTrackingMode.Song ? "Playing" : FormatDuration(snapshot.Remaining);
+            StatusText = TrackingMode == BuffTrackingMode.Song
+                ? "Playing"
+                : snapshot.IsExpiringSoon ? "Expiring soon" : "Active";
         }
         else if (snapshot.IsExpired)
         {
@@ -401,6 +494,8 @@ public sealed class BuffRuleViewModel : ObservableObject
     private static bool TryParseDuration(string text, out TimeSpan duration)
     {
         duration = TimeSpan.Zero;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        if (text.Trim() == SongDurationPlaceholder) return false;
         var parts = text.Trim().Split([':', '.']);
         if (parts.Length == 2 && int.TryParse(parts[0], out var minutes) &&
             int.TryParse(parts[1], out var seconds) && minutes >= 0 && seconds is >= 0 and < 60)
@@ -417,6 +512,8 @@ public sealed class BuffRuleViewModel : ObservableObject
         }
         return false;
     }
+
+    public static string FormatDurationStatic(TimeSpan value) => FormatDuration(value);
 
     private static string FormatDuration(TimeSpan value)
     {

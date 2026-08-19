@@ -16,7 +16,7 @@ public static partial class SpellNameNormalizer
 
     public static string GetFamilyName(string spellName)
     {
-        var name = spellName.Trim();
+        var name = NormalizeEqName(spellName);
         if (name.Length == 0) return name;
 
         while (true)
@@ -30,4 +30,14 @@ public static partial class SpellNameNormalizer
 
     public static bool BelongsToFamily(string spellName, string familyOrSpellName) =>
         GetFamilyName(spellName).Equals(GetFamilyName(familyOrSpellName), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>EQL spell names use a backtick where players expect an apostrophe (Jaxan's Jig o` Vigor).</summary>
+    public static string NormalizeEqName(string spellName)
+    {
+        var name = spellName.Trim().Replace('`', '\'');
+        return OApostropheSpaceRegex().Replace(name, "o'");
+    }
+
+    [GeneratedRegex(@"\bo'\s+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex OApostropheSpaceRegex();
 }

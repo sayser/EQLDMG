@@ -1571,7 +1571,7 @@
                                             </StackPanel>
                                             <TextBlock Text="{Binding TargetSummary}" FontSize="9" Foreground="#66879D" />
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="{Binding DurationText}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2" Text="{Binding DurationListText}" HorizontalAlignment="Right" VerticalAlignment="Center" />
                                         <TextBlock Grid.Column="3" Text="{Binding CastTimeText, StringFormat={}{0} sec}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="#A9C3D3" />
                                         <TextBlock Grid.Column="4" Text="{Binding AlertSummary}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="#B9A7FF" TextTrimming="CharacterEllipsis" />
                                         <TextBlock Grid.Column="5" Text="{Binding StatusText}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10">
@@ -1638,6 +1638,7 @@
                                 <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
                             <StackPanel>
@@ -1658,9 +1659,10 @@
                                     <controls:SpellNameSearchBox VerticalAlignment="Center"
                                              Text="{Binding SelectedBuffRule.SpellName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                              Catalog="{Binding SpellCatalog}"
+                                             TrackingMode="{Binding SelectedBuffRule.TrackingMode}"
                                              Tag="{Binding SelectedBuffRule}"
                                              LostFocus="BuffSpellName_LostFocus"
-                                             ToolTip="Type to search spell names (not case sensitive). Names are checked against EverQuest Legends spell data." />
+                                             ToolTip="Song mode lists bard songs (level 50 and below). Spell mode lists all other spells." />
                                 </StackPanel>
                                 <TextBlock Text="{Binding SelectedBuffRule.SpellValidationText}" Foreground="#FF8B91"
                                            FontSize="10" Margin="0,4,0,0" TextWrapping="Wrap" />
@@ -1670,13 +1672,18 @@
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                 <StackPanel>
                                     <Grid Margin="0,0,0,5">
-                                        <TextBlock Text="Duration (m:ss)" Style="{StaticResource MetricLabel}" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding SelectedBuffRule.DurationLabel}" Style="{StaticResource MetricLabel}" VerticalAlignment="Center" />
                                         <TextBlock Text="{Binding SelectedBuffRule.DurationSourceHint}" Foreground="#7FA3B8"
                                                    FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center" />
                                     </Grid>
-                                    <TextBox Style="{StaticResource BuffInput}" Text="{Binding SelectedBuffRule.DurationText, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox Style="{StaticResource BuffInput}" MinHeight="32"
+                                             Text="{Binding SelectedBuffRule.DurationText, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Foreground="#7FA3B8" FontSize="10" TextWrapping="Wrap" Margin="0,4,0,0"
+                                               Text="{Binding SelectedBuffRule.SongDurationHintText}"
+                                               Visibility="{Binding SelectedBuffRule.SongDurationHintVisibility}" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="2">
+                                <StackPanel Grid.Column="2"
+                                            Visibility="{Binding SelectedBuffRule.ShowCastTime, Converter={StaticResource BooleanToVisibility}}">
                                     <Grid Margin="0,0,0,5">
                                         <TextBlock Text="Cast Time (seconds)" Style="{StaticResource MetricLabel}" VerticalAlignment="Center" />
                                         <TextBlock Text="{Binding SelectedBuffRule.CastSourceHint}" Foreground="#7FA3B8"
@@ -1689,7 +1696,17 @@
                                 </StackPanel>
                             </Grid>
 
-                            <Grid Grid.Row="3" Margin="0,14,0,0">
+                            <StackPanel Grid.Row="3" Margin="0,12,0,0">
+                                <TextBlock Text="Tracking Mode" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
+                                <ComboBox Style="{StaticResource BuffComboAlert}" ItemsSource="{Binding BuffTrackingModes}"
+                                          SelectedItem="{Binding SelectedBuffRule.TrackingMode, Mode=TwoWay}"
+                                          SelectionChanged="BuffTrackingMode_Changed"
+                                          ToolTip="Spells start on cast lines; bard songs start when your twist lands on you." />
+                                <TextBlock Text="{Binding SelectedBuffRule.TrackingModeSummary}" Foreground="#66879D"
+                                           FontSize="10" Margin="0,4,0,0" />
+                            </StackPanel>
+
+                            <Grid Grid.Row="4" Margin="0,14,0,0">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <StackPanel>
                                     <TextBlock Text="Track this buff" FontWeight="SemiBold" />
@@ -1700,7 +1717,7 @@
                                               Click="BuffRuleToggle_Click" />
                             </Grid>
 
-                            <Grid Grid.Row="4" Margin="0,12,0,0">
+                            <Grid Grid.Row="5" Margin="0,12,0,0">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <StackPanel>
                                     <TextBlock Text="Show in Buff Overlay" FontWeight="SemiBold" />
@@ -1711,7 +1728,8 @@
                                               Click="BuffRuleToggle_Click" />
                             </Grid>
 
-                            <Grid Grid.Row="5" Margin="0,14,0,0">
+                            <Grid Grid.Row="6" Margin="0,14,0,0"
+                                  Visibility="{Binding SelectedBuffRule.ShowTrackTargets, Converter={StaticResource BooleanToVisibility}}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="20" /><ColumnDefinition Width="Auto" />
@@ -1730,11 +1748,12 @@
                                     <TextBlock Text="Others" VerticalAlignment="Center" Margin="0,0,7,0" Foreground="#72B8FF" FontWeight="SemiBold" />
                                     <ToggleButton Style="{StaticResource BuffToggle}"
                                                   IsChecked="{Binding SelectedBuffRule.TrackOthers, Mode=TwoWay}"
+                                                  IsEnabled="{Binding SelectedBuffRule.TrackOthersEnabled}"
                                                   Click="BuffRuleToggle_Click" />
                                 </StackPanel>
                             </Grid>
 
-                            <Grid Grid.Row="6" Margin="0,14,0,0">
+                            <Grid Grid.Row="7" Margin="0,14,0,0">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                 <StackPanel>
                                     <TextBlock Text="Alert Type" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
@@ -1751,14 +1770,14 @@
                                 </StackPanel>
                             </Grid>
 
-                            <StackPanel Grid.Row="7" Margin="0,14,0,0"
+                            <StackPanel Grid.Row="8" Margin="0,14,0,0"
                                         Visibility="{Binding SelectedBuffRule.VoiceTextVisibility}">
                                 <TextBlock Text="Voice Text" Style="{StaticResource MetricLabel}" Margin="0,0,0,5" />
                                 <TextBox Style="{StaticResource BuffInput}" Text="{Binding SelectedBuffRule.VoiceText, UpdateSourceTrigger=PropertyChanged}"
                                          ToolTip="Custom text spoken when this alert fires. Leave blank for the default phrase." />
                             </StackPanel>
 
-                            <Border Grid.Row="8" Style="{StaticResource InnerCard}" Margin="0,14,0,0" Padding="10,8">
+                            <Border Grid.Row="9" Style="{StaticResource InnerCard}" Margin="0,14,0,0" Padding="10,8">
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                     <StackPanel>
@@ -1770,7 +1789,7 @@
                                 </Grid>
                             </Border>
 
-                            <Grid Grid.Row="9" Margin="0,16,0,0">
+                            <Grid Grid.Row="10" Margin="0,16,0,0">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="8" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                 <Button Content="Test Alert" Click="TestBuffAlert_Click" />
                                 <Button Grid.Column="2" Content="Save Buff" Background="#684CC0" BorderBrush="#A98BFF" Click="SaveBuffRules_Click" />

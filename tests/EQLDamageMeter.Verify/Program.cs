@@ -29,20 +29,21 @@ internal static class Program
             _failed = 0;
             Failures.Clear();
 
-            RunSpellNameTests();
-            RunLogParserTests();
-            RunGroupAndEncounterTests();
-            RunBuffTrackerTests();
-            RunSmartTimingTests();
-            RunSessionAndLootTests();
-            RunLatestKillVsHistoryTests();
-            RunQuestSkyStoreTests();
-            RunSkyCatalogParserTests();
-            RunAppPathsAndGuardTests();
-            RunSpellTrackerStoreTests();
-            RunAlertModeTests();
-            RunBisScoringTests();
-            RunEqWikiItemSourceTests();
+            RunSection("SpellName", RunSpellNameTests);
+            RunSection("LogParser", RunLogParserTests);
+            RunSection("GroupEncounter", RunGroupAndEncounterTests);
+            RunSection("BuffTracker", RunBuffTrackerTests);
+            RunSection("SpellCatalog", RunSpellCatalogBardSongTests);
+            RunSection("SmartTiming", RunSmartTimingTests);
+            RunSection("SessionLoot", RunSessionAndLootTests);
+            RunSection("LatestKill", RunLatestKillVsHistoryTests);
+            RunSection("QuestSkyStore", RunQuestSkyStoreTests);
+            RunSection("SkyCatalog", RunSkyCatalogParserTests);
+            RunSection("AppPaths", RunAppPathsAndGuardTests);
+            RunSection("SpellTrackerStore", RunSpellTrackerStoreTests);
+            RunSection("AlertMode", RunAlertModeTests);
+            RunSection("BisScoring", RunBisScoringTests);
+            RunSection("EqWiki", RunEqWikiItemSourceTests);
 
             Console.WriteLine($"Run {run}: passed={_passed} failed={_failed}");
             if (_failed > 0)
@@ -56,6 +57,13 @@ internal static class Program
 
         Console.WriteLine($"ALL {runs} RUNS PASSED");
         return 0;
+    }
+
+    private static void RunSection(string name, Action tests)
+    {
+        Console.WriteLine($"  .. {name}");
+        Console.Out.Flush();
+        tests();
     }
 
     private static void Check(string name, bool condition, string? detail = null)
@@ -745,7 +753,289 @@ internal static class Program
             hostileExpire.GetActiveSnapshots(t0.AddSeconds(2.3)).Count == 0);
         var durationSnap = hostileExpire.GetSnapshot(shortHostile.Id, t0.AddSeconds(2.3));
         Check("Hostile duration stop reason", durationSnap.StopReason == BuffStopReason.Expired);
+
+        var selo = SongRule("Selo's Accelerando", 180);
+        var seloTracker = new BuffTracker();
+        seloTracker.Configure([selo],
+            _ => ["You slow down."],
+            _ => ["Your feet move faster."],
+            _ => [" feels much faster."],
+            _ => true);
+        seloTracker.Observe(t0, "Your feet move faster.");
+        Check("Song starts on first self land", seloTracker.GetActiveSnapshots(t0.AddSeconds(0.1)).Count == 1);
+        seloTracker.Observe(t0.AddSeconds(1), "Your song ends.");
+        seloTracker.Observe(t0.AddSeconds(4), "Your feet move faster.");
+        Check("Song starts after own twist", seloTracker.GetActiveSnapshots(t0.AddSeconds(4.1)).Count == 1);
+        seloTracker.Observe(t0.AddSeconds(10), "Innoruuk`s Chosen feels much faster.");
+        Check("Song ignores group member land", seloTracker.GetActiveSnapshots(t0.AddSeconds(10.1)).Count == 1);
+        seloTracker.Observe(t0.AddSeconds(20), "Your Selo's Accelerando spell has worn off.");
+        Check("Song stops on self worn off", seloTracker.GetActiveSnapshots(t0.AddSeconds(20.1)).Count == 0);
+        seloTracker.Observe(t0.AddSeconds(21), "Your song ends.");
+        seloTracker.Observe(t0.AddSeconds(24), "Your feet move faster.");
+        seloTracker.Observe(t0.AddSeconds(50), "You slow down.");
+        Check("Song stops on fade", seloTracker.GetActiveSnapshots(t0.AddSeconds(50.1)).Count == 0);
+        seloTracker.Observe(t0.AddSeconds(51), "Your song ends.");
+        seloTracker.Observe(t0.AddSeconds(54), "Your feet move faster.");
+        var seloFirst = seloTracker.GetActiveSnapshots(t0.AddSeconds(54.1))[0].StartedAt;
+        seloTracker.Observe(t0.AddSeconds(120), "Your feet move faster.");
+        Check("Song refresh while active",
+            seloTracker.GetActiveSnapshots(t0.AddSeconds(120.1))[0].StartedAt > seloFirst);
+
+        seloTracker.Tick(t0.AddSeconds(199.9));
+        seloTracker.Observe(t0.AddSeconds(200), "Your song ends.");
+        Check("Twist end keeps active song buff",
+            seloTracker.GetActiveSnapshots(t0.AddSeconds(200.1)).Count == 1);
+        Check("Twist end does not alert",
+            seloTracker.Tick(t0.AddSeconds(200.2)).Count == 0);
+
+        var twistSelo = SongRule("Selo's Accelerando", 0);
+        var twistAnthem = SongRule("Anthem de Arms", 0);
+        var twistTracker = new BuffTracker();
+        twistTracker.Configure([twistSelo, twistAnthem],
+            spell => spell.Contains("Selo", StringComparison.OrdinalIgnoreCase)
+                ? (IReadOnlyList<string>)["You slow down."]
+                : ["Your surge of strength fades."],
+            spell => spell.Contains("Selo", StringComparison.OrdinalIgnoreCase)
+                ? ["Your feet move faster."]
+                : ["A burst of strength surges through your body."],
+            _ => [],
+            _ => false,
+            _ => false);
+        twistTracker.Observe(t0, "Your feet move faster.");
+        twistTracker.Observe(t0.AddSeconds(1), "Your song ends.");
+        twistTracker.Observe(t0.AddSeconds(3), "A burst of strength surges through your body.");
+        Check("Multiple twisted songs stay in overlay",
+            twistTracker.GetActiveSnapshots(t0.AddSeconds(3.1)).Count == 2);
+
+        seloTracker.Observe(t0.AddSeconds(210), "Your feet move faster.");
+        seloTracker.Tick(t0.AddSeconds(210.1));
+        seloTracker.Observe(t0.AddSeconds(220), "You slow down.");
+        Check("Song stops on fade after replay", seloTracker.GetActiveSnapshots(t0.AddSeconds(220.05)).Count == 0);
+        var songFadeAlerts = seloTracker.Tick(t0.AddSeconds(220.1));
+        Check("Song expire alert on fade",
+            songFadeAlerts.Count == 1 && songFadeAlerts[0].Phase == BuffAlertPhase.Expired);
+
+        var shortSong = SongRule("Anthem de Arms", 2);
+        var noTimerSong = new BuffTracker();
+        noTimerSong.Configure([shortSong],
+            _ => ["Your surge of strength fades."],
+            _ => ["A burst of strength surges through your body."],
+            _ => [],
+            _ => false,
+            _ => false);
+        noTimerSong.Observe(t0, "A burst of strength surges through your body.");
+        Check("Song ignores duration timer",
+            noTimerSong.GetActiveSnapshots(t0.AddSeconds(10)).Count == 1);
+
+        var anthem = SongRule("Anthem de Arms", 180);
+        var anthemTracker = new BuffTracker();
+        anthemTracker.Configure([anthem],
+            _ => ["Your surge of strength fades."],
+            _ => ["A burst of strength surges through your body."],
+            _ => [],
+            _ => false,
+            _ => false);
+        anthemTracker.Observe(t0, "A burst of strength surges through your body.");
+        Check("Unique song land starts without song ends",
+            anthemTracker.GetActiveSnapshots(t0.AddSeconds(0.1)).Count == 1);
+
+        var seloA = SongRule("Selo's Accelerando", 180);
+        var seloB = SongRule("Selo's Accelerating Chorus", 180);
+        var sharedSeloTracker = new BuffTracker();
+        sharedSeloTracker.Configure([seloA, seloB],
+            _ => ["You slow down."],
+            _ => ["Your feet move faster."],
+            _ => [" feels much faster."],
+            _ => true,
+            _ => true);
+        sharedSeloTracker.Observe(t0, "Your feet move faster.");
+        Check("Shared song land blocked without twist when multiple tracked",
+            sharedSeloTracker.GetActiveSnapshots(t0.AddSeconds(0.1)).Count == 0);
+        sharedSeloTracker.Observe(t0.AddSeconds(1), "Your song ends.");
+        sharedSeloTracker.Observe(t0.AddSeconds(3), "Your feet move faster.");
+        Check("Shared song land still ambiguous after twist when multiple tracked",
+            sharedSeloTracker.GetActiveSnapshots(t0.AddSeconds(3.1)).Count == 0);
+
+        var clarity = SongRule("Cassindra's Chant of Clarity", 18);
+        var clarityTracker = new BuffTracker();
+        clarityTracker.Configure([clarity],
+            _ => [],
+            _ => ["Your mind clears."],
+            _ => [],
+            _ => false,
+            _ => false,
+            _ => true);
+        clarityTracker.Observe(t0, "Your mind clears.");
+        clarityTracker.Observe(t0.AddSeconds(6), "Your mind clears.");
+        Check("Clarity pulse song stays active while land repeats",
+            clarityTracker.GetActiveSnapshots(t0.AddSeconds(6.1)).Count == 1);
+        var clarityStopAlerts = clarityTracker.Tick(t0.AddSeconds(24.2));
+        Check("Clarity pulse song stops after configured land silence",
+            clarityTracker.GetActiveSnapshots(t0.AddSeconds(24.2)).Count == 0);
+        Check("Clarity pulse stop alert", clarityStopAlerts.Count == 1);
+
+        var denon = DamageSongRule("Denon's Disruptive Discord", 12);
+        var denonTracker = new BuffTracker();
+        denonTracker.Configure([denon],
+            _ => [],
+            _ => ["Jagged notes tear through your body."],
+            _ => [" winces."],
+            _ => true,
+            _ => false,
+            _ => false,
+            _ => true);
+        denonTracker.Observe(t0, "Your song ends.");
+        denonTracker.Observe(t0.AddSeconds(1), "a rat winces.");
+        Check("Damage song starts on enemy land after twist",
+            denonTracker.GetActiveSnapshots(t0.AddSeconds(1.1)).Count == 1);
+        denonTracker.Observe(t0.AddSeconds(2),
+            "You hit a rat for 5 points of magic damage by Denon's Disruptive Discord.");
+        Check("Damage song starts on owned hit line",
+            denonTracker.GetActiveSnapshots(t0.AddSeconds(2.1)).Count == 1);
+        Check("Damage song clears after duration",
+            denonTracker.GetActiveSnapshots(t0.AddSeconds(14.2)).Count == 0);
+
+        var chords = DamageSongRule("Chords of Dissonance", 12);
+        var chordsTracker = new BuffTracker();
+        chordsTracker.Configure([chords],
+            _ => [],
+            _ => ["Jagged notes tear through your body."],
+            _ => [" winces."],
+            _ => true,
+            _ => false,
+            _ => false,
+            _ => true);
+        chordsTracker.Observe(t0, "You begin singing Chords of Dissonance.");
+        chordsTracker.Observe(t0.AddSeconds(3), "a rattlesnake winces.");
+        Check("Damage song starts on winces after begin singing",
+            chordsTracker.GetActiveSnapshots(t0.AddSeconds(3.1)).Count == 1 &&
+            chordsTracker.GetActiveSnapshots(t0.AddSeconds(3.1))[0].ShowsPlayingLabel);
+        chordsTracker.Observe(t0.AddSeconds(6),
+            "A rattlesnake has taken 7 damage from your Chords of Dissonance.");
+        Check("Damage song dot tick keeps overlay active",
+            chordsTracker.GetActiveSnapshots(t0.AddSeconds(6.1)).Count == 1);
+
+        var chordsRule = DamageSongRule("Chords of Dissonance", 12);
+        var denonRule = DamageSongRule("Denon's Disruptive Discord", 12);
+        var dualTracker = new BuffTracker();
+        dualTracker.Configure([chordsRule, denonRule],
+            _ => [],
+            _ => ["Jagged notes tear through your body."],
+            _ => [" winces."],
+            _ => true,
+            _ => false,
+            _ => false,
+            _ => true);
+        dualTracker.Observe(t0, "You begin singing Denon's Disruptive Discord.");
+        dualTracker.Observe(t0.AddSeconds(3), "a sand scarab winces.");
+        var dualSnap = dualTracker.GetActiveSnapshots(t0.AddSeconds(3.1));
+        Check("Shared winces only starts pending damage song",
+            dualSnap.Count == 1 &&
+            dualSnap[0].SpellName.Contains("Denon", StringComparison.OrdinalIgnoreCase));
+        dualTracker.Observe(t0.AddSeconds(4),
+            "A sand scarab has taken 9 damage from your Denon's Disruptive Discord.");
+        Check("Denon dot tick does not start Chords",
+            dualTracker.GetActiveSnapshots(t0.AddSeconds(4.1)).Count == 1 &&
+            !dualTracker.GetActiveSnapshots(t0.AddSeconds(4.1)).Any(item =>
+                item.SpellName.Contains("Chords", StringComparison.OrdinalIgnoreCase)));
+        dualTracker.Observe(t0.AddSeconds(20), "You begin singing Chords of Dissonance.");
+        dualTracker.Observe(t0.AddSeconds(23), "a sand scarab winces.");
+        var twisted = dualTracker.GetActiveSnapshots(t0.AddSeconds(23.1));
+        Check("Twist to Chords clears Denon and starts Chords only",
+            twisted.Count == 1 &&
+            twisted[0].SpellName.Contains("Chords", StringComparison.OrdinalIgnoreCase));
     }
+
+    private static void RunSpellCatalogBardSongTests()
+    {
+        var install = Path.Combine(Path.GetTempPath(), "eqdm-bard-catalog-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(install, "Logs"));
+        File.WriteAllText(Path.Combine(install, "Logs", "eqlog_Test_test.txt"), string.Empty);
+        File.WriteAllLines(Path.Combine(install, "spells_us.txt"),
+        [
+            MakeEqlSpellLine(2602, "Song of Sustenance", 3000, 6, 15, 345, eqlSkill: 41, bard107: 6, bard108: 15),
+            MakeEqlSpellLine(717, "Selo's Accelerando", 3000, 5, 2, 100, eqlSkill: 35, bard107: 0, bard108: 24),
+            MakeEqlSpellLine(718, "Selo's Accelerating Chorus", 3000, 5, 2, 100, eqlSkill: 35, bard107: 0, bard108: 30),
+            MakeSpellLine(120, "Minor Healing", 1500, 0, 0, 1, skill: 0, bardLevel: 255)
+        ]);
+        File.WriteAllLines(Path.Combine(install, "spells_us_str.txt"),
+        [
+            "717^717^717^Your feet move faster.^ feels much faster.^You slow down.",
+            "718^718^718^Your feet move faster.^ feels much faster.^You slow down.",
+            "120^120^120^You feel better.^ looks better.^"
+        ]);
+
+        var catalog = SpellDataCatalog.TryLoadFromInstallDirectory(install);
+        Check("Bard catalog loads", catalog is not null);
+        Check("Selo is bard song",
+            catalog!.TryFind("Song of Sustenance", out var selo) && selo!.IsBardSong);
+        Check("Sustenance bard level", selo!.BardLevel == 15);
+        Check("Sustenance name pattern", SpellDataCatalog.LooksLikeBardSongName("Song of Sustenance"));
+        Check("Healing is not bard song",
+            catalog.TryFind("Minor Healing", out var heal) && heal is not null && !heal.IsBardSong);
+        Check("EQL bard song list",
+            catalog.GetEqlBardSongFamilies().Any(entry => entry.Name == "Song of Sustenance"));
+        Check("Song mode match filter",
+            catalog.FindMatches("Sustenance", trackingMode: BuffTrackingMode.Song)
+                .Any(name => name.Contains("Sustenance", StringComparison.OrdinalIgnoreCase)));
+        Check("Spell mode excludes bard songs",
+            !catalog.FindMatches("Selo", trackingMode: BuffTrackingMode.Spell)
+                .Any(name => name.Contains("Selo", StringComparison.OrdinalIgnoreCase)));
+        Check("Spell mode includes healing",
+            catalog.FindMatches("Minor", trackingMode: BuffTrackingMode.Spell)
+                .Any(name => name.Contains("Minor Healing", StringComparison.OrdinalIgnoreCase)));
+        Check("Shared self land flagged",
+            catalog.IsAmbiguousSelfAppliedMessage("Your feet move faster.") == true);
+
+        try { Directory.Delete(install, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+
+        const string eqlInstall =
+            @"C:\Users\Public\Daybreak Game Company\Installed Games\EverQuest Legends";
+        if (!Directory.Exists(eqlInstall)) return;
+        var live = SpellDataCatalog.TryLoadFromInstallDirectory(eqlInstall);
+        Check("EQL install catalog loads", live is not null);
+        Check("EQL Song of Sustenance is bard song",
+            live!.TryResolveFamily("Song of Sustenance", out var sustenance) && sustenance!.IsBardSong);
+        Check("EQL sustenance song autocomplete",
+            live.FindMatches("Susten", trackingMode: BuffTrackingMode.Song)
+                .Any(name => name.Contains("Sustenance", StringComparison.OrdinalIgnoreCase)));
+        Check("EQL shared selo land flagged",
+            live.IsAmbiguousSelfAppliedMessage("Your feet move faster.") == true);
+        Check("EQL anthem land unique",
+            live.IsAmbiguousSelfAppliedMessage("A burst of strength surges through your body.") == false);
+        Check("EQL Jaxan resolves with apostrophe",
+            live.TryResolveFamily("Jaxan's Jig o'Vigor", out var jaxan) && jaxan!.IsBardSong);
+        Check("EQL Jaxan autocomplete",
+            live.FindMatches("Jaxan", trackingMode: BuffTrackingMode.Song)
+                .Any(name => name.Contains("Jig", StringComparison.OrdinalIgnoreCase)));
+        Check("EQL Jaxan fade message",
+            live.TryResolveFamily("Jaxan's Jig o'Vigor", out jaxan) &&
+            jaxan!.FadeMessages.Contains("You are no longer invigorated."));
+        Check("EQL Jaxan not pulse tracked",
+            live.TryResolveFamily("Jaxan's Jig o'Vigor", out jaxan) && !jaxan!.UsesLandPulseTracking);
+        Check("EQL Cassindra clarity is pulse tracked",
+            live.TryResolveFamily("Cassindra's Chant of Clarity", out var clarity) && clarity!.IsBardSong &&
+            clarity.UsesLandPulseTracking &&
+            clarity.SelfAppliedMessages.Contains("Your mind clears."));
+        Check("EQL Chords of Dissonance is bard damage song",
+            live.TryResolveFamily("Chords of Dissonance", out var chords) && chords!.IsBardSong &&
+            chords.IsBardDamageSong && chords.IsTrackableBardSong);
+        Check("EQL Brusco bellow is instant not trackable",
+            live.TryResolveFamily("Brusco's Boastful Bellow", out var brusco) && brusco!.IsBardSong &&
+            brusco.IsInstantBardDamageSong && !brusco.IsTrackableBardSong && !brusco.IsBardDamageSong);
+        Check("EQL Denon discord is bard damage song",
+            live.TryResolveFamily("Denon's Disruptive Discord", out var denon) && denon!.IsBardSong &&
+            denon.IsBardDamageSong && denon.IsTrackableBardSong && !denon.UsesLandPulseTracking);
+    }
+
+    private static BuffRuleSettings SongRule(string name, int duration, double cast = 3) =>
+        new(Guid.NewGuid(), name, duration, cast, true, true, BuffAlertMode.Sound, BuffSoundKind.Chime,
+            string.Empty, TrackSelf: true, TrackOthers: false, TrackingMode: BuffTrackingMode.Song);
+
+    private static BuffRuleSettings DamageSongRule(string name, int duration) =>
+        new(Guid.NewGuid(), name, duration, 0, true, true, BuffAlertMode.Sound, BuffSoundKind.Chime,
+            string.Empty, TrackSelf: true, TrackOthers: true, Category: SpellTrackerCategory.DamageOverTime,
+            TrackingMode: BuffTrackingMode.Song);
 
     private static void RunSessionAndLootTests()
     {
@@ -1642,9 +1932,27 @@ internal static class Program
     private static Dictionary<string, double> StatsAt(string baseStats, int tier) =>
         EqWikiItemUpgrade.ParseStatValues(EqWikiItemUpgrade.ApplyTier(baseStats, tier));
 
-    private static string MakeSpellLine(int id, string name, int castMs, int formula, int duration, int icon)
+    private static string MakeEqlSpellLine(int id, string name, int castMs, int formula, int duration, int icon,
+        int eqlSkill = 41, int bard107 = 0, int bard108 = 0)
     {
-        var fields = new string[76];
+        var fields = new string[112];
+        for (var index = 0; index < fields.Length; index++) fields[index] = string.Empty;
+        fields[0] = id.ToString(CultureInfo.InvariantCulture);
+        fields[1] = name;
+        fields[8] = castMs.ToString(CultureInfo.InvariantCulture);
+        fields[11] = formula.ToString(CultureInfo.InvariantCulture);
+        fields[12] = duration.ToString(CultureInfo.InvariantCulture);
+        fields[30] = eqlSkill.ToString(CultureInfo.InvariantCulture);
+        fields[75] = icon.ToString(CultureInfo.InvariantCulture);
+        fields[107] = bard107.ToString(CultureInfo.InvariantCulture);
+        fields[108] = bard108.ToString(CultureInfo.InvariantCulture);
+        return string.Join('^', fields);
+    }
+
+    private static string MakeSpellLine(int id, string name, int castMs, int formula, int duration, int icon,
+        int skill = 0, int bardLevel = 255)
+    {
+        var fields = new string[112];
         for (var index = 0; index < fields.Length; index++) fields[index] = string.Empty;
         fields[0] = id.ToString(CultureInfo.InvariantCulture);
         fields[1] = name;
@@ -1652,6 +1960,8 @@ internal static class Program
         fields[11] = formula.ToString(CultureInfo.InvariantCulture);
         fields[12] = duration.ToString(CultureInfo.InvariantCulture);
         fields[75] = icon.ToString(CultureInfo.InvariantCulture);
+        fields[100] = skill.ToString(CultureInfo.InvariantCulture);
+        fields[111] = bardLevel.ToString(CultureInfo.InvariantCulture);
         return string.Join('^', fields);
     }
 

@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using EQLDamageMeter.Models;
 using EQLDamageMeter.Services;
 using EQLDamageMeter.ViewModels;
 
@@ -17,6 +18,14 @@ public partial class SpellNameSearchBox : UserControl
 
     public static readonly DependencyProperty CatalogProperty = DependencyProperty.Register(
         nameof(Catalog), typeof(SpellDataCatalog), typeof(SpellNameSearchBox),
+        new PropertyMetadata(null));
+
+    public static readonly DependencyProperty TrackingModeProperty = DependencyProperty.Register(
+        nameof(TrackingMode), typeof(BuffTrackingMode?), typeof(SpellNameSearchBox),
+        new PropertyMetadata(null, OnTrackingModeChanged));
+
+    public static readonly DependencyProperty ExcludedNamesProperty = DependencyProperty.Register(
+        nameof(ExcludedNames), typeof(IEnumerable<string>), typeof(SpellNameSearchBox),
         new PropertyMetadata(null));
 
     private bool _updatingFromControl;
@@ -37,6 +46,26 @@ public partial class SpellNameSearchBox : UserControl
         set => SetValue(CatalogProperty, value);
     }
 
+    /// <summary>When set, autocomplete only lists names valid for this buff tracking mode.</summary>
+    public BuffTrackingMode? TrackingMode
+    {
+        get => (BuffTrackingMode?)GetValue(TrackingModeProperty);
+        set => SetValue(TrackingModeProperty, value);
+    }
+
+    /// <summary>Spell names already tracked elsewhere — omitted from autocomplete.</summary>
+    public IEnumerable<string>? ExcludedNames
+    {
+        get => (IEnumerable<string>?)GetValue(ExcludedNamesProperty);
+        set => SetValue(ExcludedNamesProperty, value);
+    }
+
+    private static void OnTrackingModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is SpellNameSearchBox control && control.InputBox.IsKeyboardFocused)
+            control.RefreshSuggestions();
+    }
+
     private static void OnTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var control = (SpellNameSearchBox)d;
@@ -52,6 +81,8 @@ public partial class SpellNameSearchBox : UserControl
         {
             control._updatingFromSource = false;
         }
+
+        control.CloseSuggestions();
     }
 
     private void InputBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -189,6 +220,12 @@ public partial class SpellNameSearchBox : UserControl
 
     private void RefreshSuggestions()
     {
+        if (!InputBox.IsKeyboardFocused)
+        {
+            CloseSuggestions();
+            return;
+        }
+
         var query = InputBox.Text ?? string.Empty;
         if (string.IsNullOrWhiteSpace(query))
         {
@@ -197,8 +234,19 @@ public partial class SpellNameSearchBox : UserControl
         }
 
         var catalog = ResolveCatalog();
-        var matches = catalog?.FindMatches(query) ?? [];
-        if (matches.Count == 0)
+        var trimmed = query.Trim();
+        var excluded = new HashSet<string>(ResolveExcludedNames(), StringComparer.OrdinalIgnoreCase);
+        var matches = catalog?.FindMatches(query, trackingMode: TrackingMode)
+            .Where(name => !excluded.Contains(name))
+            .Where(name => !name.Equals(trimmed, StringComparison.OrdinalIgnoreCase))
+            .ToArray() ?? [];
+        if (matches.Length == 0)
+        {
+            CloseSuggestions();
+            return;
+        }
+
+        if (catalog?.TryFind(trimmed, out _) == true)
         {
             CloseSuggestions();
             return;
@@ -207,6 +255,26 @@ public partial class SpellNameSearchBox : UserControl
         SuggestionList.ItemsSource = matches;
         SuggestionList.SelectedIndex = -1;
         SuggestionPopup.IsOpen = true;
+    }
+
+    private IEnumerable<string> ResolveExcludedNames()
+    {
+        if (ExcludedNames is not null)
+            return ExcludedNames.Where(name => !string.IsNullOrWhiteSpace(name)).Select(name => name.Trim());
+
+        if (DataContext is MainViewModel main)
+            return main.BuffRules
+                .Where(rule => !string.Equals(rule.SpellName, Text, StringComparison.OrdinalIgnoreCase))
+                .Select(rule => rule.SpellName)
+                .Where(name => !string.IsNullOrWhiteSpace(name));
+
+        if (Window.GetWindow(this)?.DataContext is MainViewModel windowMain)
+            return windowMain.BuffRules
+                .Where(rule => !string.Equals(rule.SpellName, Text, StringComparison.OrdinalIgnoreCase))
+                .Select(rule => rule.SpellName)
+                .Where(name => !string.IsNullOrWhiteSpace(name));
+
+        return [];
     }
 
     private SpellDataCatalog? ResolveCatalog()

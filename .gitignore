@@ -27,6 +27,7 @@ Diagnostics/
 # Local diagnostic / replay dumps
 live*.txt
 *_out.txt
+verify-err.txt
 audit*.txt
 tmp_*.cs
 
