@@ -8,6 +8,8 @@ namespace EQLDamageMeter.Services;
 
 public sealed class BuffAlertService
 {
+    public static int VolumePercent { get; set; } = 100;
+
     public void Play(BuffRuleSettings rule) =>
         _ = Task.Run(() => PlayCore(rule.AlertMode, rule.Sound, rule.VoiceText, rule.SpellName,
             defaultPhrase: $"{rule.SpellName} has expired"));
@@ -40,6 +42,10 @@ public sealed class BuffAlertService
 
     public void Test(BuffRuleSettings rule) => Play(rule);
 
+    public void TestVolume(int volumePercent) =>
+        _ = Task.Run(() => PlayCore(BuffAlertMode.Sound, BuffSoundKind.Chime, string.Empty, "Test",
+            defaultPhrase: "Alert volume test", volumePercent: Math.Clamp(volumePercent, 0, 100)));
+
     /// <summary>Plays land then expire alerts sequentially (Hostile test button).</summary>
     public void TestHostilePair(BuffRuleSettings rule) =>
         _ = Task.Run(() =>
@@ -63,26 +69,29 @@ public sealed class BuffAlertService
         });
 
     private static void PlayCore(BuffAlertMode mode, BuffSoundKind sound, string voiceText, string spellName,
-        string? defaultPhrase = null)
+        string? defaultPhrase = null, int? volumePercent = null)
     {
+        var volume = Math.Clamp(volumePercent ?? VolumePercent, 0, 100);
+        if (volume <= 0) return;
+
         try
         {
             mode = BuffAlertModeOptions.Normalize(mode);
             if (mode == BuffAlertMode.Sound)
             {
-                PlayBuiltInSound(sound);
+                PlayBuiltInSound(sound, volume);
                 return;
             }
 
             var spoken = string.IsNullOrWhiteSpace(voiceText)
                 ? (defaultPhrase ?? $"{spellName} has expired")
                 : voiceText.Trim();
-            if (!TrySpeak(spoken))
-                PlayBuiltInSound(sound);
+            if (!TrySpeak(spoken, volume))
+                PlayBuiltInSound(sound, volume);
         }
         catch (Exception)
         {
-            try { PlayBuiltInSound(sound); }
+            try { PlayBuiltInSound(sound, volume); }
             catch (Exception)
             {
                 // Alert playback is best-effort.
@@ -90,15 +99,15 @@ public sealed class BuffAlertService
         }
     }
 
-    private static void PlayBuiltInSound(BuffSoundKind kind)
+    private static void PlayBuiltInSound(BuffSoundKind kind, int volumePercent)
     {
-        using var stream = CreateWave(kind);
+        using var stream = CreateWave(kind, volumePercent);
         using var player = new SoundPlayer(stream);
         player.Load();
         player.PlaySync();
     }
 
-    private static MemoryStream CreateWave(BuffSoundKind kind)
+    private static MemoryStream CreateWave(BuffSoundKind kind, int volumePercent)
     {
         const int sampleRate = 22_050;
         var duration = kind switch
@@ -113,12 +122,13 @@ public sealed class BuffAlertService
         var sampleCount = (int)(sampleRate * duration);
         var samples = new short[sampleCount];
         var random = new Random(HashCode.Combine((int)kind, 17));
+        var amplitude = 0.55 * (Math.Clamp(volumePercent, 0, 100) / 100.0);
 
         for (var index = 0; index < sampleCount; index++)
         {
             var time = index / (double)sampleRate;
             var sample = RenderSample(kind, time, duration, random);
-            samples[index] = (short)(Math.Clamp(sample, -1, 1) * short.MaxValue * 0.55);
+            samples[index] = (short)(Math.Clamp(sample, -1, 1) * short.MaxValue * amplitude);
         }
 
         var stream = new MemoryStream(44 + samples.Length * sizeof(short));
@@ -253,7 +263,7 @@ public sealed class BuffAlertService
         return frequencies[slot];
     }
 
-    private static bool TrySpeak(string text)
+    private static bool TrySpeak(string text, int volumePercent)
     {
         object? voice = null;
         try
@@ -262,6 +272,8 @@ public sealed class BuffAlertService
             if (voiceType is null) return false;
             voice = Activator.CreateInstance(voiceType);
             if (voice is null) return false;
+            var volume = Math.Clamp(volumePercent, 0, 100);
+            voiceType.InvokeMember("Volume", BindingFlags.SetProperty, null, voice, [volume]);
             voiceType.InvokeMember("Speak", BindingFlags.InvokeMethod, null, voice, [text, 0]);
             return true;
         }

@@ -81,6 +81,14 @@ public partial class MainWindow : Window, IAsyncDisposable
         ApplyMouseHighlight();
     }
 
+    private async void AlertVolumeOptions_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new AlertVolumeSettingsWindow(BuffAlertService.VolumePercent) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        BuffAlertService.VolumePercent = dialog.ResultVolumePercent;
+        await AppSettingsStore.TrySaveAlertVolumePercentAsync(dialog.ResultVolumePercent);
+    }
+
     private void ApplyMouseHighlight()
     {
         // No Owner — owned windows hide when the main window minimizes.

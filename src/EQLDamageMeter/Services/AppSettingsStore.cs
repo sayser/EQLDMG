@@ -18,6 +18,7 @@ public static class AppSettingsStore
         public Dictionary<string, bool> OverlayLocked { get; set; } =
             new(StringComparer.OrdinalIgnoreCase);
         public MouseHighlightSettings MouseHighlight { get; set; } = new();
+        public int AlertVolumePercent { get; set; } = 100;
     }
 
     private static readonly string SettingsPath = AppPaths.Combine("settings.json");
@@ -134,6 +135,17 @@ public static class AppSettingsStore
             SecondDiameter = Math.Clamp(options.SecondDiameter <= 0 ? 84 : options.SecondDiameter, 20, 260)
         }, cancellationToken);
     }
+
+    public static int TryLoadAlertVolumePercent()
+    {
+        var volume = TryLoad()?.AlertVolumePercent ?? 100;
+        return Math.Clamp(volume, 0, 100);
+    }
+
+    public static Task<bool> TrySaveAlertVolumePercentAsync(int volumePercent,
+        CancellationToken cancellationToken = default) =>
+        UpdateAsync(settings => settings.AlertVolumePercent = Math.Clamp(volumePercent, 0, 100),
+            cancellationToken);
 
     /// <summary>
     /// Rewrites settings.json without legacy Buff/DoT/Control rule lists after those

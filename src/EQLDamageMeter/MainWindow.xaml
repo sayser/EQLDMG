@@ -656,6 +656,9 @@
                                             <MenuItem Header="Mouse Highlights…"
                                                       Click="MouseHighlightOptions_Click"
                                                       ToolTip="Show a colored ring around the mouse cursor" />
+                                            <MenuItem Header="Alert volume…"
+                                                      Click="AlertVolumeOptions_Click"
+                                                      ToolTip="Adjust volume for all alert sounds and text-to-speech" />
                                         </ContextMenu>
                                     </Button.ContextMenu>
                                 </Button>
