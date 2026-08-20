@@ -963,6 +963,26 @@ internal static class Program
         Check("Twist to Chords clears Denon and starts Chords only",
             twisted.Count == 1 &&
             twisted[0].SpellName.Contains("Chords", StringComparison.OrdinalIgnoreCase));
+
+        var solon = DamageSongRule("Solon's Song of the Sirens", 18) with { TrackSelf = false };
+        var solonTracker = new BuffTracker();
+        solonTracker.Configure([solon],
+            _ => ["You are no longer captivated."],
+            _ => ["You are captivated by the haunting tune."],
+            _ => ["'s eyes glaze over."],
+            suffix => suffix.Equals("'s eyes glaze over.", StringComparison.OrdinalIgnoreCase),
+            _ => false,
+            _ => false,
+            _ => true);
+        solonTracker.Observe(t0, "You begin singing Solon's Song of the Sirens.");
+        solonTracker.Observe(t0.AddSeconds(3.1), "a sand beetle's eyes glaze over.");
+        Check("Solon charm song starts after begin singing and mob land",
+            solonTracker.GetActiveSnapshots(t0.AddSeconds(3.2)).Count == 1 &&
+            solonTracker.GetActiveSnapshots(t0.AddSeconds(3.2))[0].SpellName.Contains("Solon",
+                StringComparison.OrdinalIgnoreCase));
+        solonTracker.Observe(t0.AddSeconds(4), "You are captivated by the haunting tune.");
+        Check("Solon charm song ignores self captivated land",
+            solonTracker.GetActiveSnapshots(t0.AddSeconds(4.1)).Count == 1);
     }
 
     private static void RunSpellCatalogBardSongTests()
@@ -1055,6 +1075,25 @@ internal static class Program
         Check("EQL Jonthan autocomplete",
             live.FindMatches("Jonthan", trackingMode: BuffTrackingMode.Song)
                 .Any(name => name.Contains("Whistling", StringComparison.OrdinalIgnoreCase)));
+        Check("EQL Solon sirens resolves",
+            live.TryResolveFamily("Solon's Song of the Sirens", out var solon) && solon is not null);
+        Check("EQL Solon sirens is bard song",
+            solon!.IsBardSong && solon.IsTrackableBardSong);
+        Check("EQL Solon sirens is charm not damage",
+            solon.IsBardCharmSong && !solon.IsBardDamageSong);
+        Check("EQL Solon sirens messages",
+            solon.SelfAppliedMessages.Contains("You are captivated by the haunting tune.") &&
+            solon.OtherAppliedMessageSuffixes.Any(value =>
+                value.Contains("eyes glaze over", StringComparison.OrdinalIgnoreCase)) &&
+            solon.FadeMessages.Contains("You are no longer captivated."));
+        Check("EQL Solon autocomplete in song mode",
+            live.FindMatches("Solon", trackingMode: BuffTrackingMode.Song)
+                .Any(name => name.Contains("Sirens", StringComparison.OrdinalIgnoreCase)) &&
+            !live.FindMatches("Solon", trackingMode: BuffTrackingMode.Spell)
+                .Any(name => name.Contains("Sirens", StringComparison.OrdinalIgnoreCase)));
+        Check("EQL Solon duration at 60",
+            live.TryResolveFamily("Solon's Song of the Sirens", out solon) &&
+            solon!.DurationSecondsFor(60) == 18);
     }
 
     private static BuffRuleSettings SongRule(string name, int duration, double cast = 3) =>

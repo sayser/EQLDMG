@@ -32,15 +32,21 @@ public sealed record SpellDataEntry(
     public bool IsBardDamageSong =>
         IsBardSong && OtherAppliedMessageSuffixes.Count > 0 &&
         !SpellDataCatalog.LooksLikeBardBuffSongName(Name) &&
+        !SpellDataCatalog.LooksLikeBardCharmSongName(Name) &&
         DurationSecondsFor(SpellDataCatalog.DefaultCasterLevel) > 0;
 
     /// <summary>Instant AE songs (e.g. Brusco's Boastful Bellow) — not supported in the tracker.</summary>
     public bool IsInstantBardDamageSong =>
         IsBardSong && OtherAppliedMessageSuffixes.Count > 0 &&
         !SpellDataCatalog.LooksLikeBardBuffSongName(Name) &&
+        !SpellDataCatalog.LooksLikeBardCharmSongName(Name) &&
         DurationSecondsFor(SpellDataCatalog.DefaultCasterLevel) <= 0;
 
     public bool IsTrackableBardSong => IsBardSong && !IsInstantBardDamageSong;
+
+    /// <summary>Classic bard charm songs — timed via mob land text, not damage ticks.</summary>
+    public bool IsBardCharmSong =>
+        IsBardSong && SpellDataCatalog.LooksLikeBardCharmSongName(Name) && !IsInstantBardDamageSong;
 
     /// <summary>
     /// Bard songs with no fade line in spells_us_str.txt — active while the land text
@@ -82,7 +88,7 @@ public sealed class SpellDataCatalog
         @"Sonorous|Lucid|Lament|Aquatic|Disenchanting|Clouding|Binding|Warmth|Cooling|Vitality|Purity|Mystic|" +
         @"Bellow|Boastful|Rhythms|Discord|Solidarity|Locating|Lugubrious|Melodic|Regen|Charming|Mesmer|Speed|" +
         @"Haste|Selo|Jaxan|Jig|Dirge|Dance of|Composition|Ervaj|Shield of Songs|Nillipus|Spry Sonata|Warble|" +
-        @"Concordia|Katta|Symphony|Staccato|March of the Wee|Chords|Dissonance)",
+        @"Concordia|Katta|Symphony|Staccato|March of the Wee|Chords|Dissonance|Solon|Sionachie)",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     /// <summary>Level used when seeding catalog durations (caps match high-level play).</summary>
     public const int DefaultCasterLevel = 60;
@@ -143,6 +149,12 @@ public sealed class SpellDataCatalog
     public bool IsBardDamageSong(string spellOrFamilyName) =>
         TryResolveFamily(spellOrFamilyName, out var entry) && entry!.IsBardDamageSong;
 
+    public bool IsBardCharmSong(string spellOrFamilyName) =>
+        TryResolveFamily(spellOrFamilyName, out var entry) && entry!.IsBardCharmSong;
+
+    public bool IsTimedEnemyLandSong(string spellOrFamilyName) =>
+        IsBardDamageSong(spellOrFamilyName) || IsBardCharmSong(spellOrFamilyName);
+
     public bool MatchesTrackingMode(string spellOrFamilyName, BuffTrackingMode trackingMode)
     {
         if (!TryResolveFamily(spellOrFamilyName, out var entry) || entry is null) return false;
@@ -178,6 +190,18 @@ public sealed class SpellDataCatalog
                name.Contains("Whistling Warsong", StringComparison.OrdinalIgnoreCase) ||
                name.StartsWith("Jonthan", StringComparison.OrdinalIgnoreCase) ||
                name.Contains("Composition of Ervaj", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Charm twist songs — mob land timers, not AE damage songs.</summary>
+    public static bool LooksLikeBardCharmSongName(string spellName)
+    {
+        if (string.IsNullOrWhiteSpace(spellName)) return false;
+        var name = spellName.Trim();
+        return name.StartsWith("Solon's", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("Song of the Sirens", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("Bewitching Bravura", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("Charismatic Concord", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("Sionachie's", StringComparison.OrdinalIgnoreCase);
     }
 
     private static HashSet<string> BuildEqlBardSongFamilies(Dictionary<string, SpellDataEntry> entries)

@@ -418,7 +418,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 suffix => _spellDataCatalog?.IsAmbiguousOtherAppliedSuffix(suffix) == true,
                 message => _spellDataCatalog?.IsAmbiguousSelfAppliedMessage(message) == true,
                 spell => _spellDataCatalog?.UsesLandPulseTracking(spell) == true,
-                spell => _spellDataCatalog?.IsBardDamageSong(spell) == true);
+                spell => _spellDataCatalog?.IsTimedEnemyLandSong(spell) == true);
             RefreshBuffRuleIcons();
             RefreshOverlayEntries(DateTime.Now);
             BuffRulesView.Refresh();
@@ -1016,7 +1016,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             suffix => _spellDataCatalog?.IsAmbiguousOtherAppliedSuffix(suffix) == true,
             message => _spellDataCatalog?.IsAmbiguousSelfAppliedMessage(message) == true,
             spell => _spellDataCatalog?.UsesLandPulseTracking(spell) == true,
-            spell => _spellDataCatalog?.IsBardDamageSong(spell) == true,
+            spell => _spellDataCatalog?.IsTimedEnemyLandSong(spell) == true,
             pruneMissing: pruneMissing);
         RefreshBuffRuleIcons();
         RefreshOverlayEntries(DateTime.Now);
@@ -1035,11 +1035,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 rule.SetSpellValidation("Instant AE songs cannot be tracked (no duration).");
                 continue;
             }
-            if (!spell.IsBardDamageSong) continue;
+            if (!spell.IsBardDamageSong && !spell.IsBardCharmSong) continue;
             rule.Category = SpellTrackerCategory.DamageOverTime;
             rule.TrackOthers = true;
-            if (spell.SelfAppliedMessages.Count > 0)
-                rule.TrackSelf = true;
+            rule.TrackSelf = spell.IsBardCharmSong ? false : spell.SelfAppliedMessages.Count > 0;
             var catalogDuration = spell.DurationSecondsFor(_characterLevel);
             if (catalogDuration > 0 && (string.IsNullOrWhiteSpace(rule.DurationText) ||
                                         rule.DurationText == BuffRuleViewModel.SongDurationPlaceholderText))
@@ -1062,7 +1061,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 {
                     Category = SpellTrackerCategory.DamageOverTime,
                     TrackOthers = true,
-                    TrackSelf = dotSpell.SelfAppliedMessages.Count > 0 || configured.TrackSelf,
+                    TrackSelf = dotSpell.IsBardCharmSong
+                        ? false
+                        : dotSpell.SelfAppliedMessages.Count > 0 || configured.TrackSelf,
                     DurationSeconds = duration
                 };
             }
@@ -1077,7 +1078,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         if (_spellDataCatalog?.TryResolveFamily(configured.SpellName, out var spell) != true || spell is null)
             return configured;
-        if (configured.TrackingMode != BuffTrackingMode.Song || !spell.IsBardDamageSong)
+        if (configured.TrackingMode != BuffTrackingMode.Song ||
+            (!spell.IsBardDamageSong && !spell.IsBardCharmSong))
             return configured;
         var resolvedDuration = configured.DurationSeconds > 0
             ? configured.DurationSeconds
@@ -1086,7 +1088,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             Category = SpellTrackerCategory.DamageOverTime,
             TrackOthers = true,
-            TrackSelf = spell.SelfAppliedMessages.Count > 0 || configured.TrackSelf,
+            TrackSelf = spell.IsBardCharmSong
+                ? false
+                : spell.SelfAppliedMessages.Count > 0 || configured.TrackSelf,
             DurationSeconds = resolvedDuration
         };
     }
