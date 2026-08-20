@@ -329,6 +329,21 @@ internal static class Program
         charmTracker.Observe(t0.AddSeconds(7), "You have entered Greater Faydark.");
         Check("Charm clears on zone", charmTracker.GetActiveSnapshots(t0.AddSeconds(7.1)).Count == 0);
 
+        // Shared "has been charmed." is ambiguous in live data — still keep only the latest charm.
+        var charmA = Rule("Allure", SpellTrackerCategory.Control, ControlEffectType.Charm, 210, 5);
+        var charmB = Rule("Beguile", SpellTrackerCategory.Control, ControlEffectType.Charm, 750, 5);
+        var charmRe = new BuffTracker();
+        charmRe.Configure([charmA, charmB], _ => [], _ => [], _ => [" has been charmed."], _ => true);
+        charmRe.Observe(t0, "You begin casting Allure.");
+        charmRe.Observe(t0.AddSeconds(5.1), "a wolf has been charmed.");
+        charmRe.Observe(t0.AddSeconds(20), "You begin casting Beguile.");
+        charmRe.Observe(t0.AddSeconds(25.1), "a bear has been charmed.");
+        var charmReSnap = charmRe.GetActiveSnapshots(t0.AddSeconds(25.2));
+        Check("Ambiguous recharm keeps only latest",
+            charmReSnap.Count == 1 &&
+            charmReSnap[0].TargetName.Equals("a bear", StringComparison.OrdinalIgnoreCase) &&
+            charmReSnap[0].SpellName == "Beguile");
+
         // Self buff survives zone
         var buff = Rule("Shield of Lava", SpellTrackerCategory.Buff, ControlEffectType.Other, 60, 2);
         buff = buff with { TrackSelf = true, TrackOthers = false };
@@ -507,6 +522,35 @@ internal static class Program
         Check("AE mez real worn-off alerts once each", aeBreakAlerts.Count == 2);
         Check("AE mez cleared after real worn-off",
             mezAeRemesTracker.GetActiveSnapshots(t0.AddSeconds(47.1)).Count == 0);
+
+        // Recast mez: only successful lands from the new cast remain (drop prior wave).
+        var mezWave = Rule("Mesmerization", SpellTrackerCategory.Control, ControlEffectType.Mez, 24, 3);
+        var mezWaveTracker = new BuffTracker();
+        mezWaveTracker.Configure([mezWave], _ => [], _ => [], _ => [" has been mesmerized."], _ => true);
+        mezWaveTracker.Observe(t0, "You begin casting Mesmerization.");
+        mezWaveTracker.Observe(t0.AddSeconds(3), "a kobold has been mesmerized.");
+        mezWaveTracker.Observe(t0.AddSeconds(3), "a goblin has been mesmerized.");
+        mezWaveTracker.Observe(t0.AddSeconds(3), "a rat has been mesmerized.");
+        mezWaveTracker.Observe(t0.AddSeconds(3), "a bat has been mesmerized.");
+        mezWaveTracker.Observe(t0.AddSeconds(3), "a snake has been mesmerized.");
+        Check("Mez first wave tracks all lands",
+            mezWaveTracker.GetActiveSnapshots(t0.AddSeconds(3.1)).Count == 5);
+        mezWaveTracker.Observe(t0.AddSeconds(10), "You begin casting Mesmerization.");
+        mezWaveTracker.Observe(t0.AddSeconds(13), "a kobold has been mesmerized.");
+        mezWaveTracker.Observe(t0.AddSeconds(13), "a goblin has been mesmerized.");
+        mezWaveTracker.Observe(t0.AddSeconds(13),
+            "Your Mesmerization spell has worn off of a kobold.");
+        mezWaveTracker.Observe(t0.AddSeconds(13),
+            "Your Mesmerization spell has worn off of a goblin.");
+        mezWaveTracker.Observe(t0.AddSeconds(13),
+            "Your Mesmerization spell has worn off of a rat.");
+        var waveSnap = mezWaveTracker.GetActiveSnapshots(t0.AddSeconds(13.1));
+        Check("Mez recast keeps only new successful lands",
+            waveSnap.Count == 2 &&
+            waveSnap.Any(s => s.TargetName.Equals("a kobold", StringComparison.OrdinalIgnoreCase)) &&
+            waveSnap.Any(s => s.TargetName.Equals("a goblin", StringComparison.OrdinalIgnoreCase)));
+        Check("Mez recast ignores stale overwrite worn-offs",
+            mezWaveTracker.Tick(t0.AddSeconds(13.1)).Count == 0);
 
         // Same-second AE land + break on one of two identical names still alerts (not overwrite).
         var mezEarly = Rule("Mesmerization", SpellTrackerCategory.Control, ControlEffectType.Mez, 24, 3);

@@ -51,6 +51,11 @@ public sealed class BuffTracker
         public DateTime? PendingStart { get; set; }
         public DateTime? PendingConfirmationEndsAt { get; set; }
         public bool PendingRequiresConfirmation { get; set; }
+        /// <summary>
+        /// True after this mez/root cast wave removed timers from a prior cast. Used so
+        /// EQ's overwrite worn-off lines do not clear the fresh land timers.
+        /// </summary>
+        public bool ReplacedPreviousWaveThisCast { get; set; }
         public BuffStopReason StopReason { get; set; }
         public Dictionary<string, List<string>> PendingTargetKeys { get; } =
             new(StringComparer.OrdinalIgnoreCase);
@@ -583,13 +588,9 @@ public sealed class BuffTracker
                 if (!AcceptsLandAttribution(rule, target, timestamp, requireAbilityMatch: false))
                     continue;
                 matched = true;
-                if (rule.Category == SpellTrackerCategory.Control && rule.ControlType == ControlEffectType.Charm)
-                {
-                    foreach (var charmRule in _rules.Values.Where(item =>
-                                 item.Category == SpellTrackerCategory.Control &&
-                                 item.ControlType == ControlEffectType.Charm))
-                        _states[charmRule.Id].Instances.Clear();
-                }
+                if (IsCharmControl(rule))
+                    ClearAllCharmInstances();
+                PrepareControlWaveLand(state, rule);
                 var targetKey = ResolveEnemyLandTargetKey(state, rule, target);
                 state.Instances.Remove(UnconfirmedTargetKey);
                 Activate(state, rule, targetKey, target, false, timestamp, clearPending: false,
@@ -657,6 +658,9 @@ public sealed class BuffTracker
         if (bestAmbiguousEnemy is not null && bestAmbiguousTarget is not null)
         {
             var state = _states[bestAmbiguousEnemy.Id];
+            if (IsCharmControl(bestAmbiguousEnemy))
+                ClearAllCharmInstances();
+            PrepareControlWaveLand(state, bestAmbiguousEnemy);
             var targetKey = ResolveEnemyLandTargetKey(state, bestAmbiguousEnemy, bestAmbiguousTarget);
             state.Instances.Remove(UnconfirmedTargetKey);
             Activate(state, bestAmbiguousEnemy, targetKey, bestAmbiguousTarget, false, timestamp,
@@ -1033,7 +1037,7 @@ public sealed class BuffTracker
             var key = FindTargetInstanceKey(state, target);
             if (key is null) continue;
             var removed = state.Instances[key];
-            state.Instances.Remove(key);
+            var normalized = target.Trim();
 
             // Remes/reroot overwrite: a newer land for the same name just stacked a
             // replacement timer. Drop the previous application without alerting.
@@ -1041,9 +1045,26 @@ public sealed class BuffTracker
             // (sibling StartedAt is not strictly greater).
             var isOverwrite = IsMezOrRoot(rule) &&
                 state.Instances.Values.Any(item =>
-                    item.TargetName.Equals(target.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                    item.TargetName.Equals(normalized, StringComparison.OrdinalIgnoreCase) &&
                     item.StartedAt > removed.StartedAt &&
                     timestamp - item.StartedAt <= ControlOverwriteGrace);
+
+            // Recast wave already dropped prior timers before the new lands. EQ still
+            // emits worn-off for the previous applications — ignore those so they do
+            // not clear the fresh wave (no sibling left to prove overwrite).
+            var isStaleWaveWornOff = !isOverwrite &&
+                IsMezOrRoot(rule) &&
+                state.ReplacedPreviousWaveThisCast &&
+                state.PendingCastStartedAt is { } castAt &&
+                removed.StartedAt >= castAt &&
+                timestamp - removed.StartedAt <= ControlOverwriteGrace &&
+                !state.Instances.Any(pair =>
+                    pair.Key != key &&
+                    pair.Value.TargetName.Equals(normalized, StringComparison.OrdinalIgnoreCase));
+            if (isStaleWaveWornOff)
+                continue;
+
+            state.Instances.Remove(key);
 
             if (!isOverwrite && rule.Category == SpellTrackerCategory.Control)
                 _queuedAlerts.Enqueue(new BuffExpirationAlert(rule));
@@ -1098,6 +1119,36 @@ public sealed class BuffTracker
         state.PendingTargetKeys.Clear();
         state.PendingTargetOccurrences.Clear();
         state.PendingRequiresConfirmation = false;
+        state.ReplacedPreviousWaveThisCast = false;
+    }
+
+    private static bool IsCharmControl(BuffRuleSettings rule) =>
+        rule.Category == SpellTrackerCategory.Control && rule.ControlType == ControlEffectType.Charm;
+
+    /// <summary>
+    /// Charm is always a single pet. Any successful charm land replaces all prior charm tracks.
+    /// </summary>
+    private void ClearAllCharmInstances()
+    {
+        foreach (var charmRule in _rules.Values.Where(IsCharmControl))
+            _states[charmRule.Id].Instances.Clear();
+    }
+
+    /// <summary>
+    /// Mez/Root recast: drop timers from earlier casts so only successful lands from the
+    /// current cast wave remain. Lands within the same AE burst keep stacking.
+    /// </summary>
+    private static void PrepareControlWaveLand(RuleRuntime state, BuffRuleSettings rule)
+    {
+        if (!IsMezOrRoot(rule) || state.PendingCastStartedAt is not { } castAt) return;
+        var stale = state.Instances
+            .Where(pair => pair.Value.StartedAt < castAt)
+            .Select(pair => pair.Key)
+            .ToArray();
+        if (stale.Length == 0) return;
+        foreach (var key in stale)
+            state.Instances.Remove(key);
+        state.ReplacedPreviousWaveThisCast = true;
     }
 
     private void StopSelf(Guid ruleId, BuffStopReason reason, bool preserveNewerPending = false)
