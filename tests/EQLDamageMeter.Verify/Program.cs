@@ -85,6 +85,9 @@ internal static class Program
         Check("Family plain", SpellNameNormalizer.GetFamilyName("Venom of the Snake") == "Venom of the Snake");
         Check("Belongs rank", SpellNameNormalizer.BelongsToFamily("Venom of the Snake III", "Venom of the Snake"));
         Check("Belongs mismatch", !SpellNameNormalizer.BelongsToFamily("Charm", "Mesmerize"));
+        Check("Item Benefit family",
+            SpellNameNormalizer.GetFamilyName("Item Benefit: Jonthan's Whistling Warsong") ==
+            "Jonthan's Whistling Warsong");
     }
 
     private static void RunLogParserTests()
@@ -839,6 +842,22 @@ internal static class Program
         Check("Unique song land starts without song ends",
             anthemTracker.GetActiveSnapshots(t0.AddSeconds(0.1)).Count == 1);
 
+        var warsong = SongRule("Jonthan's Whistling Warsong", 180);
+        var warsongTracker = new BuffTracker();
+        warsongTracker.Configure([warsong],
+            _ => ["You stop whistling."],
+            _ => ["You whistle an ancient warsong."],
+            _ => [],
+            _ => false,
+            _ => false);
+        warsongTracker.Observe(t0, "You begin singing Jonthan's Whistling Warsong.");
+        warsongTracker.Observe(t0.AddSeconds(1), "You whistle an ancient warsong.");
+        Check("Whistling warsong starts on land after begin singing",
+            warsongTracker.GetActiveSnapshots(t0.AddSeconds(1.1)).Count == 1);
+        warsongTracker.Observe(t0.AddSeconds(18), "You stop whistling.");
+        Check("Whistling warsong stops on fade",
+            warsongTracker.GetActiveSnapshots(t0.AddSeconds(18.1)).Count == 0);
+
         var seloA = SongRule("Selo's Accelerando", 180);
         var seloB = SongRule("Selo's Accelerating Chorus", 180);
         var sharedSeloTracker = new BuffTracker();
@@ -1026,6 +1045,16 @@ internal static class Program
         Check("EQL Denon discord is bard damage song",
             live.TryResolveFamily("Denon's Disruptive Discord", out var denon) && denon!.IsBardSong &&
             denon.IsBardDamageSong && denon.IsTrackableBardSong && !denon.UsesLandPulseTracking);
+        Check("EQL Jonthan warsong is trackable buff song",
+            live.TryResolveFamily("Jonthan's Whistling Warsong", out var warsong) && warsong!.IsBardSong &&
+            warsong.IsTrackableBardSong && !warsong.IsBardDamageSong &&
+            warsong.SelfAppliedMessages.Contains("You whistle an ancient warsong.") &&
+            warsong.FadeMessages.Contains("You stop whistling."));
+        Check("EQL Jonthan land not ambiguous",
+            live.IsAmbiguousSelfAppliedMessage("You whistle an ancient warsong.") == false);
+        Check("EQL Jonthan autocomplete",
+            live.FindMatches("Jonthan", trackingMode: BuffTrackingMode.Song)
+                .Any(name => name.Contains("Whistling", StringComparison.OrdinalIgnoreCase)));
     }
 
     private static BuffRuleSettings SongRule(string name, int duration, double cast = 3) =>
@@ -1919,6 +1948,86 @@ internal static class Program
         Check("Fishbone source", fishSrc.Display == "Qeynos Hills · Hadden", fishSrc.Display);
         Check("Wiki item link", EqWikiLinks.ForPage("Indicolite Helm").EndsWith("Indicolite_Helm", StringComparison.Ordinal));
         Check("Empty wikitext has no source", string.IsNullOrEmpty(EqWikiItemSource.Parse("").Display));
+
+        const string kejaar = """
+            Lore Equipped, No Trade
+            Slot: NECK
+            HP Regen: 2 Mana Regen: 2 End Regen: 2
+            WT: 0.1 Size: TINY
+            Class: ALL
+            Race: ALL
+            """;
+        var kejaar10 = EqWikiItemUpgrade.ApplyTier(kejaar, 10);
+        Check("Regen scales +1 per tier",
+            kejaar10.Contains("HP Regen: +12", StringComparison.OrdinalIgnoreCase) &&
+            kejaar10.Contains("Mana Regen: +12", StringComparison.OrdinalIgnoreCase) &&
+            kejaar10.Contains("End Regen: +12", StringComparison.OrdinalIgnoreCase),
+            kejaar10);
+        var kejaarStats = EqWikiItemUpgrade.ParseStatValues(kejaar10);
+        Check("Regen parse keys",
+            kejaarStats.GetValueOrDefault("HPREGEN") == 12 &&
+            kejaarStats.GetValueOrDefault("MANAREGEN") == 12);
+
+        const string jasinth = """
+            {{Spellpagesmart|
+            | spellname = Talisman of Jasinth
+            | description = Protects your group with the talisman of Jasinth, shielding them from disease for 36 min.
+            | classes =
+            * [[Shaman]] - Level 50
+            | slots =
+            {{SpellSlotRow | 1 | Increase Disease Resist by 45 }}
+            | skill = [[Skill Abjuration | Abjuration]]
+            | mana = 150
+            | range = 0
+            | casting_time = 4.50
+            | recast_time = 1.50
+            | duration = 36 minutes
+            | target_type = Group
+            | spell_type = Resist Buff
+            | resist = Unresistable
+            }}
+            """;
+        Check("Spell page parses", EqWikiSpellPage.TryParse(jasinth, out var jasinthSpell) && jasinthSpell is not null);
+        Check("Jasinth is buff family", jasinthSpell!.Family == SpellUpgradeFamily.Buff);
+        var jasinth10 = EqWikiSpellPage.Format(jasinthSpell, 10);
+        Check("Jasinth +10 mana/cast/duration",
+            jasinth10.Contains("Mana: 120", StringComparison.Ordinal) &&
+            jasinth10.Contains("Cast: 2.70s", StringComparison.Ordinal) &&
+            jasinth10.Contains("Duration: 72 min", StringComparison.Ordinal),
+            jasinth10);
+        Check("Jasinth resist magnitude unscaled",
+            jasinth10.Contains("Increase Disease Resist by 45", StringComparison.Ordinal), jasinth10);
+
+        const string bolt = """
+            {{Spellpagesmart|
+            | spellname = Envenomed Bolt
+            | description = Fills your target's blood with poison.
+            | classes =
+            * [[Shaman]] - Level 49
+            | slots =
+            {{SpellSlotRow | 1 | Increase Poison Counter by 10 }}
+            {{SpellSlotRow | 2 | Decrease Current Hit Points by 41}}
+            {{SpellSlotRow | 3 | Decrease Current Hit Points by 351 per Tick }}
+            | skill = Conjuration
+            | mana = 409
+            | casting_time = 3
+            | recast_time = 1.5
+            | duration = 36 Sec
+            | target_type = Single
+            | spell_type = Detrimental
+            | resist = Poison (0)
+            }}
+            """;
+        Check("Bolt parses as DoT",
+            EqWikiSpellPage.TryParse(bolt, out var boltSpell) &&
+            boltSpell!.Family == SpellUpgradeFamily.DotHot);
+        var bolt10 = EqWikiSpellPage.Format(boltSpell!, 10);
+        Check("Bolt +10 scales tick and resist",
+            bolt10.Contains("Mana: 327", StringComparison.Ordinal) &&
+            bolt10.Contains("Duration: 54 sec", StringComparison.Ordinal) &&
+            bolt10.Contains("by 456", StringComparison.Ordinal) &&
+            bolt10.Contains("Poison (-150)", StringComparison.Ordinal),
+            bolt10);
     }
 
     private static BisMeleeMath.Weapon WeaponAt(string baseStats, string name, bool twoHand, int tier)

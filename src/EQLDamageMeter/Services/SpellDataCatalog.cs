@@ -175,6 +175,8 @@ public sealed class SpellDataCatalog
                name.Contains("Jig o", StringComparison.OrdinalIgnoreCase) ||
                name.StartsWith("Selo", StringComparison.OrdinalIgnoreCase) ||
                name.Contains("Warsong of the Vah Shir", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("Whistling Warsong", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("Jonthan", StringComparison.OrdinalIgnoreCase) ||
                name.Contains("Composition of Ervaj", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -717,6 +719,13 @@ public sealed class SpellDataCatalog
         if (name.Contains("Vigor", StringComparison.OrdinalIgnoreCase) ||
             name.Contains("Jig", StringComparison.OrdinalIgnoreCase))
             yield return "You are no longer invigorated.";
+
+        if (name.Contains("Warsong", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("Whistling", StringComparison.OrdinalIgnoreCase) &&
+            name.Contains("Jonthan", StringComparison.OrdinalIgnoreCase))
+        {
+            yield return "You stop whistling.";
+        }
 
         if (name.Contains("Inspiration", StringComparison.OrdinalIgnoreCase) ||
             name.Contains("Ervaj", StringComparison.OrdinalIgnoreCase))

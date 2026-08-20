@@ -466,9 +466,8 @@ public sealed class BuffTracker
         {
             // Hostile timers start from enemy land text on you — never from your cast bar.
             if (rule.Category == SpellTrackerCategory.Hostile) continue;
-            // Songs start from self land after a twist, not from cast lines (when present).
-            if (rule.TrackingMode == BuffTrackingMode.Song &&
-                rule.Category == SpellTrackerCategory.Buff) continue;
+            // Buff songs still arm a pending window from "You begin singing" so shared
+            // land text (clicky copies) can be attributed. Overlay starts on land, not here.
 
             var state = _states[rule.Id];
             state.PendingCastStartedAt = timestamp;
@@ -493,8 +492,6 @@ public sealed class BuffTracker
         foreach (var rule in MatchingEnabledRules(spell))
         {
             if (rule.Category == SpellTrackerCategory.Hostile) continue;
-            if (rule.TrackingMode == BuffTrackingMode.Song &&
-                rule.Category == SpellTrackerCategory.Buff) continue;
             ClearPendingCast(_states[rule.Id]);
         }
     }

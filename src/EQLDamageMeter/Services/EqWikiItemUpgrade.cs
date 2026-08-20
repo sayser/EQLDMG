@@ -225,6 +225,8 @@ public static partial class EqWikiItemUpgrade
         if (key.Equals("END", StringComparison.OrdinalIgnoreCase) ||
             key.Equals("ENDUR", StringComparison.OrdinalIgnoreCase))
             return "ENDUR";
+        if (key.Contains("Regen", StringComparison.OrdinalIgnoreCase))
+            return key.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
         if (key.StartsWith("SV", StringComparison.OrdinalIgnoreCase))
             return "SV";
         return key.ToUpperInvariant();
@@ -237,11 +239,11 @@ public static partial class EqWikiItemUpgrade
         tier = Math.Clamp(tier, 0, 10);
         if (tier == 0) return "Base wiki stats (no upgrade).";
         var pct = tier * 10;
-        return $"+{tier}: ~+{pct}% on larger stats/DMG, +{tier} on small stats & haste; weight −10%/tier (compound). Matched to in-game scaling.";
+        return $"+{tier}: ~+{pct}% on larger stats/DMG, +{tier} on small stats, regen & haste; weight −10%/tier (compound). Matched to in-game scaling.";
     }
 
     [GeneratedRegex(
-        @"(?<key>AC|HP|MANA|ENDUR|END|ATK|Attack|STR|STA|AGI|DEX|WIS|INT|CHA|WT|Weight|DMG|Damage|Base\s+Dmg|Haste|Atk\s+Delay|Delay|SVP|SVM|SVC|SVF|SVD|SV\s+[A-Za-z]+)\s*:\s*(?<sign>[+-]?)(?<num>\d+(?:\.\d+)?)(?<suffix>%?)",
+        @"(?<key>HP\s+Regen|Mana\s+Regen|Endurance\s+Regen|End\s+Regen|Spell\s+Shield|DoT\s+Shielding|Stun\s+Resist|Damage\s+Shield|Combat\s+Effects|Heal\s+Amount|Spell\s+Damage|Base\s+Dmg|Atk\s+Delay|SV\s+[A-Za-z]+|Accuracy|Avoidance|Shielding|Clairvoyance|AC|HP|MANA|ENDUR|END|ATK|Attack|STR|STA|AGI|DEX|WIS|INT|CHA|WT|Weight|DMG|Damage|Haste|Delay|SVP|SVM|SVC|SVF|SVD)\s*:\s*(?<sign>[+-]?)(?<num>\d+(?:\.\d+)?)(?<suffix>%?)",
         RegexOptions.IgnoreCase)]
     private static partial Regex StatTokenRegex();
 

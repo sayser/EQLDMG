@@ -36,10 +36,13 @@ public static partial class EqWikiItemUses
                     if (value.Length > 0) quests.Add(value);
                 }
 
-                foreach (Match match in WikiLinkRegex().Matches(wikitext))
+                var related = RelatedQuestsRegex().Match(wikitext);
+                var linkSource = related.Success ? related.Groups[1].Value : wikitext;
+                foreach (Match match in WikiLinkRegex().Matches(linkSource))
                 {
                     var link = match.Groups[1].Value.Trim();
-                    if (link.Contains("quest", StringComparison.OrdinalIgnoreCase) ||
+                    if (related.Success ||
+                        link.Contains("quest", StringComparison.OrdinalIgnoreCase) ||
                         link.EndsWith(" Quest", StringComparison.OrdinalIgnoreCase))
                         quests.Add(link);
                 }
@@ -135,6 +138,10 @@ public static partial class EqWikiItemUses
             "EQDM/1.4.9 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
         return client;
     }
+
+    [GeneratedRegex(@"==\s*Related Quests\s*==(.+?)(?:\n==|\n\{\{|\z)",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex RelatedQuestsRegex();
 
     [GeneratedRegex(@"\|\s*(?:quest|quests|relatedquest|usedin|used_in|questname)\s*=\s*(.+)",
         RegexOptions.IgnoreCase)]

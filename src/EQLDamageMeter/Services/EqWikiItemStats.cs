@@ -9,11 +9,28 @@ public static partial class EqWikiItemStats
 {
     private static readonly HttpClient Http = CreateClient();
 
+    public enum PageKind
+    {
+        Item,
+        Spell
+    }
+
+    public sealed record FetchResult(PageKind Kind, string ItemStats, EqWikiSpellPage.SpellInfo? Spell, string? Error);
+
     public static async Task<(string Stats, string? Error)> FetchStatsAsync(string itemName,
         CancellationToken cancellationToken = default)
     {
+        var result = await FetchAsync(itemName, cancellationToken);
+        if (result.Kind == PageKind.Spell && result.Spell is not null)
+            return (EqWikiSpellPage.Format(result.Spell, 0), result.Error);
+        return (result.ItemStats, result.Error);
+    }
+
+    public static async Task<FetchResult> FetchAsync(string itemName,
+        CancellationToken cancellationToken = default)
+    {
         if (string.IsNullOrWhiteSpace(itemName))
-            return (string.Empty, "Choose an item first.");
+            return new FetchResult(PageKind.Item, string.Empty, null, "Choose an item first.");
 
         try
         {
@@ -25,25 +42,31 @@ public static partial class EqWikiItemStats
                 cancellationToken: cancellationToken);
             var wikitext = payload?.Parse?.Wikitext?.Text;
             if (string.IsNullOrWhiteSpace(wikitext))
-                return (string.Empty, "That item page could not be loaded from the wiki.");
+                return new FetchResult(PageKind.Item, string.Empty, null,
+                    "That wiki page could not be loaded.");
+
+            if (EqWikiSpellPage.TryParse(wikitext, out var spell) && spell is not null)
+                return new FetchResult(PageKind.Spell, string.Empty, spell, null);
 
             var stats = ExtractStatsBlock(wikitext);
             if (string.IsNullOrWhiteSpace(stats))
-                return (string.Empty, "No item stats were found on that wiki page.");
+                return new FetchResult(PageKind.Item, string.Empty, null,
+                    "No item stats or spell data were found on that wiki page.");
 
-            return (EqWikiItemUpgrade.WithWeaponRatio(stats), null);
+            return new FetchResult(PageKind.Item, EqWikiItemUpgrade.WithWeaponRatio(stats), null, null);
         }
         catch (HttpRequestException)
         {
-            return (string.Empty, "Could not reach eqlwiki.com. Check your network connection.");
+            return new FetchResult(PageKind.Item, string.Empty, null,
+                "Could not reach eqlwiki.com. Check your network connection.");
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return (string.Empty, "The wiki request timed out.");
+            return new FetchResult(PageKind.Item, string.Empty, null, "The wiki request timed out.");
         }
         catch (JsonException)
         {
-            return (string.Empty, "The wiki response could not be read.");
+            return new FetchResult(PageKind.Item, string.Empty, null, "The wiki response could not be read.");
         }
     }
 

@@ -2881,7 +2881,7 @@
 
                         <StackPanel>
                             <TextBlock Text="ITEM SEARCH" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="Look up base stats on eqlwiki.com, then preview +1…+10 upgrades."
+                            <TextBlock Text="Look up items or spells on eqlwiki.com, then preview +1…+10 upgrades."
                                        Foreground="#66879D" FontSize="10" Margin="0,4,0,8" TextWrapping="Wrap" />
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -2956,7 +2956,7 @@
 
                         <StackPanel>
                             <DockPanel LastChildFill="False">
-                                <TextBlock Text="ITEM DETAILS" Style="{StaticResource SectionLabel}"
+                                <TextBlock Text="{Binding DetailsHeader}" Style="{StaticResource SectionLabel}"
                                            VerticalAlignment="Center" />
                                 <Button DockPanel.Dock="Right" Content="Open wiki" Padding="12,5"
                                         Click="ItemsOpenWiki_Click"
@@ -2987,7 +2987,7 @@
                             <StackPanel>
                                 <Border Style="{StaticResource InnerCard}" Padding="12,10">
                                     <StackPanel>
-                                        <TextBlock Text="STATS" Style="{StaticResource SectionLabel}" />
+                                        <TextBlock Text="{Binding StatsHeader}" Style="{StaticResource SectionLabel}" />
                                         <TextBlock Text="{Binding DisplayStats}" Foreground="#D7EAF5"
                                                    FontSize="12" Margin="0,10,0,0" TextWrapping="Wrap"
                                                    FontFamily="Consolas" />

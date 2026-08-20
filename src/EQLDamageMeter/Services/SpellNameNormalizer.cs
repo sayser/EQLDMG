@@ -18,6 +18,7 @@ public static partial class SpellNameNormalizer
     {
         var name = NormalizeEqName(spellName);
         if (name.Length == 0) return name;
+        name = StripItemBenefitPrefix(name);
 
         while (true)
         {
@@ -26,6 +27,21 @@ public static partial class SpellNameNormalizer
                 return name;
             name = stripped;
         }
+    }
+
+    /// <summary>
+    /// Clicky copies in spells_us.txt reuse the song's land/fade text under
+    /// "Item Benefit: …". Treat them as the same family so tracker attribution
+    /// is not marked ambiguous.
+    /// </summary>
+    internal static string StripItemBenefitPrefix(string spellName)
+    {
+        foreach (var prefix in new[] { "Item Benefit: ", "Item Effect: " })
+        {
+            if (spellName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return spellName[prefix.Length..].Trim();
+        }
+        return spellName;
     }
 
     public static bool BelongsToFamily(string spellName, string familyOrSpellName) =>

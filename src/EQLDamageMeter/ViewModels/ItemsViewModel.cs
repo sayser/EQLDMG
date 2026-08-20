@@ -8,12 +8,14 @@ namespace EQLDamageMeter.ViewModels;
 public sealed class ItemsViewModel : ObservableObject
 {
     private string _searchText = string.Empty;
-    private string _statusText = "Search eqlwiki.com for an item, then pick an upgrade tier (+0…+10).";
+    private string _statusText = "Search eqlwiki.com for an item or spell, then pick an upgrade tier (+0…+10).";
     private string _selectedTitle = string.Empty;
     private string _baseStats = string.Empty;
     private string _displayStats = string.Empty;
     private string _usesEmptyText = string.Empty;
     private string _upgradeSummary = EqWikiItemUpgrade.BonusSummary(0);
+    private EqWikiItemStats.PageKind _pageKind = EqWikiItemStats.PageKind.Item;
+    private EqWikiSpellPage.SpellInfo? _spell;
     private int _upgradeTier;
     private bool _isBusy;
     private CancellationTokenSource? _loadCts;
@@ -83,7 +85,7 @@ public sealed class ItemsViewModel : ObservableObject
         {
             var tier = Math.Clamp(value, 0, 10);
             if (!SetProperty(ref _upgradeTier, tier)) return;
-            UpgradeSummary = EqWikiItemUpgrade.BonusSummary(tier);
+            RefreshUpgradeSummary();
             RaisePropertyChanged(nameof(SelectedTierChoice));
             RefreshDisplayStats();
         }
@@ -96,6 +98,8 @@ public sealed class ItemsViewModel : ObservableObject
     }
 
     public bool HasSelection => !string.IsNullOrWhiteSpace(SelectedTitle);
+    public string DetailsHeader => _pageKind == EqWikiItemStats.PageKind.Spell ? "SPELL DETAILS" : "ITEM DETAILS";
+    public string StatsHeader => _pageKind == EqWikiItemStats.PageKind.Spell ? "SPELL" : "STATS";
     public bool HasUseLinks => QuestUses.Count > 0 || RecipeUses.Count > 0;
     public Visibility UsesEmptyVisibility => HasUseLinks ? Visibility.Collapsed : Visibility.Visible;
     public Visibility QuestUsesVisibility => QuestUses.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -131,7 +135,7 @@ public sealed class ItemsViewModel : ObservableObject
             var (titles, error) = await EqWikiItemSearch.SearchAsync(SearchText);
             foreach (var title in titles)
                 SearchResults.Add(title);
-            StatusText = error ?? $"{titles.Count} result(s). Select an item to load stats.";
+            StatusText = error ?? $"{titles.Count} result(s). Select an item or spell to load stats.";
         }
         finally
         {
@@ -149,30 +153,39 @@ public sealed class ItemsViewModel : ObservableObject
         SelectedTitle = title.Trim();
         BaseStats = string.Empty;
         DisplayStats = string.Empty;
+        _spell = null;
+        _pageKind = EqWikiItemStats.PageKind.Item;
+        RaiseKindChanged();
+        RefreshUpgradeSummary();
         ClearUses();
         IsBusy = true;
         StatusText = $"Loading {SelectedTitle}…";
         try
         {
-            var statsTask = EqWikiItemStats.FetchStatsAsync(SelectedTitle, token);
+            var statsTask = EqWikiItemStats.FetchAsync(SelectedTitle, token);
             var usesTask = EqWikiItemUses.FetchUsesAsync(SelectedTitle, token);
             await Task.WhenAll(statsTask, usesTask);
             token.ThrowIfCancellationRequested();
 
-            var (stats, statsError) = await statsTask;
+            var result = await statsTask;
             var (uses, usesError) = await usesTask;
-            if (!string.IsNullOrWhiteSpace(statsError) && string.IsNullOrWhiteSpace(stats))
+            if (!string.IsNullOrWhiteSpace(result.Error) &&
+                string.IsNullOrWhiteSpace(result.ItemStats) && result.Spell is null)
             {
-                StatusText = statsError;
+                StatusText = result.Error;
                 return;
             }
 
-            BaseStats = stats;
+            _pageKind = result.Kind;
+            _spell = result.Spell;
+            BaseStats = result.ItemStats;
+            RaiseKindChanged();
+            RefreshUpgradeSummary();
             RefreshDisplayStats();
             ApplyUses(uses, usesError);
-            StatusText = string.IsNullOrWhiteSpace(statsError)
+            StatusText = string.IsNullOrWhiteSpace(result.Error)
                 ? $"Loaded {SelectedTitle}."
-                : statsError;
+                : result.Error;
         }
         catch (OperationCanceledException)
         {
@@ -226,9 +239,28 @@ public sealed class ItemsViewModel : ObservableObject
 
     private void RefreshDisplayStats()
     {
+        if (_spell is not null)
+        {
+            DisplayStats = EqWikiSpellPage.Format(_spell, UpgradeTier);
+            return;
+        }
+
         DisplayStats = string.IsNullOrWhiteSpace(BaseStats)
             ? string.Empty
             : EqWikiItemUpgrade.ApplyTier(BaseStats, UpgradeTier);
+    }
+
+    private void RefreshUpgradeSummary()
+    {
+        UpgradeSummary = _spell is not null
+            ? EqWikiSpellPage.BonusSummary(UpgradeTier, _spell.Family)
+            : EqWikiItemUpgrade.BonusSummary(UpgradeTier);
+    }
+
+    private void RaiseKindChanged()
+    {
+        RaisePropertyChanged(nameof(DetailsHeader));
+        RaisePropertyChanged(nameof(StatsHeader));
     }
 
     private static void OpenUrl(string url)
