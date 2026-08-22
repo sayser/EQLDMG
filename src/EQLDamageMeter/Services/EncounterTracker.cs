@@ -393,6 +393,8 @@ public sealed class EncounterTracker(string localPlayerName)
 
     public void ProcessMessage(DateTime timestamp, string message)
     {
+        if (!ShouldProcessMessage(message)) return;
+
         if (BeginsCasting.Match(message) is { Success: true } castMatch)
         {
             var source = castMatch.Groups["source"].Value;
@@ -441,6 +443,19 @@ public sealed class EncounterTracker(string localPlayerName)
         {
             CompletionCandidateAt = timestamp;
         }
+    }
+
+    /// <summary>
+    /// Cast attribution and kill detection only apply to a narrow set of log lines.
+    /// </summary>
+    public static bool ShouldProcessMessage(string message)
+    {
+        if (message.Length < 8) return false;
+        return message.Contains("begin casting", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("begins casting", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("slain", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains(" died", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("has died", StringComparison.OrdinalIgnoreCase);
     }
 
     public void FinalizeIfInactive(DateTime now)

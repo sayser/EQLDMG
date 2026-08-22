@@ -95,6 +95,7 @@ public sealed class SpellDataCatalog
     private const int SecondsPerTick = 6;
 
     private readonly Dictionary<string, SpellDataEntry> _byName;
+    private readonly Dictionary<string, SpellDataEntry[]> _byFamily;
     private readonly HashSet<string> _ambiguousOtherSuffixes;
     private readonly Dictionary<string, HashSet<string>> _selfAppliedMessageFamilies;
     private readonly HashSet<string> _eqlBardSongFamilies;
@@ -103,11 +104,13 @@ public sealed class SpellDataCatalog
     private SpellIconAtlas? _icons;
 
     private SpellDataCatalog(string sourceDirectory, Dictionary<string, SpellDataEntry> byName,
+        Dictionary<string, SpellDataEntry[]> byFamily,
         HashSet<string> ambiguousOtherSuffixes, Dictionary<string, HashSet<string>> selfAppliedMessageFamilies,
         HashSet<string> eqlBardSongFamilies, HashSet<string> trackableBardSongFamilies, SpellIconAtlas? icons)
     {
         SourceDirectory = sourceDirectory;
         _byName = byName;
+        _byFamily = byFamily;
         _ambiguousOtherSuffixes = ambiguousOtherSuffixes;
         _selfAppliedMessageFamilies = selfAppliedMessageFamilies;
         _eqlBardSongFamilies = eqlBardSongFamilies;
@@ -313,12 +316,7 @@ public sealed class SpellDataCatalog
     {
         var family = SpellNameNormalizer.GetFamilyName(spellName);
         if (family.Length == 0) return [];
-
-        return _byName.Values
-            .Where(entry => SpellNameNormalizer.GetFamilyName(entry.Name)
-                .Equals(family, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        return _byFamily.GetValueOrDefault(family) ?? [];
     }
 
     public ImageSource? GetIcon(string? spellName)
@@ -562,7 +560,8 @@ public sealed class SpellDataCatalog
                     pair.Value.DurationFormula, pair.Value.DurationCap,
                     pair.Value.SkillId, pair.Value.BardLevel, pair.Value.HasCatalogFade),
                 StringComparer.OrdinalIgnoreCase));
-            return new SpellDataCatalog(installDirectory, entries, BuildAmbiguousOtherSuffixes(entries.Values),
+            return new SpellDataCatalog(installDirectory, entries, BuildFamilyIndex(entries),
+                BuildAmbiguousOtherSuffixes(entries.Values),
                 BuildSelfAppliedMessageFamilies(entries.Values),
                 BuildEqlBardSongFamilies(entries),
                 BuildTrackableBardSongFamilies(entries),
@@ -586,6 +585,28 @@ public sealed class SpellDataCatalog
         Directory.CreateDirectory(Path.GetDirectoryName(logsStub)!);
         if (!File.Exists(logsStub)) File.WriteAllText(logsStub, string.Empty);
         return TryLoadForLog(logsStub, iconStyle);
+    }
+
+    private static Dictionary<string, SpellDataEntry[]> BuildFamilyIndex(
+        Dictionary<string, SpellDataEntry> entries)
+    {
+        var groups = new Dictionary<string, List<SpellDataEntry>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries.Values)
+        {
+            var family = SpellNameNormalizer.GetFamilyName(entry.Name);
+            if (!groups.TryGetValue(family, out var members))
+            {
+                members = [];
+                groups[family] = members;
+            }
+
+            members.Add(entry);
+        }
+
+        return groups.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value.OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase).ToArray(),
+            StringComparer.OrdinalIgnoreCase);
     }
 
     private static Dictionary<string, HashSet<string>> BuildSelfAppliedMessageFamilies(

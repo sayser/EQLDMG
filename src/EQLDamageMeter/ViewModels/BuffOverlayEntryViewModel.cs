@@ -1,5 +1,6 @@
 using System.Windows.Media;
 using EQLDamageMeter.Models;
+using EQLDamageMeter.Services;
 
 namespace EQLDamageMeter.ViewModels;
 
@@ -33,6 +34,7 @@ public sealed class BuffOverlayEntryViewModel : ObservableObject
     public string RuntimeInstanceKey { get; }
     public string SpellName { get; }
     public string TargetName { get; }
+    public string DisplayTargetName => MobDisplayName.Format(TargetName);
     public bool IsSelf { get; }
     public SpellTrackerCategory Category { get; }
     public ControlEffectType ControlType { get; }
@@ -48,14 +50,14 @@ public sealed class BuffOverlayEntryViewModel : ObservableObject
     public string InstanceKey => $"{RuleId:N}|{RuntimeInstanceKey}";
     public string TargetLabel => _showsPlayingLabel
         ? string.Empty
-        : IsSelf ? "SELF" : $"OTHER  ·  {TargetName}";
+        : IsSelf ? "SELF" : $"OTHER  ·  {DisplayTargetName}";
     public string CompactRightText => _showsPlayingLabel
         ? "Playing"
-        : IsSelf ? "SELF" : TargetName;
+        : IsSelf ? "SELF" : DisplayTargetName;
     public int StackCount => _stackCount;
     public bool HasStackCount => _stackCount > 1;
     public string StackCountText => $"X{_stackCount}";
-    public string OverlayTargetText => HasStackCount ? $"{TargetName}  {StackCountText}" : TargetName;
+    public string OverlayTargetText => HasStackCount ? $"{DisplayTargetName}  {StackCountText}" : DisplayTargetName;
     public string StatusText => _showsPlayingLabel ? "Playing"
         : IsOverdue ? "Past expected duration"
         : IsExpiringSoon ? "Expiring soon" : "Active";
@@ -79,17 +81,25 @@ public sealed class BuffOverlayEntryViewModel : ObservableObject
 
     public void Update(BuffInstanceSnapshot snapshot, int stackCount = 1)
     {
+        var remainingText = snapshot.ShowsPlayingLabel
+            ? string.Empty
+            : snapshot.IsOverdue ? $"+{FormatDuration(snapshot.Remaining)}" : FormatDuration(snapshot.Remaining);
+        var count = Math.Max(1, stackCount);
+        if (_showsPlayingLabel == snapshot.ShowsPlayingLabel &&
+            _remainingText == remainingText &&
+            _isExpiringSoon == snapshot.IsExpiringSoon &&
+            _isOverdue == snapshot.IsOverdue &&
+            _stackCount == count)
+            return;
+
         _showsPlayingLabel = snapshot.ShowsPlayingLabel;
         RaisePropertyChanged(nameof(ShowsPlayingLabel));
         RaisePropertyChanged(nameof(TargetLabel));
         RaisePropertyChanged(nameof(CompactRightText));
-        RemainingText = _showsPlayingLabel
-            ? string.Empty
-            : snapshot.IsOverdue ? $"+{FormatDuration(snapshot.Remaining)}" : FormatDuration(snapshot.Remaining);
+        RemainingText = remainingText;
         IsExpiringSoon = snapshot.IsExpiringSoon;
         IsOverdue = snapshot.IsOverdue;
         RaisePropertyChanged(nameof(StatusText));
-        var count = Math.Max(1, stackCount);
         if (!SetProperty(ref _stackCount, count, nameof(StackCount))) return;
         RaisePropertyChanged(nameof(HasStackCount));
         RaisePropertyChanged(nameof(StackCountText));

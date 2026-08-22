@@ -39,6 +39,8 @@ public partial class MainWindow : Window, IAsyncDisposable
         _viewModel.DotSpellTracker.OverlayLockChanged += ApplyOverlayLock;
         _viewModel.ControlSpellTracker.OverlayLockChanged += ApplyOverlayLock;
         _viewModel.HostileSpellTracker.OverlayLockChanged += ApplyOverlayLock;
+        DpsParserButton.Checked += (_, _) => SyncUiFlagsToViewModel();
+        SpellTrackerButton.Checked += (_, _) => SyncUiFlagsToViewModel();
         Loaded += MainWindow_Loaded;
         Closed += async (_, _) =>
         {
@@ -65,6 +67,7 @@ public partial class MainWindow : Window, IAsyncDisposable
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        SyncUiFlagsToViewModel();
         ApplyMouseHighlight();
         await _viewModel.InitializeAsync();
         if (_startupUpdateChecked) return;
@@ -411,6 +414,7 @@ public partial class MainWindow : Window, IAsyncDisposable
 
     private void RefreshOverlaysToggleButton()
     {
+        SyncUiFlagsToViewModel();
         if (OverlaysToggleButton is null) return;
         var open = AnyOverlayOpen();
         OverlaysToggleButton.Content = open ? "Close all overlays" : "Open all overlays";
@@ -552,6 +556,20 @@ public partial class MainWindow : Window, IAsyncDisposable
     {
         if (error is not null)
             MessageBox.Show(this, error, "Spell Tracker", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
+    private void SyncUiFlagsToViewModel()
+    {
+        var wasDpsActive = _viewModel.IsDpsModuleActive;
+        _viewModel.IsDpsModuleActive = DpsParserButton.IsChecked == true;
+        _viewModel.IsSpellTrackerModuleActive = SpellTrackerButton.IsChecked == true;
+        _viewModel.IsDpsOverlayOpen = _overlay is { IsVisible: true };
+        _viewModel.IsBuffOverlayOpen = _buffOverlay is { IsVisible: true };
+        _viewModel.IsDotOverlayOpen = _dotOverlay is { IsVisible: true };
+        _viewModel.IsControlOverlayOpen = _controlOverlay is { IsVisible: true };
+        _viewModel.IsHostileOverlayOpen = _hostileOverlay is { IsVisible: true };
+        if (!wasDpsActive && _viewModel.IsDpsModuleActive)
+            _viewModel.RefreshDisplayNow();
     }
 
     private void ShowOffense_Click(object sender, RoutedEventArgs e) => _viewModel.ShowOffense();

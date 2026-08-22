@@ -36,6 +36,7 @@ public sealed class BuffRuleViewModel : ObservableObject
     private SpellTimingSource _durationSource;
     private BuffTrackingMode _trackingMode;
     private bool _suppressManualMark;
+    private BuffRuntimeSnapshot? _lastAppliedSnapshot;
 
     public BuffRuleViewModel(BuffRuleSettings settings)
     {
@@ -436,6 +437,9 @@ public sealed class BuffRuleViewModel : ObservableObject
 
     public void ApplyRuntime(BuffRuntimeSnapshot snapshot)
     {
+        if (SnapshotMatchesApplied(snapshot)) return;
+        _lastAppliedSnapshot = snapshot;
+
         IsActive = snapshot.IsActive;
         IsExpiringSoon = snapshot.IsExpiringSoon;
         IsOverdue = snapshot.IsOverdue;
@@ -514,6 +518,30 @@ public sealed class BuffRuleViewModel : ObservableObject
     }
 
     public static string FormatDurationStatic(TimeSpan value) => FormatDuration(value);
+
+    private bool SnapshotMatchesApplied(BuffRuntimeSnapshot snapshot)
+    {
+        if (_lastAppliedSnapshot is not { } last) return false;
+        if (!IsEnabled)
+        {
+            return !last.IsActive && !last.IsCasting && !last.IsExpiringSoon && !last.IsOverdue &&
+                   last.StopReason == BuffStopReason.None;
+        }
+
+        if (last.IsCasting != snapshot.IsCasting ||
+            last.IsActive != snapshot.IsActive ||
+            last.IsExpired != snapshot.IsExpired ||
+            last.IsExpiringSoon != snapshot.IsExpiringSoon ||
+            last.IsOverdue != snapshot.IsOverdue ||
+            last.StopReason != snapshot.StopReason)
+        {
+            return false;
+        }
+
+        if (TrackingMode == BuffTrackingMode.Song) return true;
+        return (int)Math.Ceiling(last.Remaining.TotalSeconds) ==
+               (int)Math.Ceiling(snapshot.Remaining.TotalSeconds);
+    }
 
     private static string FormatDuration(TimeSpan value)
     {

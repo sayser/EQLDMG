@@ -248,6 +248,8 @@ public sealed class GroupStateTracker(string localPlayerName)
 
     public GroupChange Process(string message, DateTime? timestamp = null)
     {
+        if (!ShouldProcessMessage(message)) return new GroupChange(GroupChangeKind.None);
+
         // Gate / zone ends charm and companion control instantly.
         if (ZoneLoading.IsMatch(message) || ZoneEntered.IsMatch(message))
         {
@@ -505,6 +507,38 @@ public sealed class GroupStateTracker(string localPlayerName)
         }
 
         return new GroupChange(GroupChangeKind.None);
+    }
+
+    /// <summary>
+    /// Fast prefilter before regex scans. Group/charm state only changes on these shapes.
+    /// </summary>
+    public static bool ShouldProcessMessage(string message)
+    {
+        if (message.Length < 8) return false;
+        return message.Contains("LOADING", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("entered ", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("invites you to join", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("joined the group", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("left the group", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("leave the group", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("disbanded", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("removed from the group", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("tell the group", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("tells the group", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("begin casting", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("begins casting", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("has been charmed", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("worn off", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("fizzles", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("interrupted", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("did not take hold", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("resisted", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("summon a companion", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("summons a companion", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Master.", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("cancel the invitation", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("slain", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains(" died", StringComparison.OrdinalIgnoreCase);
     }
 
     private void RemoveLatestPendingCharm(string caster)

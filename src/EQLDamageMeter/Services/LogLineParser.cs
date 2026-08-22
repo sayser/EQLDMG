@@ -119,12 +119,28 @@ public sealed class LogLineParser(string localPlayerName)
         if (!TryParseEnvelope(line, out var timestamp, out var message)) return false;
         // A single message is never more than one kind of event, so each classifier
         // is skipped once an earlier one has claimed the line.
-        var damage = ParseDamage(timestamp, message);
-        var healing = damage is null ? ParseHealing(timestamp, message) : null;
-        var outcome = damage is null && healing is null ? ParseOutcome(timestamp, message) : null;
+        DamageEvent? damage = null;
+        HealingEvent? healing = null;
+        CombatOutcomeEvent? outcome = null;
+        if (LineMayContainCombatEvent(message))
+        {
+            damage = ParseDamage(timestamp, message);
+            healing = damage is null ? ParseHealing(timestamp, message) : null;
+            outcome = damage is null && healing is null ? ParseOutcome(timestamp, message) : null;
+        }
+
         parsed = new ParsedLogLine(timestamp, message, damage, healing, outcome);
         return true;
     }
+
+    private static bool LineMayContainCombatEvent(string message) =>
+        ContainsDigit(message) ||
+        message.Contains(" healed ", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("fizzles!", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("resist", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("absorbs ", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains(", but ", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("stun", StringComparison.OrdinalIgnoreCase);
 
     public bool TryParseEnvelope(string line, out DateTime timestamp, out string message)
     {

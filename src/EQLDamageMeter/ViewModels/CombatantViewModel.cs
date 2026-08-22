@@ -346,6 +346,41 @@ public sealed class CombatantViewModel : ObservableObject
         Procs = procs;
     }
 
+    public void ApplySummary(CombatantAggregate aggregate, double seconds, bool isWarmingUp, int rank)
+    {
+        Name = aggregate.Name;
+        OwnerName = aggregate.OwnerName;
+        Damage = aggregate.Damage;
+        DpsText = isWarmingUp ? "—" : (aggregate.Damage / Math.Max(1, seconds))
+            .ToString("N1", CultureInfo.CurrentCulture);
+        Hits = aggregate.Hits;
+        Misses = aggregate.Misses;
+        MeleeHits = aggregate.MeleeHits;
+        SpellHits = aggregate.SpellHits;
+        MeleeCriticalHits = aggregate.MeleeCriticalHits;
+        SpellCriticalHits = aggregate.SpellCriticalHits;
+        SpellFizzles = aggregate.SpellFizzles;
+        SpellResists = aggregate.SpellResists;
+        DamageTaken = aggregate.DamageTaken;
+        IncomingMeleeHits = aggregate.IncomingMeleeHits;
+        IncomingMisses = aggregate.IncomingMisses;
+        Dodges = aggregate.Dodges;
+        Parries = aggregate.Parries;
+        Blocks = aggregate.Blocks;
+        Ripostes = aggregate.Ripostes;
+        Absorbed = aggregate.Absorbed;
+        SpellAbsorbs = aggregate.SpellAbsorbs;
+        IncomingSpellResists = aggregate.IncomingSpellResists;
+        Rank = rank;
+        StunsLanded = aggregate.StunsLanded;
+        StunsTaken = aggregate.StunsTaken;
+        Healing = aggregate.Healing;
+        DirectHeals = aggregate.DirectHeals;
+        HealOverTimeTicks = aggregate.HealOverTimeTicks;
+        CriticalHeals = aggregate.CriticalHeals;
+        HpsText = (aggregate.Healing / Math.Max(1, seconds)).ToString("N1", CultureInfo.CurrentCulture);
+    }
+
     private static string FormatRate(int criticals, int total) =>
         total == 0 ? "0.0%" : $"{criticals * 100d / total:0.0}%";
 }

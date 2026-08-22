@@ -9,6 +9,7 @@ public sealed class DonutChart : FrameworkElement
 {
     private static readonly Brush EmptyRingBrush = CreateFrozenBrush(Color.FromRgb(38, 54, 83));
     private static readonly Dictionary<int, Pen> EmptyRingPens = [];
+    private static readonly Dictionary<(Brush Brush, int ThicknessKey), Pen> SegmentPens = [];
     public static readonly DependencyProperty ItemsSourceProperty = DependencyProperty.Register(
         nameof(ItemsSource), typeof(IEnumerable), typeof(DonutChart),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
@@ -51,13 +52,13 @@ public sealed class DonutChart : FrameworkElement
             var sweep = item.Damage * 360d / total;
             if (sweep >= 359.999)
             {
-                drawingContext.DrawEllipse(null, new Pen(item.Color, thickness), center, pathRadius, pathRadius);
+                drawingContext.DrawEllipse(null, GetSegmentPen(item.Color, thicknessKey, thickness), center, pathRadius,
+                    pathRadius);
             }
             else if (sweep > 0.05)
             {
                 var geometry = CreateArc(center, pathRadius, start, sweep);
-                var pen = new Pen(item.Color, thickness) { StartLineCap = PenLineCap.Flat, EndLineCap = PenLineCap.Flat };
-                drawingContext.DrawGeometry(null, pen, geometry);
+                drawingContext.DrawGeometry(null, GetSegmentPen(item.Color, thicknessKey, thickness), geometry);
             }
             start += sweep;
         }
@@ -71,6 +72,23 @@ public sealed class DonutChart : FrameworkElement
             var pen = new Pen(EmptyRingBrush, thickness);
             pen.Freeze();
             EmptyRingPens[thicknessKey] = pen;
+            return pen;
+        }
+    }
+
+    private static Pen GetSegmentPen(Brush brush, int thicknessKey, double thickness)
+    {
+        var key = (brush, thicknessKey);
+        lock (SegmentPens)
+        {
+            if (SegmentPens.TryGetValue(key, out var cached)) return cached;
+            var pen = new Pen(brush, thickness)
+            {
+                StartLineCap = PenLineCap.Flat,
+                EndLineCap = PenLineCap.Flat
+            };
+            pen.Freeze();
+            SegmentPens[key] = pen;
             return pen;
         }
     }

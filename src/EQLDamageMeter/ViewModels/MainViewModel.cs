@@ -18,7 +18,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private sealed record QueuedParsedLine(int Generation, ParsedLogLine Parsed);
     public const string DefaultLogFolder = @"C:\Users\Public\Daybreak Game Company\Installed Games\EverQuest Legends\Logs";
     private const int HistoryLimit = 25;
-    private const int ParsedLineBatchSize = 1_000;
+    private const int ParsedLineBatchSize = 64;
+    private const int MinFullDisplayRefreshMs = 250;
+    private const int OverlayRefreshIntervalMs = 1_000;
+    private const int SessionUiRefreshIntervalMs = 1_000;
     private const int MaxQueuedParsedLines = 20_000;
     private static readonly Brush[] ChartBrushes = CreateChartBrushes();
 
@@ -36,6 +39,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly List<SessionRecord> _sessionHistory = [];
     private DateTime _lastSessionPersistUtc = DateTime.MinValue;
     private bool _sessionDirty;
+    private bool _sessionUiDirty;
     private DateTime? _lastLogTimestamp;
     private DateTime? _lastLogWallClock;
     private SpellDataCatalog? _spellDataCatalog;
@@ -56,9 +60,27 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private long _dataVersion;
     private long _renderedDataVersion = -1;
     private long _lastRenderedSecond = -1;
+    private DateTime _lastFullDisplayRefreshUtc = DateTime.MinValue;
+    private DateTime _lastOverlayRefreshUtc = DateTime.MinValue;
+    private DateTime _lastSessionUiRefreshUtc = DateTime.MinValue;
     private long _cachedLiveCardDamage;
     private double _cachedLiveCardDps;
     private EncounterHistoryViewModel? _renderedHistory;
+    private readonly Dictionary<string, ImageSource> _abilityIconCache = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<Guid, BuffRuleViewModel>? _buffRuleById;
+    private long _cachedCombineDataVersion = -1;
+    private bool _cachedCombinePetDamage;
+    private CombatantAggregate[]? _cachedCombinedAggregates;
+    private DateTime _lastBuffRuleUiRefreshUtc = DateTime.MinValue;
+    private const int SpellRuleUiRefreshIntervalMs = 1_000;
+
+    public bool IsDpsModuleActive { get; set; } = true;
+    public bool IsSpellTrackerModuleActive { get; set; }
+    public bool IsDpsOverlayOpen { get; set; }
+    public bool IsBuffOverlayOpen { get; set; }
+    public bool IsDotOverlayOpen { get; set; }
+    public bool IsControlOverlayOpen { get; set; }
+    public bool IsHostileOverlayOpen { get; set; }
     private bool _combinePetDamage;
     private bool _isPetDamageExpanded;
     private BuffRuleViewModel? _selectedBuffRule;
@@ -210,6 +232,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         set
         {
             if (!SetProperty(ref _selectedCombatant, value)) return;
+            RefreshSelectedCombatantRow();
             RaiseBreakdownProperties();
         }
     }
@@ -270,6 +293,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         set
         {
             if (!SetProperty(ref _combinePetDamage, value)) return;
+            _cachedCombineDataVersion = -1;
+            _cachedCombinedAggregates = null;
             _dataVersion++;
             _renderedDataVersion = -1;
             RefreshDisplay(force: true);
@@ -316,6 +341,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         SelectLiveHistory();
         RefreshDisplay(force: true);
     }
+
+    public void RefreshDisplayNow() => RefreshDisplay(force: true);
 
     public void ShowOffense() => SetBreakdownMode(BreakdownMode.Offense);
     public void ShowDefense() => SetBreakdownMode(BreakdownMode.Defense);
@@ -550,6 +577,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void NoteCharacterLevelFromMessage(string message)
     {
+        if (!message.Contains("level", StringComparison.OrdinalIgnoreCase)) return;
         if (!SpellDataCatalog.TryParseLevelUp(message, out var level) || level == _characterLevel) return;
         _characterLevel = level;
         _ = ReseedCatalogTimingsFromCharacterLevelAsync();
@@ -633,6 +661,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 parser, group, cancellationToken), cancellationToken);
             await Task.WhenAll(spellCatalogTask, groupRestoreTask, levelTask);
             _spellDataCatalog = await spellCatalogTask;
+            _abilityIconCache.Clear();
             if (await levelTask is { } level) _characterLevel = level;
             RaisePropertyChanged(nameof(SpellCatalog));
             DotSpellTracker.NotifyCatalogChanged();
@@ -837,18 +866,21 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         if (_sessionTracker.Observe(parsed.Timestamp, parsed.Message))
         {
             _sessionDirty = true;
-            RefreshSessionHistoryUi();
-            PersistSessionHistoryIfNeeded(force: false);
+            _sessionUiDirty = true;
         }
 
         QuestTracker.ObserveLootMessage(parsed.Message);
         SkyTracker.ObserveLootMessage(parsed.Message);
         NoteCharacterLevelFromMessage(parsed.Message);
 
-        _buffTracker.Observe(parsed.Timestamp, parsed.Message);
-        DotSpellTracker.Observe(parsed.Timestamp, parsed.Message);
-        ControlSpellTracker.Observe(parsed.Timestamp, parsed.Message);
-        HostileSpellTracker.Observe(parsed.Timestamp, parsed.Message);
+        if (_buffTracker.ShouldProcessMessage(parsed.Message))
+            _buffTracker.Observe(parsed.Timestamp, parsed.Message);
+        if (DotSpellTracker.ShouldProcessMessage(parsed.Message))
+            DotSpellTracker.Observe(parsed.Timestamp, parsed.Message);
+        if (ControlSpellTracker.ShouldProcessMessage(parsed.Message))
+            ControlSpellTracker.Observe(parsed.Timestamp, parsed.Message);
+        if (HostileSpellTracker.ShouldProcessMessage(parsed.Message))
+            HostileSpellTracker.Observe(parsed.Timestamp, parsed.Message);
 
         var priorStart = _encounter.StartedAt;
         var priorCompletionCandidate = _encounter.CompletionCandidateAt;
@@ -886,7 +918,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         _encounter.ApplyGroupChange(change);
-        _encounter.ProcessMessage(parsed.Timestamp, parsed.Message);
+        if (EncounterTracker.ShouldProcessMessage(parsed.Message))
+            _encounter.ProcessMessage(parsed.Timestamp, parsed.Message);
         if (parsed.Damage is not null) _encounter.Process(parsed.Damage, _group);
         if (parsed.Healing is not null) _encounter.ProcessHealing(parsed.Healing, _group);
         if (parsed.Outcome is not null) _encounter.ProcessOutcome(parsed.Outcome, _group);
@@ -942,10 +975,27 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
+        if (!force && _renderedDataVersion != _dataVersion && _lastRenderedSecond == renderedSecond &&
+            (now - _lastFullDisplayRefreshUtc).TotalMilliseconds < MinFullDisplayRefreshMs)
+        {
+            return;
+        }
+
+        if (!force && !IsDpsModuleActive && !IsDpsOverlayOpen && !viewingArchive)
+        {
+            RefreshDisplaySummaryOnly(seconds, history, viewingArchive);
+            _renderedDataVersion = _dataVersion;
+            _lastRenderedSecond = renderedSecond;
+            _renderedHistory = history;
+            return;
+        }
+
+        _lastFullDisplayRefreshUtc = now;
         var rawAggregates = snapshot is null
             ? _encounter.CreateCombatantArray()
             : snapshot.Combatants.ToArray();
-        var aggregates = (CombinePetDamage ? CombinePetAggregates(rawAggregates) : rawAggregates)
+        var combined = GetCombinedAggregates(rawAggregates);
+        var aggregates = combined
             .OrderByDescending(item => item.Damage / Math.Max(1, seconds))
             .ThenByDescending(item => item.Damage)
             .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
@@ -975,21 +1025,74 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _renderedHistory = history;
     }
 
+    private void RefreshDisplaySummaryOnly(double seconds, EncounterHistoryViewModel? history, bool viewingArchive)
+    {
+        ModeText = viewingArchive ? history!.Mode : (_group!.IsGrouped ? "GROUP" : "SOLO");
+        EncounterTime = TimeSpan.FromSeconds(seconds).ToString(@"m\:ss", CultureInfo.InvariantCulture);
+        var rawAggregates = _encounter!.CreateCombatantArray();
+        var combined = GetCombinedAggregates(rawAggregates);
+        var hasEncounter = _encounter.StartedAt.HasValue;
+        var isWarmingUp = hasEncounter && !_encounter.IsFinalized && seconds < 3;
+        var localSources = combined.Where(item =>
+            item.Name.Equals(CharacterName, StringComparison.OrdinalIgnoreCase) ||
+            (CombinePetDamage && item.OwnerName?.Equals(CharacterName, StringComparison.OrdinalIgnoreCase) == true))
+            .ToArray();
+        var localPlayer = localSources.Length == 0
+            ? null
+            : new CombatantAggregate(CharacterName) { Damage = localSources.Sum(item => item.Damage) };
+        _cachedLiveCardDamage = localPlayer?.Damage ?? 0;
+        _cachedLiveCardDps = localPlayer is null || !hasEncounter || isWarmingUp
+            ? 0
+            : localPlayer.Damage / Math.Max(1, seconds);
+        UpdateLiveHistoryCard(_cachedLiveCardDamage, _cachedLiveCardDps);
+    }
+
     private void OnRefreshTimer()
     {
         RefreshDisplay();
         var now = DateTime.Now;
-        foreach (var alert in _buffTracker.Tick(now)) _buffAlertService.Play(alert);
-        foreach (var rule in BuffRules) rule.ApplyRuntime(_buffTracker.GetSnapshot(rule.Id, now));
-        RefreshOverlayEntries(now);
-        DotSpellTracker.Tick(now);
-        ControlSpellTracker.Tick(now);
-        HostileSpellTracker.Tick(now);
-        // Duration ticks every second even when no new XP/loot lines arrive; dirty only
-        // gates disk persist.
-        if (_sessionTracker.Current is not null || _sessionDirty)
+        var refreshRuleUi = ShouldRefreshSpellRuleUi(now);
+        var refreshBuffOverlay = IsBuffOverlayOpen &&
+            (now - _lastOverlayRefreshUtc).TotalMilliseconds >= OverlayRefreshIntervalMs;
+
+        foreach (var alert in _buffTracker.HasEnabledRules ? _buffTracker.Tick(now) : [])
+            _buffAlertService.Play(alert);
+        if (refreshRuleUi)
+        {
+            foreach (var rule in BuffRules) rule.ApplyRuntime(_buffTracker.GetSnapshot(rule.Id, now));
+            _lastBuffRuleUiRefreshUtc = now;
+        }
+
+        if (refreshBuffOverlay)
+        {
+            RefreshOverlayEntries(now);
+            _lastOverlayRefreshUtc = now;
+        }
+
+        DotSpellTracker.Tick(now, refreshRuleUi, IsDotOverlayOpen);
+        ControlSpellTracker.Tick(now, refreshRuleUi, IsControlOverlayOpen);
+        HostileSpellTracker.Tick(now, refreshRuleUi, IsHostileOverlayOpen);
+        if (_sessionUiDirty || _sessionDirty)
+        {
             RefreshSessionHistoryUi();
+            _sessionUiDirty = false;
+            _lastSessionUiRefreshUtc = now;
+        }
+        else if (_sessionTracker.Current is not null &&
+                 (now - _lastSessionUiRefreshUtc).TotalMilliseconds >= SessionUiRefreshIntervalMs)
+        {
+            RefreshSessionHistoryDuration();
+            _lastSessionUiRefreshUtc = now;
+        }
+
         PersistSessionHistoryIfNeeded(force: false);
+    }
+
+    private void RefreshSessionHistoryDuration()
+    {
+        var current = _sessionTracker.CreateSnapshot();
+        if (current is null) return;
+        SessionHistory.UpdateCurrentDuration(current);
     }
 
     private bool FilterBuffRule(object item)
@@ -1018,6 +1121,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             spell => _spellDataCatalog?.UsesLandPulseTracking(spell) == true,
             spell => _spellDataCatalog?.IsTimedEnemyLandSong(spell) == true,
             pruneMissing: pruneMissing);
+        _buffRuleById = BuffRules.ToDictionary(rule => rule.Id);
         RefreshBuffRuleIcons();
         RefreshOverlayEntries(DateTime.Now);
     }
@@ -1183,26 +1287,48 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         foreach (var stale in OverlayBuffEntries.Where(entry => !desiredKeys.Contains(entry.InstanceKey)).ToArray())
             OverlayBuffEntries.Remove(stale);
 
+        var entryByKey = OverlayBuffEntries.ToDictionary(entry => entry.InstanceKey, StringComparer.OrdinalIgnoreCase);
         for (var index = 0; index < snapshots.Length; index++)
         {
             var snapshot = snapshots[index];
             var key = BuffOverlayEntryViewModel.CreateKey(snapshot);
-            var entry = OverlayBuffEntries.FirstOrDefault(item =>
-                item.InstanceKey.Equals(key, StringComparison.OrdinalIgnoreCase));
-            if (entry is null)
+            if (!entryByKey.TryGetValue(key, out var entry))
             {
-                var ruleIcon = BuffRules.FirstOrDefault(rule => rule.Id == snapshot.RuleId)?.Icon;
+                _buffRuleById ??= BuffRules.ToDictionary(rule => rule.Id);
+                var ruleIcon = _buffRuleById.GetValueOrDefault(snapshot.RuleId)?.Icon;
                 entry = new BuffOverlayEntryViewModel(snapshot,
                     icon: ruleIcon ?? _spellDataCatalog?.GetIcon(snapshot.SpellName));
                 OverlayBuffEntries.Insert(Math.Min(index, OverlayBuffEntries.Count), entry);
+                entryByKey[key] = entry;
             }
             else
             {
                 entry.Update(snapshot);
                 var currentIndex = OverlayBuffEntries.IndexOf(entry);
-                if (currentIndex != index) OverlayBuffEntries.Move(currentIndex, index);
+                if (currentIndex >= 0 && currentIndex != index) OverlayBuffEntries.Move(currentIndex, index);
             }
         }
+    }
+
+    private bool ShouldRefreshSpellRuleUi(DateTime now) =>
+        IsSpellTrackerModuleActive || IsBuffOverlayOpen || IsDotOverlayOpen ||
+        IsControlOverlayOpen || IsHostileOverlayOpen ||
+        (now - _lastBuffRuleUiRefreshUtc).TotalMilliseconds >= SpellRuleUiRefreshIntervalMs;
+
+    private CombatantAggregate[] GetCombinedAggregates(CombatantAggregate[] raw)
+    {
+        if (!CombinePetDamage) return raw;
+        if (_cachedCombinedAggregates is not null &&
+            _cachedCombineDataVersion == _dataVersion &&
+            _cachedCombinePetDamage)
+        {
+            return _cachedCombinedAggregates;
+        }
+
+        _cachedCombinedAggregates = CombinePetAggregates(raw);
+        _cachedCombineDataVersion = _dataVersion;
+        _cachedCombinePetDamage = true;
+        return _cachedCombinedAggregates;
     }
 
     private static CombatantAggregate[] CombinePetAggregates(CombatantAggregate[] aggregates)
@@ -1367,6 +1493,46 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    private ImageSource GetCachedAbilityIcon(string abilityName)
+    {
+        if (_abilityIconCache.TryGetValue(abilityName, out var cached)) return cached;
+        cached = _spellDataCatalog?.GetAbilityIcon(abilityName) ?? SpellIconAtlas.GenericIcon;
+        _abilityIconCache[abilityName] = cached;
+        return cached;
+    }
+
+    private void RefreshSelectedCombatantRow()
+    {
+        if (SelectedCombatant is null || _encounter is null || _group is null) return;
+        var now = DateTime.Now;
+        var finalizeAt = _lastLogTimestamp is { } logTs && _lastLogWallClock is { } wall
+            ? logTs + (now - wall)
+            : now;
+        var history = SelectedHistory;
+        var viewingArchive = history is { IsLive: false, Snapshot: not null };
+        var snapshot = viewingArchive ? history!.Snapshot : null;
+        var seconds = snapshot is null ? _encounter.GetElapsedSeconds(finalizeAt) : history!.Seconds;
+        var hasEncounter = snapshot is not null || _encounter.StartedAt.HasValue;
+        var isWarmingUp = snapshot is null && hasEncounter && !_encounter.IsFinalized && seconds < 3;
+        var rawAggregates = snapshot is null
+            ? _encounter.CreateCombatantArray()
+            : snapshot.Combatants.ToArray();
+        var aggregates = GetCombinedAggregates(rawAggregates)
+            .OrderByDescending(item => item.Damage / Math.Max(1, seconds))
+            .ThenByDescending(item => item.Damage)
+            .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        for (var index = 0; index < aggregates.Length; index++)
+        {
+            var aggregate = aggregates[index];
+            if (!aggregate.Name.Equals(SelectedCombatant.Name, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!string.Equals(aggregate.OwnerName, SelectedCombatant.OwnerName, StringComparison.OrdinalIgnoreCase))
+                continue;
+            ApplyCombatantRow(SelectedCombatant, aggregate, seconds, isWarmingUp, index + 1);
+            return;
+        }
+    }
+
     private void PopulateCombatants(CombatantAggregate[] aggregates, double seconds, bool isWarmingUp)
     {
         var selectedName = CombinePetDamage && !string.IsNullOrWhiteSpace(SelectedCombatant?.OwnerName)
@@ -1390,7 +1556,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         if (canUpdateInPlace)
         {
             for (var index = 0; index < aggregates.Length; index++)
-                ApplyCombatantRow(Combatants[index], aggregates[index], seconds, isWarmingUp, index + 1);
+            {
+                if (ReferenceEquals(Combatants[index], SelectedCombatant))
+                    ApplyCombatantRow(Combatants[index], aggregates[index], seconds, isWarmingUp, index + 1);
+                else
+                    Combatants[index].ApplySummary(aggregates[index], seconds, isWarmingUp, index + 1);
+            }
 
             if (SelectedCombatant is null || !Combatants.Contains(SelectedCombatant))
             {
@@ -1420,10 +1591,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void ApplyCombatantRow(CombatantViewModel row, CombatantAggregate aggregate, double seconds,
         bool isWarmingUp, int rank)
     {
-        var abilities = CreateAbilities(aggregate.Abilities.Values, seconds);
-        var incomingAbilities = CreateAbilities(aggregate.IncomingAbilities.Values, seconds);
-        var healingAbilities = CreateAbilities(aggregate.HealingAbilities.Values, seconds);
-        var procs = CreateProcAbilities(aggregate.Abilities.Values, seconds);
+        var abilities = CreateOrReuseAbilities(row.Abilities, aggregate.Abilities.Values, seconds);
+        var incomingAbilities = CreateOrReuseAbilities(row.IncomingAbilities, aggregate.IncomingAbilities.Values, seconds);
+        var healingAbilities = CreateOrReuseAbilities(row.HealingAbilities, aggregate.HealingAbilities.Values, seconds);
+        var procs = CreateOrReuseAbilities(row.Procs, aggregate.Abilities.Values, seconds, isProc: true);
         var mitigationValues = new (string Name, int Count)[]
         {
             ("Dodge", aggregate.Dodges), ("Parry", aggregate.Parries), ("Block", aggregate.Blocks),
@@ -1432,16 +1603,33 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         };
         var recorded = mitigationValues.Where(item => item.Count > 0).ToArray();
         var mitigationTotal = Math.Max(1, recorded.Sum(item => item.Count));
-        var mitigations = recorded.Select((item, colorIndex) =>
+        var mitigations = CreateOrReuseMitigations(row.Mitigations, recorded, mitigationTotal);
+
+        row.ApplyAggregate(aggregate, seconds, isWarmingUp, rank, abilities, incomingAbilities,
+            healingAbilities, mitigations, procs);
+    }
+
+    private AbilityViewModel[] CreateOrReuseAbilities(AbilityViewModel[]? existing,
+        IEnumerable<AbilityAggregate> source, double seconds, bool isProc = false)
+    {
+        var created = isProc
+            ? CreateProcAbilities(source, seconds)
+            : CreateAbilities(source, seconds);
+        return AbilityViewModel.SequenceEquals(existing, created) ? existing ?? created : created;
+    }
+
+    private static AbilityViewModel[] CreateOrReuseMitigations(AbilityViewModel[]? existing,
+        (string Name, int Count)[] recorded, int mitigationTotal)
+    {
+        if (recorded.Length == 0) return existing?.Length == 0 ? existing : [];
+        var created = recorded.Select((item, colorIndex) =>
             new AbilityViewModel
             {
                 Name = item.Name, Damage = item.Count,
                 Share = item.Count * 100d / mitigationTotal,
                 Color = ChartBrushes[colorIndex % ChartBrushes.Length]
             }).ToArray();
-
-        row.ApplyAggregate(aggregate, seconds, isWarmingUp, rank, abilities, incomingAbilities,
-            healingAbilities, mitigations, procs);
+        return AbilityViewModel.SequenceEquals(existing, created) ? existing ?? created : created;
     }
 
     private AbilityViewModel[] CreateAbilities(IEnumerable<AbilityAggregate> source, double seconds)
@@ -1454,7 +1642,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             Dps = ability.Damage / Math.Max(1, seconds),
             Share = ability.Damage * 100d / total,
             Color = ChartBrushes[index % ChartBrushes.Length],
-            Icon = _spellDataCatalog?.GetAbilityIcon(ability.Name) ?? SpellIconAtlas.GenericIcon,
+            Icon = GetCachedAbilityIcon(ability.Name),
             IsPetSummary = ability.Children.Count > 0,
             Children = ability.Children.Count == 0
                 ? []
@@ -1501,7 +1689,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             Ppm = ability.ProcHits / minutes,
             Share = ability.ProcDamage * 100d / totalDamage,
             Color = ChartBrushes[index % ChartBrushes.Length],
-            Icon = _spellDataCatalog?.GetAbilityIcon(ability.Name) ?? SpellIconAtlas.GenericIcon
+            Icon = GetCachedAbilityIcon(ability.Name)
         }).ToArray();
     }
 

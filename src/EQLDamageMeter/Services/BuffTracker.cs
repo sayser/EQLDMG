@@ -59,8 +59,6 @@ public sealed class BuffTracker
         public BuffStopReason StopReason { get; set; }
         public Dictionary<string, List<string>> PendingTargetKeys { get; } =
             new(StringComparer.OrdinalIgnoreCase);
-        public Dictionary<string, int> PendingTargetOccurrences { get; } =
-            new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, ActiveInstance> Instances { get; } =
             new(StringComparer.OrdinalIgnoreCase);
     }
@@ -131,6 +129,12 @@ public sealed class BuffTracker
     private Func<string, bool>? _isAmbiguousSelfAppliedMessage;
     private readonly HashSet<Guid> _pulseSongRuleIds = [];
     private readonly HashSet<Guid> _songDamageRuleIds = [];
+    private bool _hasEnabledRules;
+    private List<BuffRuleSettings> _enabledRules = [];
+    private HashSet<string> _configuredSelfMessages = new(StringComparer.OrdinalIgnoreCase);
+    private string[] _configuredFadeFragments = [];
+    private string[] _configuredOtherSuffixes = [];
+    private Dictionary<string, List<Guid>> _rulesByFamily = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly record struct RecentSpellHit(
         string Target, string Source, string Ability, DateTime Timestamp);
@@ -199,6 +203,33 @@ public sealed class BuffTracker
                     state.Instances.Remove(key);
             if (!rule.IsEnabled) ClearPendingCast(state);
         }
+
+        RebuildMessageRelevanceHints();
+        RebuildRuleFamilyIndex();
+    }
+
+    public bool HasEnabledRules => _hasEnabledRules;
+
+    /// <summary>
+    /// Fast prefilter before regex/rule scans. Returns false for high-volume combat spam
+    /// that cannot affect spell tracking for the currently configured rules.
+    /// </summary>
+    public bool ShouldProcessMessage(string message)
+    {
+        if (!_hasEnabledRules || message.Length < 4) return false;
+        if (ContainsRelevanceKeyword(message)) return true;
+        if (_configuredSelfMessages.Contains(message)) return true;
+        foreach (var fade in _configuredFadeFragments)
+        {
+            if (message.Contains(fade, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+
+        foreach (var suffix in _configuredOtherSuffixes)
+        {
+            if (message.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+
+        return false;
     }
 
     public void ClearRuntime()
@@ -212,6 +243,8 @@ public sealed class BuffTracker
 
     public void Observe(DateTime timestamp, string message)
     {
+        if (!ShouldProcessMessage(message)) return;
+
         // Gate / zone / evac ends enemy control and DoTs immediately (charm included).
         if ((message.Contains("LOADING", StringComparison.OrdinalIgnoreCase) ||
              message.Contains("entered", StringComparison.OrdinalIgnoreCase)) &&
@@ -337,7 +370,7 @@ public sealed class BuffTracker
             alerts ??= [];
             alerts.Add(queued);
         }
-        foreach (var rule in _rules.Values.Where(rule => rule.IsEnabled))
+        foreach (var rule in _enabledRules)
         {
             var state = _states[rule.Id];
             if (state.PendingStart is { } pendingStart && now >= pendingStart)
@@ -422,37 +455,50 @@ public sealed class BuffTracker
             false, isOverdue, state.StopReason);
     }
 
-    public IReadOnlyList<BuffInstanceSnapshot> GetActiveSnapshots(DateTime now) =>
-        _rules.Values.Where(rule => rule.IsEnabled)
-            .SelectMany(rule =>
+    public IReadOnlyList<BuffInstanceSnapshot> GetActiveSnapshots(DateTime now)
+    {
+        if (_enabledRules.Count == 0) return [];
+        var snapshots = new List<BuffInstanceSnapshot>();
+        foreach (var rule in _enabledRules)
+        {
+            var isCharm = rule.Category == SpellTrackerCategory.Control &&
+                          rule.ControlType == ControlEffectType.Charm;
+            var isIndefiniteSong = IsIndefiniteSong(rule);
+            var showsPlaying = isIndefiniteSong || IsTimedDamageSong(rule);
+            foreach (var pair in _states[rule.Id].Instances)
             {
-                var isCharm = rule.Category == SpellTrackerCategory.Control &&
-                              rule.ControlType == ControlEffectType.Charm;
-                var isIndefiniteSong = IsIndefiniteSong(rule);
-                var showsPlaying = isIndefiniteSong || IsTimedDamageSong(rule);
-                return _states[rule.Id].Instances
-                    .Where(pair => isIndefiniteSong ||
-                                   now < pair.Value.ExpiresAt ||
-                                   isCharm && now < pair.Value.ExpiresAt + CharmMaxOverdue)
-                    .Select(pair =>
-                        new BuffInstanceSnapshot(rule.Id, pair.Key, rule.SpellName,
-                            pair.Value.TargetName, pair.Value.IsSelf, pair.Value.StartedAt,
-                            showsPlaying ? pair.Value.StartedAt : pair.Value.ExpiresAt,
-                            showsPlaying ? TimeSpan.Zero : pair.Value.ExpiresAt > now
-                                ? pair.Value.ExpiresAt - now
-                                : now - pair.Value.ExpiresAt,
-                            !showsPlaying && pair.Value.ExpiresAt > now &&
-                            pair.Value.ExpiresAt - now <= ExpiringSoonWindow,
-                            !showsPlaying && pair.Value.ExpiresAt <= now,
-                            showsPlaying));
-            })
-            // Self first, then others grouped by target, soonest expiry within each group.
-            .OrderByDescending(snapshot => snapshot.IsSelf)
-            .ThenBy(snapshot => snapshot.IsSelf ? string.Empty : snapshot.TargetName,
-                StringComparer.OrdinalIgnoreCase)
-            .ThenBy(snapshot => snapshot.ExpiresAt)
-            .ThenBy(snapshot => snapshot.SpellName, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+                if (!isIndefiniteSong &&
+                    now >= pair.Value.ExpiresAt &&
+                    !(isCharm && now < pair.Value.ExpiresAt + CharmMaxOverdue))
+                    continue;
+                snapshots.Add(new BuffInstanceSnapshot(rule.Id, pair.Key, rule.SpellName,
+                    pair.Value.TargetName, pair.Value.IsSelf, pair.Value.StartedAt,
+                    showsPlaying ? pair.Value.StartedAt : pair.Value.ExpiresAt,
+                    showsPlaying ? TimeSpan.Zero : pair.Value.ExpiresAt > now
+                        ? pair.Value.ExpiresAt - now
+                        : now - pair.Value.ExpiresAt,
+                    !showsPlaying && pair.Value.ExpiresAt > now &&
+                    pair.Value.ExpiresAt - now <= ExpiringSoonWindow,
+                    !showsPlaying && pair.Value.ExpiresAt <= now,
+                    showsPlaying));
+            }
+        }
+
+        snapshots.Sort(static (left, right) =>
+        {
+            var selfCompare = right.IsSelf.CompareTo(left.IsSelf);
+            if (selfCompare != 0) return selfCompare;
+            var targetCompare = string.Compare(
+                left.IsSelf ? string.Empty : left.TargetName,
+                right.IsSelf ? string.Empty : right.TargetName,
+                StringComparison.OrdinalIgnoreCase);
+            if (targetCompare != 0) return targetCompare;
+            var expiryCompare = left.ExpiresAt.CompareTo(right.ExpiresAt);
+            if (expiryCompare != 0) return expiryCompare;
+            return string.Compare(left.SpellName, right.SpellName, StringComparison.OrdinalIgnoreCase);
+        });
+        return snapshots;
+    }
 
     public bool HasActiveCharmTarget(string target, DateTime now) =>
         _rules.Values.Any(rule => rule.IsEnabled && rule.Category == SpellTrackerCategory.Control &&
@@ -479,7 +525,6 @@ public sealed class BuffTracker
             state.PendingStart = timestamp.AddSeconds(rule.CastTimeSeconds);
             state.PendingConfirmationEndsAt = null;
             state.PendingTargetKeys.Clear();
-            state.PendingTargetOccurrences.Clear();
             // Buffs: only unique land text can prove a land (shared lines like "yawns."
             // only rename a cast-timed instance). DoT/Control: shared land text during
             // our cast window is enough to open a per-target timer (e.g. poison DoTs).
@@ -1117,7 +1162,6 @@ public sealed class BuffTracker
         state.PendingStart = null;
         state.PendingConfirmationEndsAt = null;
         state.PendingTargetKeys.Clear();
-        state.PendingTargetOccurrences.Clear();
         state.PendingRequiresConfirmation = false;
         state.ReplacedPreviousWaveThisCast = false;
     }
@@ -1253,9 +1297,17 @@ public sealed class BuffTracker
             .Select(pair => pair.Key)
             .FirstOrDefault();
 
-    private IEnumerable<BuffRuleSettings> MatchingEnabledRules(string spell) =>
-        _rules.Values.Where(rule => rule.IsEnabled &&
-            SpellNameNormalizer.BelongsToFamily(spell, rule.SpellName));
+    private IEnumerable<BuffRuleSettings> MatchingEnabledRules(string spell)
+    {
+        var family = SpellNameNormalizer.GetFamilyName(spell);
+        if (family.Length == 0) yield break;
+        if (!_rulesByFamily.TryGetValue(family, out var ruleIds)) yield break;
+        foreach (var ruleId in ruleIds)
+        {
+            if (!_rules.TryGetValue(ruleId, out var rule) || !rule.IsEnabled) continue;
+            if (SpellNameNormalizer.BelongsToFamily(spell, rule.SpellName)) yield return rule;
+        }
+    }
 
     private static bool IsEnemyEffectCategory(BuffRuleSettings rule) =>
         rule.Category is SpellTrackerCategory.DamageOverTime or SpellTrackerCategory.Control;
@@ -1295,4 +1347,102 @@ public sealed class BuffTracker
 
     private static BuffRuntimeSnapshot EmptySnapshot(Guid ruleId) =>
         new(ruleId, null, null, TimeSpan.Zero, false, false, false, false, false, BuffStopReason.None);
+
+    private void RebuildMessageRelevanceHints()
+    {
+        _hasEnabledRules = _rules.Values.Any(rule => rule.IsEnabled);
+        _enabledRules = _hasEnabledRules
+            ? _rules.Values.Where(rule => rule.IsEnabled).ToList()
+            : [];
+        if (!_hasEnabledRules)
+        {
+            _configuredSelfMessages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            _configuredFadeFragments = [];
+            _configuredOtherSuffixes = [];
+            return;
+        }
+
+        var self = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var fades = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var suffixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rule in _rules.Values.Where(rule => rule.IsEnabled))
+        {
+            if (_selfAppliedMessages.TryGetValue(rule.Id, out var selfMessages))
+            {
+                foreach (var message in selfMessages) self.Add(message);
+            }
+
+            if (_fadeMessages.TryGetValue(rule.Id, out var fadeMessages))
+            {
+                foreach (var message in fadeMessages)
+                {
+                    if (message.Length >= 4) fades.Add(message);
+                }
+            }
+
+            if (_uniqueOtherSuffixes.TryGetValue(rule.Id, out var uniqueSuffixes))
+            {
+                foreach (var suffix in uniqueSuffixes)
+                {
+                    if (suffix.Length >= 4) suffixes.Add(suffix);
+                }
+            }
+
+            if (_ambiguousOtherSuffixes.TryGetValue(rule.Id, out var ambiguousSuffixes))
+            {
+                foreach (var suffix in ambiguousSuffixes)
+                {
+                    if (suffix.Length >= 4) suffixes.Add(suffix);
+                }
+            }
+        }
+
+        _configuredSelfMessages = self;
+        _configuredFadeFragments = fades.ToArray();
+        _configuredOtherSuffixes = suffixes.OrderByDescending(suffix => suffix.Length).ToArray();
+    }
+
+    private void RebuildRuleFamilyIndex()
+    {
+        var index = new Dictionary<string, List<Guid>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rule in _enabledRules)
+        {
+            var family = SpellNameNormalizer.GetFamilyName(rule.SpellName);
+            if (family.Length == 0) continue;
+            if (!index.TryGetValue(family, out var ruleIds))
+            {
+                ruleIds = [];
+                index[family] = ruleIds;
+            }
+
+            ruleIds.Add(rule.Id);
+        }
+
+        _rulesByFamily = index;
+    }
+
+    private static bool ContainsRelevanceKeyword(string message) =>
+        message.Contains("begin casting", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("begin singing", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("worn off", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("dispelled", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("resisted your", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("fizzles", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("interrupted", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("LOADING", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("entered ", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("song ends", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains(" damage by ", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("has taken ", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("winces", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("mesmerized", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("charmed", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("poisoned", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("glaze over", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains(" has been ", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("begins to ", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("You feel ", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("Your ", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("died", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("slain", StringComparison.OrdinalIgnoreCase);
 }

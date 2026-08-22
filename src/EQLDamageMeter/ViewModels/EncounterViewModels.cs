@@ -95,5 +95,6 @@ public sealed class EncounterHistoryViewModel : ObservableObject
     private static string FormatTargets(IReadOnlyList<string> targets) =>
         targets.Count == 0
             ? "Unknown target"
-            : string.Join(", ", targets.Take(2)) + (targets.Count > 2 ? $" +{targets.Count - 2}" : string.Empty);
+            : string.Join(", ", targets.Take(2).Select(MobDisplayName.Format)) +
+              (targets.Count > 2 ? $" +{targets.Count - 2}" : string.Empty);
 }

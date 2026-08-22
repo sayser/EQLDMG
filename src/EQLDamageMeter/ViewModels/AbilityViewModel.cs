@@ -19,4 +19,28 @@ public sealed class AbilityViewModel
     public string DpsText => Dps.ToString("N1", CultureInfo.CurrentCulture);
     public string PpmText => Ppm <= 0 ? "—" : Ppm.ToString("N1", CultureInfo.CurrentCulture);
     public string ShareText => $"{Share:0.0}%";
+
+    public static bool SequenceEquals(AbilityViewModel[]? left, AbilityViewModel[]? right)
+    {
+        if (ReferenceEquals(left, right)) return true;
+        if (left is null || right is null || left.Length != right.Length) return false;
+        for (var i = 0; i < left.Length; i++)
+        {
+            if (!ItemEquals(left[i], right[i])) return false;
+        }
+
+        return true;
+    }
+
+    private static bool ItemEquals(AbilityViewModel left, AbilityViewModel right) =>
+        left.Name == right.Name &&
+        left.Damage == right.Damage &&
+        left.Hits == right.Hits &&
+        Math.Abs(left.Dps - right.Dps) < 0.05 &&
+        Math.Abs(left.Ppm - right.Ppm) < 0.05 &&
+        Math.Abs(left.Share - right.Share) < 0.05 &&
+        left.IsPetSummary == right.IsPetSummary &&
+        ReferenceEquals(left.Color, right.Color) &&
+        ReferenceEquals(left.Icon, right.Icon) &&
+        SequenceEquals(left.Children, right.Children);
 }

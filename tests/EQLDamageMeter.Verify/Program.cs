@@ -83,6 +83,16 @@ internal static class Program
         Check("Family roman", SpellNameNormalizer.GetFamilyName("Inner Fire IX") == "Inner Fire");
         Check("Family Rk", SpellNameNormalizer.GetFamilyName("Complete Healing Rk. II") == "Complete Healing");
         Check("Family plain", SpellNameNormalizer.GetFamilyName("Venom of the Snake") == "Venom of the Snake");
+        Check("Mob display strip an", MobDisplayName.Format("an initiate familiar") == "initiate familiar");
+        Check("Mob display strip a", MobDisplayName.Format("A glyphed guard") == "glyphed guard");
+        Check("Mob display keep proper", MobDisplayName.Format("Innoruuk`s Chosen") == "Innoruuk`s Chosen");
+        Check("Group prefilter skips melee", !GroupStateTracker.ShouldProcessMessage(
+            "a rat hit a rat for 12 points of non-melee damage."));
+        Check("Group prefilter allows cast", GroupStateTracker.ShouldProcessMessage("You begin casting Allure."));
+        Check("Encounter prefilter skips melee", !EncounterTracker.ShouldProcessMessage(
+            "a rat hit a rat for 12 points of non-melee damage."));
+        Check("Encounter prefilter allows slain",
+            EncounterTracker.ShouldProcessMessage("You have slain a glyphed guard!"));
         Check("Belongs rank", SpellNameNormalizer.BelongsToFamily("Venom of the Snake III", "Venom of the Snake"));
         Check("Belongs mismatch", !SpellNameNormalizer.BelongsToFamily("Charm", "Mesmerize"));
         Check("Item Benefit family",
@@ -605,10 +615,10 @@ internal static class Program
         var stackedVm = new BuffOverlayEntryViewModel(stackedRats[0].Snapshot, SpellTrackerCategory.Control,
             ControlEffectType.Mez, stackCount: stackedRats[0].StackCount);
         Check("Mez overlay label is name X3",
-            stackedVm.OverlayTargetText == "a rat  X3" && stackedVm.StackCountText == "X3" && stackedVm.HasStackCount);
+            stackedVm.OverlayTargetText == "rat  X3" && stackedVm.StackCountText == "X3" && stackedVm.HasStackCount);
         stackedVm.Update(stackedRats[0].Snapshot, 2);
         Check("Mez overlay label updates to X2",
-            stackedVm.OverlayTargetText == "a rat  X2" && stackedVm.StackCountText == "X2");
+            stackedVm.OverlayTargetText == "rat  X2" && stackedVm.StackCountText == "X2");
         var charmRows = MezOverlayGrouping.Collapse(
             [MezSnap("1", "a rat"), MezSnap("2", "a rat")],
             _ => ControlEffectType.Charm);
@@ -1027,6 +1037,12 @@ internal static class Program
         solonTracker.Observe(t0.AddSeconds(4), "You are captivated by the haunting tune.");
         Check("Solon charm song ignores self captivated land",
             solonTracker.GetActiveSnapshots(t0.AddSeconds(4.1)).Count == 1);
+
+        Check("Prefilter skips pure melee combat spam",
+            !solonTracker.ShouldProcessMessage(
+                "a sand beetle hit a sand beetle for 12 points of non-melee damage."));
+        Check("Prefilter allows configured mob land suffix",
+            solonTracker.ShouldProcessMessage("a sand beetle's eyes glaze over."));
     }
 
     private static void RunSpellCatalogBardSongTests()

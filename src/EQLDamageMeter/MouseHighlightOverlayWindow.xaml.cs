@@ -5,13 +5,14 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using EQLDamageMeter.Services;
 
 namespace EQLDamageMeter;
 
 /// <summary>
-/// Click-through fullscreen canvas with rings that track the cursor via composition rendering
-/// (avoids moving a small HWND every frame, which lags).
+/// Click-through fullscreen canvas with rings that track the cursor on a throttled timer
+/// (avoids per-frame WPF composition work that can stutter the system cursor).
 /// </summary>
 public sealed class MouseHighlightOverlayWindow : Window
 {
@@ -31,6 +32,7 @@ public sealed class MouseHighlightOverlayWindow : Window
     private bool _secondRing;
     private bool _enabled;
     private bool _rendering;
+    private readonly DispatcherTimer _followTimer;
     private int _lastCursorX = int.MinValue;
     private int _lastCursorY = int.MinValue;
     private double _lastBlinkOpacity = -1;
@@ -57,6 +59,12 @@ public sealed class MouseHighlightOverlayWindow : Window
         _canvas.Children.Add(_outer);
         _canvas.Children.Add(_inner);
         Content = _canvas;
+
+        _followTimer = new DispatcherTimer(DispatcherPriority.Render)
+        {
+            Interval = TimeSpan.FromMilliseconds(33)
+        };
+        _followTimer.Tick += (_, _) => OnFollowTick();
 
         SourceInitialized += (_, _) =>
         {
@@ -139,13 +147,13 @@ public sealed class MouseHighlightOverlayWindow : Window
     {
         if (on == _rendering) return;
         if (on)
-            CompositionTarget.Rendering += OnRendering;
+            _followTimer.Start();
         else
-            CompositionTarget.Rendering -= OnRendering;
+            _followTimer.Stop();
         _rendering = on;
     }
 
-    private void OnRendering(object? sender, EventArgs e)
+    private void OnFollowTick()
     {
         if (!_enabled || !IsVisible) return;
         FollowCursor(force: false);

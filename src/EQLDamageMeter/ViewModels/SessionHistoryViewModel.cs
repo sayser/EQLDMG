@@ -130,6 +130,12 @@ public sealed class SessionHistoryViewModel : ObservableObject
         if (structural) SelectionChanged?.Invoke();
     }
 
+    public void UpdateCurrentDuration(SessionRecord current)
+    {
+        var existing = Sessions.FirstOrDefault(item => item.IsLive);
+        existing?.UpdateDurationOnly(current);
+    }
+
     private void RestoreSelectedMob(string? mobName)
     {
         if (SelectedSession is null || string.IsNullOrWhiteSpace(mobName))
@@ -359,24 +365,38 @@ public sealed class SessionEntryViewModel : ObservableObject
         if (Mobs.Count != orderedMobs.Length ||
             !Mobs.Select(item => item.Name).SequenceEqual(orderedMobs.Select(item => item.Name),
                 StringComparer.OrdinalIgnoreCase))
-            structural = true;
-
-        Mobs.Clear();
-        foreach (var mob in orderedMobs)
         {
-            if (previous.TryGetValue(mob.Name, out var existing))
+            structural = true;
+            Mobs.Clear();
+            foreach (var mob in orderedMobs)
             {
-                existing.UpdateFrom(mob);
-                Mobs.Add(existing);
+                if (previous.TryGetValue(mob.Name, out var existing))
+                {
+                    existing.UpdateFrom(mob);
+                    Mobs.Add(existing);
+                }
+                else
+                {
+                    Mobs.Add(SessionMobLootRowViewModel.From(mob));
+                }
             }
-            else
-            {
-                Mobs.Add(SessionMobLootRowViewModel.From(mob));
-                structural = true;
-            }
+        }
+        else
+        {
+            for (var index = 0; index < orderedMobs.Length; index++)
+                Mobs[index].UpdateFrom(orderedMobs[index]);
         }
 
         return structural;
+    }
+
+    public void UpdateDurationOnly(SessionRecord record)
+    {
+        Subtitle = FormatSubtitle(record, isLive: true);
+        DurationText = FormatDuration(record, isLive: true);
+        LevelXpRateText = FormatPercentPerHour(record.LevelXpPercent, record, isLive: true);
+        AaPointsRateText = FormatCountPerHour(record.AaPointsGained, record, isLive: true, prefix: "+");
+        MotesRateText = FormatCountPerHour(record.MotesLooted, record, isLive: true);
     }
 
     private static bool MoteRowsEqual(IReadOnlyList<MoteCountRow> left, IReadOnlyList<MoteCountRow> right)
@@ -493,6 +513,7 @@ public sealed class SessionMobLootRowViewModel : ObservableObject
     private IReadOnlyList<SessionLootItemRowViewModel> _historyItems = [];
 
     public string Name { get; private init; } = string.Empty;
+    public string DisplayName => MobDisplayName.Format(Name);
     public string WikiUrl
     {
         get => _wikiUrl;

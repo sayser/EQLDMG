@@ -13,6 +13,8 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     private readonly Func<int> _casterLevel;
     private readonly Func<IEnumerable<BuffRuleSettings>, CancellationToken, Task<bool>> _save;
     private readonly BuffAlertService _alerts;
+    private DateTime _lastOverlayRefreshUtc = DateTime.MinValue;
+    private const int OverlayRefreshIntervalMs = 1_000;
     private readonly BuffTracker _tracker = new();
     private readonly SemaphoreSlim _timingGate = new(1, 1);
     private BuffRuleViewModel? _selectedRule;
@@ -380,6 +382,8 @@ public sealed class SpellRuleSetViewModel : ObservableObject
     }
 
     public void Observe(DateTime timestamp, string message) => _tracker.Observe(timestamp, message);
+    public bool ShouldProcessMessage(string message) => _tracker.ShouldProcessMessage(message);
+    public bool HasEnabledRules => _tracker.HasEnabledRules;
     public bool HasActiveCharmTarget(string target, DateTime now) => _tracker.HasActiveCharmTarget(target, now);
     public void ClearRuntime()
     {
@@ -387,11 +391,20 @@ public sealed class SpellRuleSetViewModel : ObservableObject
         OverlayEntries.Clear();
     }
 
-    public void Tick(DateTime now)
+    public void Tick(DateTime now, bool refreshRuleUi = true, bool refreshOverlay = true)
     {
         foreach (var alert in _tracker.Tick(now)) _alerts.Play(alert);
-        foreach (var rule in Rules) rule.ApplyRuntime(_tracker.GetSnapshot(rule.Id, now));
-        RefreshOverlay(now);
+        if (refreshRuleUi && HasEnabledRules)
+        {
+            foreach (var rule in Rules) rule.ApplyRuntime(_tracker.GetSnapshot(rule.Id, now));
+        }
+
+        if (!refreshOverlay) return;
+        if ((now - _lastOverlayRefreshUtc).TotalMilliseconds >= OverlayRefreshIntervalMs)
+        {
+            RefreshOverlay(now);
+            _lastOverlayRefreshUtc = now;
+        }
     }
 
     public void RefreshConfiguration()
@@ -482,17 +495,18 @@ public sealed class SpellRuleSetViewModel : ObservableObject
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var stale in OverlayEntries.Where(item => !desired.Contains(item.InstanceKey)).ToArray())
             OverlayEntries.Remove(stale);
+        var entryByKey = OverlayEntries.ToDictionary(item => item.InstanceKey, StringComparer.OrdinalIgnoreCase);
         for (var index = 0; index < snapshots.Count; index++)
         {
             var (snapshot, stackCount) = snapshots[index];
             var key = BuffOverlayEntryViewModel.CreateKey(snapshot);
-            var entry = OverlayEntries.FirstOrDefault(item => item.InstanceKey.Equals(key, StringComparison.OrdinalIgnoreCase));
-            if (entry is null)
+            if (!entryByKey.TryGetValue(key, out var entry))
             {
                 var rule = visible[snapshot.RuleId];
                 entry = new BuffOverlayEntryViewModel(snapshot, _category, rule.ControlType,
                     rule.Icon ?? _catalog()?.GetIcon(snapshot.SpellName), stackCount);
                 OverlayEntries.Insert(Math.Min(index, OverlayEntries.Count), entry);
+                entryByKey[key] = entry;
             }
             else
             {
