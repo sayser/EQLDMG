@@ -317,6 +317,25 @@ internal static class Program
         Check("Remote charm survives local zone clear",
             group.TryGetPetOwner("an orc", out _));
 
+        // EQL companion spirits use guardian/vigilant/frenzied (not only "companion").
+        var companionGroup = new GroupStateTracker("Sayser");
+        var summon = companionGroup.Process("You summon a guardian spirit.", t0.AddSeconds(30));
+        Check("Guardian spirit summon arms pending bind", summon.Kind == GroupChangeKind.None);
+        var companionBind = companionGroup.Process("Varer begins casting Inner Fire.", t0.AddSeconds(31));
+        Check("Companion binds from first cast after summon",
+            companionBind.Kind == GroupChangeKind.PetControlled &&
+            companionBind.Member == "Varer" &&
+            companionBind.Owner == "Sayser" &&
+            companionGroup.TryGetPetOwner("Varer", out var companionOwner) &&
+            companionOwner == "Sayser");
+        var holding = companionGroup.Process(
+            "Varer says, 'Now greater holding master.  I will only attack something new if ordered.'",
+            t0.AddSeconds(32));
+        Check("Greater holding say is recognized as pet speech",
+            holding.Kind == GroupChangeKind.None || holding.Kind == GroupChangeKind.PetControlled);
+        Check("Companion still owned after holding say",
+            companionGroup.TryGetPetOwner("Varer", out _));
+
         // Encounter
         var encounter = new EncounterTracker("Sayser");
         var g2 = new GroupStateTracker("Sayser");

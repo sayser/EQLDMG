@@ -62,16 +62,16 @@ public sealed class GroupStateTracker(string localPlayerName)
         @"(?:^|\b)(?:charm|allure|beguile|dominat\w*|enslav\w*|captivat\w*|cajol\w*|befriend\w*|tame\w*)(?:\b|$)",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex LocalCompanionSummon = new(
-        @"^You summon a companion spirit\.$",
+        @"^You summon (?:a |an )?.+ spirit\.$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex OtherCompanionSummon = new(
-        @"^(?<name>.+?) summons a companion spirit\.$",
+        @"^(?<name>.+?) summons (?:a |an )?.+ spirit\.$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex PetMasterTell = new(
         @"^(?<pet>.+?) told you, '(?:Attacking .+|I am unable to wake .+?,) Master\.'$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex PetMasterSay = new(
-        @"^(?<pet>.+?) says, '(?:Now holding, Master\.|I beg forgiveness, Master\.  That is not a legal target\.|As you wish, oh great one\.)'",
+        @"^(?<pet>.+?) says, '(?:Now (?:greater )?holding,? Master\..*|I beg forgiveness, Master\.  That is not a legal target\.|As you wish, oh great one\.)'",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex TargetSlain = new(
         @"^(?<name>.+?) (?:has been slain by .+!?|(?:has )?died\.)$",
@@ -533,8 +533,8 @@ public sealed class GroupStateTracker(string localPlayerName)
                message.Contains("interrupted", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("did not take hold", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("resisted", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("summon a companion", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("summons a companion", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("summon", StringComparison.OrdinalIgnoreCase) &&
+               message.Contains("spirit", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("Master.", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("cancel the invitation", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("slain", StringComparison.OrdinalIgnoreCase) ||
@@ -562,10 +562,17 @@ public sealed class GroupStateTracker(string localPlayerName)
     {
         if (string.IsNullOrWhiteSpace(pet) ||
             pet.Equals(owner, StringComparison.OrdinalIgnoreCase) ||
-            pet.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase) ||
-            KnownMembers.Contains(pet))
+            pet.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase))
         {
             return null;
+        }
+
+        // A companion can be mis-promoted into KnownMembers (e.g. via group heals)
+        // before the Master tell arrives. Demote it so combine/ownership still work.
+        if (KnownMembers.Contains(pet))
+        {
+            KnownMembers.Remove(pet);
+            _memberConfirmedAt.Remove(pet);
         }
 
         // A pet re-announces itself throughout its life. Rebinding an unchanged pairing

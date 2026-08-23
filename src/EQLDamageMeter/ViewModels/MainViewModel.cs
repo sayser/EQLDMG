@@ -1357,6 +1357,23 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private CombatantAggregate[] GetCombinedAggregates(CombatantAggregate[] raw)
     {
         if (!CombinePetDamage) return raw;
+
+        // Stamp ownership from the live pet map so combine still works if a combatant
+        // row was created before the Master tell / summon bind landed.
+        if (_group is not null)
+        {
+            for (var i = 0; i < raw.Length; i++)
+            {
+                var combatant = raw[i];
+                if (!string.IsNullOrWhiteSpace(combatant.OwnerName)) continue;
+                if (!_group.TryGetPetOwner(combatant.Name, out var owner) ||
+                    string.IsNullOrWhiteSpace(owner) ||
+                    combatant.Name.Equals(owner, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                combatant.OwnerName = owner;
+            }
+        }
+
         if (_cachedCombinedAggregates is not null &&
             _cachedCombineDataVersion == _dataVersion &&
             _cachedCombinePetDamage)
