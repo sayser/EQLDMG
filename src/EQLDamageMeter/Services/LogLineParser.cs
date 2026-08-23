@@ -11,6 +11,15 @@ public sealed class LogLineParser(string localPlayerName)
     private static readonly CultureInfo LogCulture = CultureInfo.GetCultureInfo("en-US");
     private const string Flags = @"(?<flags>(?: \([^)]+\))*)$";
 
+    private static readonly HashSet<string> MetaDamageFlags = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Critical", "Critical Flurry", "Riposte", "Flurry", "Finishing Blow", "Crippling Blow",
+        "Crushing Blow", "Slashing Blow", "Stunning Blow", "Rampage"
+    };
+
+    private static readonly Regex FlagToken = new(@"\((?<flag>[^)]+)\)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly Regex Envelope = new(
         @"^\[(?<stamp>[^]]+)\] (?<message>.*)$",
         RegexOptions.Compiled);
@@ -356,14 +365,33 @@ public sealed class LogLineParser(string localPlayerName)
         string? forcedAbility = null)
     {
         source = NormalizeSource(source);
+        var rawAbility = match.Groups["ability"].Value;
+        var ability = forcedAbility ??
+                      ExtractNamedAbilityFromFlags(match.Groups["flags"].Value) ??
+                      (category == DamageCategory.Melee
+                          ? NormalizeMeleeAbility(rawAbility)
+                          : rawAbility);
         return new DamageEvent(
             timestamp,
             source,
             NormalizeTarget(match.Groups["target"].Value),
             int.Parse(match.Groups["amount"].Value, CultureInfo.InvariantCulture),
-            forcedAbility ?? match.Groups["ability"].Value,
+            ability,
             category,
             IsCritical(match));
+    }
+
+    public static string? ExtractNamedAbilityFromFlags(string flags)
+    {
+        if (flags.Length == 0) return null;
+        foreach (Match match in FlagToken.Matches(flags))
+        {
+            var flag = match.Groups["flag"].Value.Trim();
+            if (flag.Length == 0 || MetaDamageFlags.Contains(flag)) continue;
+            return flag;
+        }
+
+        return null;
     }
 
     private string NormalizeSource(string source) =>

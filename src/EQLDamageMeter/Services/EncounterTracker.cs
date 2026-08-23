@@ -41,6 +41,20 @@ public sealed class CombatantAggregate(string name)
     public int SpellHits { get; set; }
     public int MeleeCriticalHits { get; set; }
     public int SpellCriticalHits { get; set; }
+    /// <summary>Primary melee swings that could produce a multi-attack (hit index 1).</summary>
+    public int MeleeSwingAttempts { get; set; }
+    public int DoubleAttacks { get; set; }
+    public int TripleAttacks { get; set; }
+    public int QuadAttacks { get; set; }
+    public long MeleeDamage { get; set; }
+    public int MeleeHitMin { get; set; }
+    public int MeleeHitMax { get; set; }
+    /// <summary>Damage dealt in each whole second since encounter start (index 0 = first second).</summary>
+    public List<long> DamageBySecond { get; } = [];
+    /// <summary>When pets are combined: owner-only per-second damage for dual-color graphs.</summary>
+    public List<long> OwnerDamageBySecond { get; } = [];
+    /// <summary>When pets are combined: pet-only per-second damage for dual-color graphs.</summary>
+    public List<long> PetDamageBySecond { get; } = [];
     public int Misses { get; set; }
     public int SpellFizzles { get; set; }
     public int SpellResists { get; set; }
@@ -566,13 +580,40 @@ public sealed class EncounterTracker(string localPlayerName)
         if (damage.Category == DamageCategory.Melee)
         {
             combatant.MeleeHits++;
+            combatant.MeleeDamage += damage.Amount;
+            if (combatant.MeleeHitMin == 0 || damage.Amount < combatant.MeleeHitMin)
+                combatant.MeleeHitMin = damage.Amount;
+            if (damage.Amount > combatant.MeleeHitMax)
+                combatant.MeleeHitMax = damage.Amount;
             if (damage.IsCritical) combatant.MeleeCriticalHits++;
+            // Count each swing chain by its final depth only: a triple does not also
+            // count as a double, and a quad does not also count as double/triple.
+            switch (damage.MultiAttackLevel)
+            {
+                case <= 1:
+                    combatant.MeleeSwingAttempts++;
+                    break;
+                case 2:
+                    combatant.DoubleAttacks++;
+                    break;
+                case 3:
+                    if (combatant.DoubleAttacks > 0) combatant.DoubleAttacks--;
+                    combatant.TripleAttacks++;
+                    break;
+                default:
+                    if (combatant.TripleAttacks > 0) combatant.TripleAttacks--;
+                    else if (combatant.DoubleAttacks > 0) combatant.DoubleAttacks--;
+                    combatant.QuadAttacks++;
+                    break;
+            }
         }
         else if (damage.Category is DamageCategory.Spell or DamageCategory.DamageOverTime)
         {
             combatant.SpellHits++;
             if (damage.IsCritical) combatant.SpellCriticalHits++;
         }
+
+        RecordDamageBySecond(combatant, damage.Timestamp, damage.Amount);
 
         var ability = GetOrCreateAbility(combatant.Abilities, damage.Ability);
         ability.Damage += damage.Amount;
@@ -791,6 +832,15 @@ public sealed class EncounterTracker(string localPlayerName)
         LastDamageAt = !LastDamageAt.HasValue || timestamp > LastDamageAt ? timestamp : LastDamageAt;
     }
 
+    private void RecordDamageBySecond(CombatantAggregate combatant, DateTime timestamp, int amount)
+    {
+        if (!StartedAt.HasValue || amount <= 0) return;
+        var second = Math.Max(0, (int)(timestamp - StartedAt.Value).TotalSeconds);
+        while (combatant.DamageBySecond.Count <= second)
+            combatant.DamageBySecond.Add(0);
+        combatant.DamageBySecond[second] += amount;
+    }
+
     private CombatantAggregate GetOrCreateCombatant(string name, string? owner)
     {
         if (_combatants.TryGetValue(name, out var combatant))
@@ -848,6 +898,13 @@ public sealed class EncounterTracker(string localPlayerName)
             SpellHits = source.SpellHits,
             MeleeCriticalHits = source.MeleeCriticalHits,
             SpellCriticalHits = source.SpellCriticalHits,
+            MeleeSwingAttempts = source.MeleeSwingAttempts,
+            DoubleAttacks = source.DoubleAttacks,
+            TripleAttacks = source.TripleAttacks,
+            QuadAttacks = source.QuadAttacks,
+            MeleeDamage = source.MeleeDamage,
+            MeleeHitMin = source.MeleeHitMin,
+            MeleeHitMax = source.MeleeHitMax,
             Misses = source.Misses,
             SpellFizzles = source.SpellFizzles,
             SpellResists = source.SpellResists,
@@ -870,6 +927,8 @@ public sealed class EncounterTracker(string localPlayerName)
             HealOverTimeTicks = source.HealOverTimeTicks,
             CriticalHeals = source.CriticalHeals
         };
+        if (source.DamageBySecond.Count > 0)
+            clone.DamageBySecond.AddRange(source.DamageBySecond);
         foreach (var ability in source.Abilities.Values)
             clone.Abilities[SpellNameNormalizer.GetFamilyName(ability.Name)] = CloneAbility(ability);
         foreach (var ability in source.IncomingAbilities.Values)

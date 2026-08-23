@@ -147,6 +147,29 @@ public partial class MainWindow : Window, IAsyncDisposable
         e.Handled = true;
     }
 
+    private void CombatantGraphExpand_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: CombatantViewModel combatant })
+            combatant.ToggleGraphExpanded();
+        e.Handled = true;
+    }
+
+    private void FightLogs_Click(object sender, RoutedEventArgs e)
+    {
+        var entries = _viewModel.GetSelectedFightLogLines();
+        var actors = _viewModel.Combatants.Select(c => c.Name).ToArray();
+        var window = new FightLogWindow(
+            _viewModel.GetSelectedFightLogTitle(),
+            entries,
+            _viewModel.CharacterName,
+            actors)
+        {
+            Owner = this
+        };
+        window.Show();
+        e.Handled = true;
+    }
+
     private void SessionMobSelect_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: SessionMobLootRowViewModel mob }) return;

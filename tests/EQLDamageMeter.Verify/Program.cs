@@ -167,6 +167,126 @@ internal static class Program
         Check("Identity path",
             LogIdentity.TryFromPath(@"C:\Logs\eqlog_Sayser_halas.txt", out var id) &&
             id!.Character == "Sayser" && id.Server == "halas");
+
+        Check("Flag ability Double Bow Shot",
+            LogLineParser.ExtractNamedAbilityFromFlags(" (Double Bow Shot)") == "Double Bow Shot");
+        Check("Flag ignores Critical",
+            LogLineParser.ExtractNamedAbilityFromFlags(" (Critical)") is null);
+
+        var resolver = new MeleeAbilityResolver();
+        var t = new DateTime(2026, 8, 22, 15, 4, 8);
+        var kick = resolver.ResolveOutgoingDamage(
+            new DamageEvent(t, "Sayser", "a rat", 90, "Kick", DamageCategory.Melee, false), "Sayser");
+        Check("Log ability stays Kick", kick.Ability == "Kick" && kick.MultiAttackLevel == 1, kick.Ability);
+        var kick2 = resolver.ResolveOutgoingDamage(
+            new DamageEvent(t, "Sayser", "a rat", 120, "Kick", DamageCategory.Melee, false), "Sayser");
+        Check("Double attack keeps Kick name",
+            kick2.Ability == "Kick" && kick2.MultiAttackLevel == 2,
+            $"{kick2.Ability}/{kick2.MultiAttackLevel}");
+
+        var bash = resolver.ResolveOutgoingDamage(
+            new DamageEvent(t.AddSeconds(1), "Sayser", "a rat", 50, "Bash", DamageCategory.Melee, false),
+            "Sayser");
+        Check("Log ability stays Bash", bash.Ability == "Bash", bash.Ability);
+
+        var cleave = resolver.ResolveOutgoingDamage(
+            new DamageEvent(t.AddSeconds(1), "Sayser", "a rat", 80, "Cleave", DamageCategory.Melee, false),
+            "Sayser");
+        Check("Log ability stays Cleave", cleave.Ability == "Cleave", cleave.Ability);
+
+        var tripleTime = t.AddSeconds(2);
+        var punch1 = resolver.ResolveOutgoingDamage(
+            new DamageEvent(tripleTime, "Sayser", "a rat", 40, "Punch", DamageCategory.Melee, false), "Sayser");
+        Check("Log ability stays Punch", punch1.Ability == "Punch", punch1.Ability);
+        _ = resolver.ResolveOutgoingDamage(
+            new DamageEvent(tripleTime, "Sayser", "a rat", 41, "Punch", DamageCategory.Melee, false), "Sayser");
+        var triple = resolver.ResolveOutgoingDamage(
+            new DamageEvent(tripleTime, "Sayser", "a rat", 42, "Punch", DamageCategory.Melee, false), "Sayser");
+        Check("Triple attack keeps Punch name",
+            triple.Ability == "Punch" && triple.MultiAttackLevel == 3,
+            $"{triple.Ability}/{triple.MultiAttackLevel}");
+
+        var rateEncounter = new EncounterTracker("Sayser");
+        var rateGroup = new GroupStateTracker("Sayser");
+
+        // Pure double: primary + 2nd hit only.
+        var d0 = t.AddSeconds(10);
+        rateEncounter.Process(
+            new DamageEvent(d0, "Sayser", "a rat", 10, "Strike", DamageCategory.Melee, false, 1), rateGroup);
+        rateEncounter.Process(
+            new DamageEvent(d0, "Sayser", "a rat", 11, "Strike", DamageCategory.Melee, false, 2), rateGroup);
+
+        // Pure triple: must not leave a lingering double count.
+        var d1 = t.AddSeconds(11);
+        rateEncounter.Process(
+            new DamageEvent(d1, "Sayser", "a rat", 12, "Punch", DamageCategory.Melee, false, 1), rateGroup);
+        rateEncounter.Process(
+            new DamageEvent(d1, "Sayser", "a rat", 13, "Punch", DamageCategory.Melee, false, 2), rateGroup);
+        rateEncounter.Process(
+            new DamageEvent(d1, "Sayser", "a rat", 14, "Punch", DamageCategory.Melee, false, 3), rateGroup);
+
+        // Pure quad: must not leave double or triple counts.
+        var d2 = t.AddSeconds(12);
+        rateEncounter.Process(
+            new DamageEvent(d2, "Sayser", "a rat", 15, "Kick", DamageCategory.Melee, false, 1), rateGroup);
+        rateEncounter.Process(
+            new DamageEvent(d2, "Sayser", "a rat", 16, "Kick", DamageCategory.Melee, false, 2), rateGroup);
+        rateEncounter.Process(
+            new DamageEvent(d2, "Sayser", "a rat", 17, "Kick", DamageCategory.Melee, false, 3), rateGroup);
+        rateEncounter.Process(
+            new DamageEvent(d2, "Sayser", "a rat", 18, "Kick", DamageCategory.Melee, false, 4), rateGroup);
+
+        var sayser = rateEncounter.CreateSnapshot(d2).Combatants
+            .First(c => c.Name.Equals("Sayser", StringComparison.OrdinalIgnoreCase));
+        Check("Multi-attack final depth only",
+            sayser.MeleeSwingAttempts == 3 && sayser.DoubleAttacks == 1 &&
+            sayser.TripleAttacks == 1 && sayser.QuadAttacks == 1 &&
+            !sayser.Abilities.ContainsKey("Double Attack"),
+            $"swings={sayser.MeleeSwingAttempts} da={sayser.DoubleAttacks} ta={sayser.TripleAttacks} qa={sayser.QuadAttacks}");
+
+        var hitEncounter = new EncounterTracker("Sayser");
+        var hitGroup = new GroupStateTracker("Sayser");
+        var h0 = t.AddSeconds(20);
+        hitEncounter.Process(
+            new DamageEvent(h0, "Sayser", "a rat", 40, "Punch", DamageCategory.Melee, false), hitGroup);
+        hitEncounter.Process(
+            new DamageEvent(h0.AddSeconds(1), "Sayser", "a rat", 120, "Kick", DamageCategory.Melee, false),
+            hitGroup);
+        hitEncounter.Process(
+            new DamageEvent(h0.AddSeconds(1), "Sayser", "a rat", 10, "Bash", DamageCategory.Melee, false),
+            hitGroup);
+        hitEncounter.Process(
+            new DamageEvent(h0.AddSeconds(2), "Sayser", "a rat", 500, "Odium", DamageCategory.Spell, false),
+            hitGroup);
+        var hitSayser = hitEncounter.CreateSnapshot(h0.AddSeconds(2)).Combatants
+            .First(c => c.Name.Equals("Sayser", StringComparison.OrdinalIgnoreCase));
+        Check("Melee hit stats ignore spells",
+            hitSayser.MeleeHits == 3 && hitSayser.MeleeDamage == 170 &&
+            hitSayser.MeleeHitMin == 10 && hitSayser.MeleeHitMax == 120,
+            $"hits={hitSayser.MeleeHits} dmg={hitSayser.MeleeDamage} min={hitSayser.MeleeHitMin} max={hitSayser.MeleeHitMax}");
+        Check("Damage timeline buckets",
+            hitSayser.DamageBySecond.Count >= 3 &&
+            hitSayser.DamageBySecond[0] == 40 &&
+            hitSayser.DamageBySecond[1] == 130 &&
+            hitSayser.DamageBySecond[2] == 500,
+            string.Join(",", hitSayser.DamageBySecond));
+        var timeline = CombatantViewModel.BuildDpsTimeline(hitSayser.DamageBySecond);
+        // Rolling 5s window: (40)/5, (40+130)/5, (40+130+500)/5
+        Check("Rolling average DPS timeline",
+            timeline.Length >= 3 &&
+            Math.Abs(timeline[0] - 8) < 0.01 &&
+            Math.Abs(timeline[1] - 34) < 0.01 &&
+            Math.Abs(timeline[2] - 134) < 0.01,
+            string.Join(",", timeline.Select(v => v.ToString("0.0"))));
+
+        var formatted = FightLogFormatter.Format(
+            new FightLogEntry(t, "You slash a revenant for 120 points of damage. (Critical)"),
+            "Sayser");
+        Check("Fight log colors damage and crit",
+            formatted.Any(s => s.Text == "120" && s.Bold) &&
+            formatted.Any(s => s.Text.Contains("Critical", StringComparison.Ordinal) && s.Bold) &&
+            formatted.Any(s => s.Text.Contains("{slash}", StringComparison.OrdinalIgnoreCase) && s.Bold),
+            string.Join("|", formatted.Select(s => s.Text)));
     }
 
     private static void RunGroupAndEncounterTests()

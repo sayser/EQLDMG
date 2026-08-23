@@ -14,6 +14,13 @@ public sealed class CombatantViewModel : ObservableObject
     private int _spellHits;
     private int _meleeCriticalHits;
     private int _spellCriticalHits;
+    private int _meleeSwingAttempts;
+    private int _doubleAttacks;
+    private int _tripleAttacks;
+    private int _quadAttacks;
+    private long _meleeDamage;
+    private int _meleeHitMin;
+    private int _meleeHitMax;
     private int _misses;
     private int _spellFizzles;
     private int _spellResists;
@@ -41,6 +48,9 @@ public sealed class CombatantViewModel : ObservableObject
     private AbilityViewModel[] _mitigations = [];
     private AbilityViewModel[] _healingAbilities = [];
     private AbilityViewModel[] _procs = [];
+    private bool _isGraphExpanded;
+    private double[] _dpsTimeline = [];
+    private double[] _petDpsTimeline = [];
 
     public string Name
     {
@@ -76,6 +86,9 @@ public sealed class CombatantViewModel : ObservableObject
         {
             if (!SetProperty(ref _meleeHits, value)) return;
             RaisePropertyChanged(nameof(CriticalRateText));
+            RaisePropertyChanged(nameof(MeleeAverageHitText));
+            RaisePropertyChanged(nameof(MeleeLowestHitText));
+            RaisePropertyChanged(nameof(MeleeHighestHitText));
         }
     }
 
@@ -106,6 +119,78 @@ public sealed class CombatantViewModel : ObservableObject
         {
             if (!SetProperty(ref _spellCriticalHits, value)) return;
             RaisePropertyChanged(nameof(SpellCriticalRateText));
+        }
+    }
+
+    public int MeleeSwingAttempts
+    {
+        get => _meleeSwingAttempts;
+        set
+        {
+            if (!SetProperty(ref _meleeSwingAttempts, value)) return;
+            RaisePropertyChanged(nameof(DoubleAttackRateText));
+            RaisePropertyChanged(nameof(TripleAttackRateText));
+            RaisePropertyChanged(nameof(QuadAttackRateText));
+        }
+    }
+
+    public int DoubleAttacks
+    {
+        get => _doubleAttacks;
+        set
+        {
+            if (!SetProperty(ref _doubleAttacks, value)) return;
+            RaisePropertyChanged(nameof(DoubleAttackRateText));
+        }
+    }
+
+    public int TripleAttacks
+    {
+        get => _tripleAttacks;
+        set
+        {
+            if (!SetProperty(ref _tripleAttacks, value)) return;
+            RaisePropertyChanged(nameof(TripleAttackRateText));
+        }
+    }
+
+    public int QuadAttacks
+    {
+        get => _quadAttacks;
+        set
+        {
+            if (!SetProperty(ref _quadAttacks, value)) return;
+            RaisePropertyChanged(nameof(QuadAttackRateText));
+        }
+    }
+
+    public long MeleeDamage
+    {
+        get => _meleeDamage;
+        set
+        {
+            if (!SetProperty(ref _meleeDamage, value)) return;
+            RaisePropertyChanged(nameof(MeleeAverageHitText));
+        }
+    }
+
+    public int MeleeHitMin
+    {
+        get => _meleeHitMin;
+        set
+        {
+            if (!SetProperty(ref _meleeHitMin, value)) return;
+            RaisePropertyChanged(nameof(MeleeLowestHitText));
+        }
+    }
+
+    public int MeleeHitMax
+    {
+        get => _meleeHitMax;
+        set
+        {
+            if (!SetProperty(ref _meleeHitMax, value)) return;
+            RaisePropertyChanged(nameof(MeleeHighestHitText));
         }
     }
 
@@ -256,7 +341,7 @@ public sealed class CombatantViewModel : ObservableObject
     public int Rank { get => _rank; set => SetProperty(ref _rank, value); }
     public string DpsText { get => _dpsText; set => SetProperty(ref _dpsText, value); }
     public string HpsText { get => _hpsText; set => SetProperty(ref _hpsText, value); }
-    public Brush BarBrush => OverlayBarPalette.ForName(Name);
+    public Brush BarBrush => CombatantColorPalette.ForName(Name);
 
     public AbilityViewModel[] Abilities
     {
@@ -288,12 +373,59 @@ public sealed class CombatantViewModel : ObservableObject
         set => SetProperty(ref _procs, value);
     }
 
+    public bool IsGraphExpanded
+    {
+        get => _isGraphExpanded;
+        set
+        {
+            if (!SetProperty(ref _isGraphExpanded, value)) return;
+            RaisePropertyChanged(nameof(GraphExpandGlyph));
+            RaisePropertyChanged(nameof(GraphVisibility));
+        }
+    }
+
+    public string GraphExpandGlyph => IsGraphExpanded ? "▾" : "▸";
+    public System.Windows.Visibility GraphVisibility =>
+        IsGraphExpanded ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+
+    public double[] DpsTimeline
+    {
+        get => _dpsTimeline;
+        set => SetProperty(ref _dpsTimeline, value);
+    }
+
+    public double[] PetDpsTimeline
+    {
+        get => _petDpsTimeline;
+        set
+        {
+            if (!SetProperty(ref _petDpsTimeline, value)) return;
+            RaisePropertyChanged(nameof(HasPetDpsTimeline));
+            RaisePropertyChanged(nameof(PetGraphLegendVisibility));
+        }
+    }
+
+    public bool HasPetDpsTimeline => PetDpsTimeline.Length > 0 && PetDpsTimeline.Any(v => v > 0);
+    public System.Windows.Visibility PetGraphLegendVisibility =>
+        HasPetDpsTimeline ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+
+    public void ToggleGraphExpanded() => IsGraphExpanded = !IsGraphExpanded;
+
     public string DamageText => Damage.ToString("N0", CultureInfo.CurrentCulture);
     public string DamageTakenText => DamageTaken.ToString("N0", CultureInfo.CurrentCulture);
     public string HealingText => Healing.ToString("N0", CultureInfo.CurrentCulture);
     public string CriticalRateText => FormatRate(MeleeCriticalHits, MeleeHits);
     public string SpellCriticalRateText => FormatRate(SpellCriticalHits, SpellHits);
     public string HealingCriticalRateText => FormatRate(CriticalHeals, DirectHeals + HealOverTimeTicks);
+    public string DoubleAttackRateText => FormatRate(DoubleAttacks, MeleeSwingAttempts);
+    public string TripleAttackRateText => FormatRate(TripleAttacks, MeleeSwingAttempts);
+    public string QuadAttackRateText => FormatRate(QuadAttacks, MeleeSwingAttempts);
+    public string MeleeAverageHitText =>
+        MeleeHits == 0 ? "—" : (MeleeDamage / (double)MeleeHits).ToString("N0", CultureInfo.CurrentCulture);
+    public string MeleeLowestHitText =>
+        MeleeHits == 0 ? "—" : MeleeHitMin.ToString("N0", CultureInfo.CurrentCulture);
+    public string MeleeHighestHitText =>
+        MeleeHits == 0 ? "—" : MeleeHitMax.ToString("N0", CultureInfo.CurrentCulture);
     public int Avoided => Dodges + Parries + Blocks + Ripostes + Math.Max(0, Absorbed - SpellAbsorbs);
     public string AvoidanceRateText
     {
@@ -319,6 +451,13 @@ public sealed class CombatantViewModel : ObservableObject
         SpellHits = aggregate.SpellHits;
         MeleeCriticalHits = aggregate.MeleeCriticalHits;
         SpellCriticalHits = aggregate.SpellCriticalHits;
+        MeleeSwingAttempts = aggregate.MeleeSwingAttempts;
+        DoubleAttacks = aggregate.DoubleAttacks;
+        TripleAttacks = aggregate.TripleAttacks;
+        QuadAttacks = aggregate.QuadAttacks;
+        MeleeDamage = aggregate.MeleeDamage;
+        MeleeHitMin = aggregate.MeleeHitMin;
+        MeleeHitMax = aggregate.MeleeHitMax;
         SpellFizzles = aggregate.SpellFizzles;
         SpellResists = aggregate.SpellResists;
         DamageTaken = aggregate.DamageTaken;
@@ -339,6 +478,9 @@ public sealed class CombatantViewModel : ObservableObject
         HealOverTimeTicks = aggregate.HealOverTimeTicks;
         CriticalHeals = aggregate.CriticalHeals;
         HpsText = (aggregate.Healing / Math.Max(1, seconds)).ToString("N1", CultureInfo.CurrentCulture);
+        DpsTimeline = BuildDpsTimeline(
+            aggregate.OwnerDamageBySecond.Count > 0 ? aggregate.OwnerDamageBySecond : aggregate.DamageBySecond);
+        PetDpsTimeline = BuildDpsTimeline(aggregate.PetDamageBySecond);
         Abilities = abilities;
         IncomingAbilities = incomingAbilities;
         HealingAbilities = healingAbilities;
@@ -359,6 +501,13 @@ public sealed class CombatantViewModel : ObservableObject
         SpellHits = aggregate.SpellHits;
         MeleeCriticalHits = aggregate.MeleeCriticalHits;
         SpellCriticalHits = aggregate.SpellCriticalHits;
+        MeleeSwingAttempts = aggregate.MeleeSwingAttempts;
+        DoubleAttacks = aggregate.DoubleAttacks;
+        TripleAttacks = aggregate.TripleAttacks;
+        QuadAttacks = aggregate.QuadAttacks;
+        MeleeDamage = aggregate.MeleeDamage;
+        MeleeHitMin = aggregate.MeleeHitMin;
+        MeleeHitMax = aggregate.MeleeHitMax;
         SpellFizzles = aggregate.SpellFizzles;
         SpellResists = aggregate.SpellResists;
         DamageTaken = aggregate.DamageTaken;
@@ -379,45 +528,34 @@ public sealed class CombatantViewModel : ObservableObject
         HealOverTimeTicks = aggregate.HealOverTimeTicks;
         CriticalHeals = aggregate.CriticalHeals;
         HpsText = (aggregate.Healing / Math.Max(1, seconds)).ToString("N1", CultureInfo.CurrentCulture);
+        DpsTimeline = BuildDpsTimeline(
+            aggregate.OwnerDamageBySecond.Count > 0 ? aggregate.OwnerDamageBySecond : aggregate.DamageBySecond);
+        PetDpsTimeline = BuildDpsTimeline(aggregate.PetDamageBySecond);
+    }
+
+    /// <summary>
+    /// Rolling average DPS over a short window (damage in the last N seconds / N).
+    /// Avoids the first-second spike from overall-DPS (total / elapsed) when an opener lands.
+    /// </summary>
+    public const int DpsTimelineWindowSeconds = 5;
+
+    public static double[] BuildDpsTimeline(IReadOnlyList<long> damageBySecond)
+    {
+        if (damageBySecond.Count == 0) return [];
+        var window = DpsTimelineWindowSeconds;
+        var points = new double[damageBySecond.Count];
+        long windowSum = 0;
+        for (var i = 0; i < damageBySecond.Count; i++)
+        {
+            windowSum += damageBySecond[i];
+            if (i >= window)
+                windowSum -= damageBySecond[i - window];
+            points[i] = windowSum / (double)window;
+        }
+        return points;
     }
 
     private static string FormatRate(int criticals, int total) =>
         total == 0 ? "0.0%" : $"{criticals * 100d / total:0.0}%";
 }
 
-internal static class OverlayBarPalette
-{
-    private static readonly Brush[] Brushes = Create();
-
-    public static Brush ForName(string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name) || Brushes.Length == 0)
-            return Brushes[0];
-        var hash = 2166136261;
-        foreach (var ch in name.Trim().ToUpperInvariant())
-            hash = (hash ^ ch) * 16777619;
-        return Brushes[(int)(hash % (uint)Brushes.Length)];
-    }
-
-    private static Brush[] Create()
-    {
-        Color[] colors =
-        [
-            Color.FromRgb(124, 92, 252),
-            Color.FromRgb(41, 211, 194),
-            Color.FromRgb(64, 156, 255),
-            Color.FromRgb(255, 183, 77),
-            Color.FromRgb(255, 99, 132),
-            Color.FromRgb(155, 112, 255),
-            Color.FromRgb(63, 205, 118),
-            Color.FromRgb(255, 126, 80),
-            Color.FromRgb(88, 204, 255)
-        ];
-        return colors.Select(color =>
-        {
-            var brush = new SolidColorBrush(color);
-            brush.Freeze();
-            return (Brush)brush;
-        }).ToArray();
-    }
-}

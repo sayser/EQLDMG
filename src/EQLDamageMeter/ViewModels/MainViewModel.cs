@@ -18,6 +18,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private sealed record QueuedParsedLine(int Generation, ParsedLogLine Parsed);
     public const string DefaultLogFolder = @"C:\Users\Public\Daybreak Game Company\Installed Games\EverQuest Legends\Logs";
     private const int HistoryLimit = 25;
+    private const int MaxFightLogLines = 8_000;
     private const int ParsedLineBatchSize = 64;
     private const int MinFullDisplayRefreshMs = 250;
     private const int OverlayRefreshIntervalMs = 1_000;
@@ -33,6 +34,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly SemaphoreSlim _loadGate = new(1, 1);
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly BuffTracker _buffTracker = new();
+    private readonly MeleeAbilityResolver _meleeAbilityResolver = new();
     private readonly BuffAlertService _buffAlertService = new();
     private readonly SemaphoreSlim _buffTimingGate = new(1, 1);
     private readonly SessionTracker _sessionTracker = new();
@@ -73,6 +75,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private CombatantAggregate[]? _cachedCombinedAggregates;
     private DateTime _lastBuffRuleUiRefreshUtc = DateTime.MinValue;
     private const int SpellRuleUiRefreshIntervalMs = 1_000;
+    private readonly List<FightLogEntry> _liveFightLog = [];
+    private DateTime? _liveFightLogEncounterStart;
 
     public bool IsDpsModuleActive { get; set; } = true;
     public bool IsSpellTrackerModuleActive { get; set; }
@@ -337,9 +341,31 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public void ResetEncounter()
     {
         _encounter?.Reset();
+        _meleeAbilityResolver.ClearRuntime();
+        ClearLiveFightLog();
         _dataVersion++;
         SelectLiveHistory();
         RefreshDisplay(force: true);
+    }
+
+    public IReadOnlyList<FightLogEntry> GetSelectedFightLogLines()
+    {
+        if (SelectedHistory is { IsLive: false })
+            return SelectedHistory.LogLines;
+        return SnapshotLiveFightLog(_encounter?.StartedAt, _encounter?.EndedAt ?? _encounter?.LastDamageAt ?? _lastLogTimestamp);
+    }
+
+    public string GetSelectedFightLogTitle()
+    {
+        if (SelectedHistory is { IsLive: false, Snapshot: { } snap })
+        {
+            var targets = snap.Targets.Count == 0
+                ? "Fight"
+                : string.Join(", ", snap.Targets.Take(2).Select(MobDisplayName.Format));
+            return $"Fight Logs · {targets}";
+        }
+
+        return "Fight Logs · Current encounter";
     }
 
     public void RefreshDisplayNow() => RefreshDisplay(force: true);
@@ -635,6 +661,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _parser = parser;
         _group = group;
         _encounter = new EncounterTracker(identity.Character);
+        _meleeAbilityResolver.ClearRuntime();
+        ClearLiveFightLog();
         _buffTracker.ClearRuntime();
         DotSpellTracker.ClearRuntime();
         ControlSpellTracker.ClearRuntime();
@@ -910,7 +938,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             if (_encounter.CreateSnapshot(boundaryTime)
                 is { } boundarySnapshot)
             {
-                Archive(boundarySnapshot, priorMode);
+                Archive(boundarySnapshot, priorMode, SnapshotLiveFightLog(boundarySnapshot.StartedAt, boundarySnapshot.EndedAt));
             }
             // Preserve the completed fight on screen, while making the first combat
             // event in the new mode reset into a clean encounter.
@@ -920,15 +948,24 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _encounter.ApplyGroupChange(change);
         if (EncounterTracker.ShouldProcessMessage(parsed.Message))
             _encounter.ProcessMessage(parsed.Timestamp, parsed.Message);
-        if (parsed.Damage is not null) _encounter.Process(parsed.Damage, _group);
+        if (parsed.Damage is not null)
+        {
+            var damage = _meleeAbilityResolver.ResolveOutgoingDamage(parsed.Damage, CharacterName);
+            _encounter.Process(damage, _group);
+        }
         if (parsed.Healing is not null) _encounter.ProcessHealing(parsed.Healing, _group);
         if (parsed.Outcome is not null) _encounter.ProcessOutcome(parsed.Outcome, _group);
 
         if (priorStart.HasValue && _encounter.StartedAt != priorStart && priorSnapshot is not null)
-            Archive(priorSnapshot, priorMode);
-        if (_encounter.StartedAt.HasValue && _encounter.StartedAt != priorStart &&
-            SelectedHistory is { IsLive: false })
-            SelectLiveHistory();
+            Archive(priorSnapshot, priorMode, SnapshotLiveFightLog(priorSnapshot.StartedAt, priorSnapshot.EndedAt));
+        if (_encounter.StartedAt.HasValue && _encounter.StartedAt != priorStart)
+        {
+            BeginLiveFightLog(_encounter.StartedAt.Value);
+            if (SelectedHistory is { IsLive: false })
+                SelectLiveHistory();
+        }
+
+        CaptureFightLogLine(parsed);
 
         if (parsed.Damage is not null || parsed.Healing is not null || parsed.Outcome is not null ||
             change.Kind != GroupChangeKind.None || priorStart != _encounter.StartedAt ||
@@ -951,7 +988,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _encounter.FinalizeIfInactive(finalizeAt);
         if (!wasFinalized && _encounter.IsFinalized) _dataVersion++;
         if (_encounter.IsFinalized && _encounter.StartedAt is { } startedAt && !_archivedStarts.Contains(startedAt) &&
-            _encounter.CreateSnapshot(finalizeAt) is { } finished && Archive(finished, _group.IsGrouped ? "GROUP" : "SOLO"))
+            _encounter.CreateSnapshot(finalizeAt) is { } finished &&
+            Archive(finished, _group.IsGrouped ? "GROUP" : "SOLO",
+                SnapshotLiveFightLog(finished.StartedAt, finished.EndedAt)))
         {
             _dataVersion++;
         }
@@ -1359,6 +1398,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             var pets = petsByOwner.GetValueOrDefault(owner.Name) ?? [];
             long petDamage = 0, petHits = 0, petMeleeHits = 0, petSpellHits = 0;
             long petMeleeCrit = 0, petSpellCrit = 0, petMisses = 0, petFizzles = 0, petResists = 0;
+            long petSwingAttempts = 0, petDoubles = 0, petTriples = 0, petQuads = 0;
+            long petMeleeDamage = 0;
+            var petMeleeMin = 0;
+            var petMeleeMax = 0;
             long petTaken = 0, petInHits = 0, petInMelee = 0, petInMisses = 0;
             long petDodges = 0, petParries = 0, petBlocks = 0, petRipostes = 0;
             long petAbsorbed = 0, petSpellAbsorbs = 0, petInSpellResists = 0;
@@ -1372,6 +1415,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 petSpellHits += pet.SpellHits;
                 petMeleeCrit += pet.MeleeCriticalHits;
                 petSpellCrit += pet.SpellCriticalHits;
+                petSwingAttempts += pet.MeleeSwingAttempts;
+                petDoubles += pet.DoubleAttacks;
+                petTriples += pet.TripleAttacks;
+                petQuads += pet.QuadAttacks;
+                petMeleeDamage += pet.MeleeDamage;
+                if (pet.MeleeHitMin > 0 && (petMeleeMin == 0 || pet.MeleeHitMin < petMeleeMin))
+                    petMeleeMin = pet.MeleeHitMin;
+                if (pet.MeleeHitMax > petMeleeMax) petMeleeMax = pet.MeleeHitMax;
                 petMisses += pet.Misses;
                 petFizzles += pet.SpellFizzles;
                 petResists += pet.SpellResists;
@@ -1403,6 +1454,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 SpellHits = owner.SpellHits + (int)petSpellHits,
                 MeleeCriticalHits = owner.MeleeCriticalHits + (int)petMeleeCrit,
                 SpellCriticalHits = owner.SpellCriticalHits + (int)petSpellCrit,
+                MeleeSwingAttempts = owner.MeleeSwingAttempts + (int)petSwingAttempts,
+                DoubleAttacks = owner.DoubleAttacks + (int)petDoubles,
+                TripleAttacks = owner.TripleAttacks + (int)petTriples,
+                QuadAttacks = owner.QuadAttacks + (int)petQuads,
+                MeleeDamage = owner.MeleeDamage + petMeleeDamage,
+                MeleeHitMin = MinPositive(owner.MeleeHitMin, petMeleeMin),
+                MeleeHitMax = Math.Max(owner.MeleeHitMax, petMeleeMax),
                 Misses = owner.Misses + (int)petMisses,
                 SpellFizzles = owner.SpellFizzles + (int)petFizzles,
                 SpellResists = owner.SpellResists + (int)petResists,
@@ -1432,6 +1490,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             MergeAbilities(combined.HealingAbilities,
                 pets.Prepend(owner).SelectMany(combatant => combatant.HealingAbilities.Values));
             MergeTargets(combined.Targets, pets.Prepend(owner).SelectMany(combatant => combatant.Targets.Values));
+            MergeDamageBySecond(combined.DamageBySecond, pets.Prepend(owner).Select(c => c.DamageBySecond));
+            MergeDamageBySecond(combined.OwnerDamageBySecond, [owner.DamageBySecond]);
+            if (pets.Length > 0)
+                MergeDamageBySecond(combined.PetDamageBySecond, pets.Select(c => c.DamageBySecond));
 
             if (petDamage > 0)
             {
@@ -1490,6 +1552,23 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             }
             aggregate.Damage += target.Damage;
             MergeAbilities(aggregate.Abilities, target.Abilities.Values);
+        }
+    }
+
+    private static int MinPositive(int left, int right)
+    {
+        if (left <= 0) return right;
+        if (right <= 0) return left;
+        return Math.Min(left, right);
+    }
+
+    private static void MergeDamageBySecond(List<long> destination, IEnumerable<List<long>> sources)
+    {
+        foreach (var source in sources)
+        {
+            while (destination.Count < source.Count) destination.Add(0);
+            for (var i = 0; i < source.Count; i++)
+                destination[i] += source[i];
         }
     }
 
@@ -1709,11 +1788,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }).ToArray();
     }
 
-    private bool Archive(EncounterSnapshot snapshot, string mode)
+    private bool Archive(EncounterSnapshot snapshot, string mode, IReadOnlyList<FightLogEntry>? logLines = null)
     {
         if (snapshot.Combatants.Count == 0 || !_archivedStarts.Add(snapshot.StartedAt)) return false;
         EnsureLiveHistoryCard();
-        EncounterHistory.Insert(1, EncounterHistoryViewModel.CreateArchived(snapshot, mode, CharacterName));
+        EncounterHistory.Insert(1,
+            EncounterHistoryViewModel.CreateArchived(snapshot, mode, CharacterName, logLines));
         while (EncounterHistory.Count(item => !item.IsLive) > HistoryLimit)
         {
             var oldest = EncounterHistory[^1];
@@ -1722,6 +1802,38 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             EncounterHistory.RemoveAt(EncounterHistory.Count - 1);
         }
         return true;
+    }
+
+    private void CaptureFightLogLine(ParsedLogLine parsed)
+    {
+        if (_encounter?.StartedAt is not { } start) return;
+        if (_liveFightLogEncounterStart != start)
+            BeginLiveFightLog(start);
+        if (_liveFightLog.Count >= MaxFightLogLines) return;
+        _liveFightLog.Add(new FightLogEntry(parsed.Timestamp, parsed.Message));
+    }
+
+    private void BeginLiveFightLog(DateTime encounterStart)
+    {
+        if (_liveFightLogEncounterStart == encounterStart) return;
+        _liveFightLog.Clear();
+        _liveFightLogEncounterStart = encounterStart;
+    }
+
+    private void ClearLiveFightLog()
+    {
+        _liveFightLog.Clear();
+        _liveFightLogEncounterStart = null;
+    }
+
+    private IReadOnlyList<FightLogEntry> SnapshotLiveFightLog(DateTime? startedAt, DateTime? endedAt)
+    {
+        if (_liveFightLog.Count == 0) return [];
+        if (!startedAt.HasValue) return _liveFightLog.ToArray();
+        var end = endedAt ?? DateTime.MaxValue;
+        return _liveFightLog
+            .Where(item => item.Timestamp >= startedAt.Value && item.Timestamp <= end.AddSeconds(1))
+            .ToArray();
     }
 
     private void EnsureLiveHistoryCard()

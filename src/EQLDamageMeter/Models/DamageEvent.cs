@@ -15,7 +15,9 @@ public sealed record DamageEvent(
     int Amount,
     string Ability,
     DamageCategory Category,
-    bool IsCritical);
+    bool IsCritical,
+    /// <summary>1 = primary swing; 2/3/4+ = double/triple/quad attack extra hit.</summary>
+    int MultiAttackLevel = 1);
 
 public sealed record HealingEvent(
     DateTime Timestamp,

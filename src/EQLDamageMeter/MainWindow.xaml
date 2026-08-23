@@ -42,6 +42,23 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="12" />
         </Style>
+        <Style x:Key="CompactMetricStrip" TargetType="Border" BasedOn="{StaticResource InnerCard}">
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+        <Style x:Key="CompactMetricLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#7A9BB0" />
+            <Setter Property="FontSize" Value="9" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+        </Style>
+        <Style x:Key="CompactMetricValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="#E8F5FC" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
         <Style x:Key="MetricLabel" TargetType="TextBlock">
             <Setter Property="Foreground" Value="#89A9C1" />
             <Setter Property="FontSize" Value="11" />
@@ -433,10 +450,10 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ProgressBar">
                         <Grid ClipToBounds="True">
-                            <Border Background="{TemplateBinding Background}" CornerRadius="9" />
-                            <Border x:Name="PART_Track" CornerRadius="9" />
+                            <Border Background="{TemplateBinding Background}" CornerRadius="10" />
+                            <Border x:Name="PART_Track" CornerRadius="10" />
                             <Border x:Name="PART_Indicator" HorizontalAlignment="Left" Background="{TemplateBinding Foreground}"
-                                    CornerRadius="9" Opacity="0.93" />
+                                    CornerRadius="10" Opacity="0.95" />
                         </Grid>
                     </ControlTemplate>
                 </Setter.Value>
@@ -795,28 +812,62 @@
                             </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid Height="66">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="48" /><ColumnDefinition Width="190" /><ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="110" /><ColumnDefinition Width="100" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding Rank}" FontSize="28" FontWeight="Light" VerticalAlignment="Center" HorizontalAlignment="Center" />
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding Hits, StringFormat={}{0} hits}" FontSize="11" Foreground="#91B0C4" />
-                                        </StackPanel>
-                                        <ProgressBar Grid.Column="2" Style="{StaticResource DamageBarStyle}" Height="20"
-                                                     Value="{Binding Damage}" Maximum="{Binding DataContext.MaxDamage, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                                     VerticalAlignment="Center" Margin="8,0,18,0" />
-                                        <StackPanel Grid.Column="3" VerticalAlignment="Center" HorizontalAlignment="Right">
-                                            <TextBlock Text="{Binding DamageText}" FontSize="19" FontWeight="SemiBold" />
-                                            <TextBlock Text="DAMAGE" FontSize="9" Foreground="#86A6BA" HorizontalAlignment="Right" />
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="4" VerticalAlignment="Center" HorizontalAlignment="Right">
-                                            <TextBlock Text="{Binding DpsText}" FontSize="24" FontWeight="SemiBold" Foreground="#AB8EFF" />
-                                            <TextBlock Text="DPS" FontSize="9" Foreground="#86A6BA" HorizontalAlignment="Right" />
-                                        </StackPanel>
-                                    </Grid>
+                                    <StackPanel>
+                                        <Grid Height="72">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="44" /><ColumnDefinition Width="150" /><ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="100" /><ColumnDefinition Width="96" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Rank}" FontSize="28" FontWeight="Light" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                                            <Grid Grid.Column="1" VerticalAlignment="Center">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding Hits, StringFormat={}{0} hits}" FontSize="11" Foreground="#91B0C4" />
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Content="{Binding GraphExpandGlyph}" Width="28" Height="26"
+                                                        Padding="0" Margin="6,0,0,0" FontSize="12" VerticalAlignment="Center"
+                                                        Click="CombatantGraphExpand_Click"
+                                                        ToolTip="Show or hide DPS over time" />
+                                            </Grid>
+                                            <ProgressBar Grid.Column="2" Style="{StaticResource DamageBarStyle}" Height="32"
+                                                         Value="{Binding Damage}" Maximum="{Binding DataContext.MaxDamage, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                         Foreground="{Binding BarBrush}"
+                                                         VerticalAlignment="Center" Margin="4,0,12,0" />
+                                            <StackPanel Grid.Column="3" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                                <TextBlock Text="{Binding DamageText}" FontSize="19" FontWeight="SemiBold" />
+                                                <TextBlock Text="DAMAGE" FontSize="9" Foreground="#86A6BA" HorizontalAlignment="Right" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="4" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                                <TextBlock Text="{Binding DpsText}" FontSize="24" FontWeight="SemiBold" Foreground="{Binding BarBrush}" />
+                                                <TextBlock Text="DPS" FontSize="9" Foreground="#86A6BA" HorizontalAlignment="Right" />
+                                            </StackPanel>
+                                        </Grid>
+                                        <Border Margin="48,4,8,2" Padding="8,6" CornerRadius="8"
+                                                Background="#400A2438" BorderBrush="#2A4A5E" BorderThickness="1"
+                                                Visibility="{Binding GraphVisibility}">
+                                            <StackPanel>
+                                                <Grid Margin="0,0,0,4">
+                                                    <TextBlock Text="DPS OVER TIME (5s avg)" Style="{StaticResource MetricLabel}" FontSize="9"
+                                                               VerticalAlignment="Center" />
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                                                Visibility="{Binding PetGraphLegendVisibility}">
+                                                        <Ellipse Width="8" Height="8" Fill="{Binding BarBrush}" Margin="0,0,4,0" />
+                                                        <TextBlock Text="You" FontSize="9" Foreground="#A9C3D3" Margin="0,0,10,0" />
+                                                        <Ellipse Width="8" Height="8" Fill="#2FD8C7" Margin="0,0,4,0" />
+                                                        <TextBlock Text="Pet" FontSize="9" Foreground="#A9C3D3" />
+                                                    </StackPanel>
+                                                </Grid>
+                                                <controls:DpsSparkline Height="110"
+                                                                       Values="{Binding DpsTimeline}"
+                                                                       SecondaryValues="{Binding PetDpsTimeline}"
+                                                                       SeriesBrush="{Binding BarBrush}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
@@ -872,27 +923,85 @@
                                       CanContentScroll="False"
                                       Visibility="{Binding OffenseVisibility}">
                             <StackPanel Margin="0,0,6,0">
-                                <Grid Height="40">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="4" />
-                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="4" />
-                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="4" />
-                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="4" />
-                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="4" />
-                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="4" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="HITS" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.Hits}" FontSize="14" FontWeight="Bold" /></StackPanel></Border>
-                                    <Border Grid.Column="2" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="MISSED" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.Misses}" FontSize="14" FontWeight="Bold" Foreground="#FFBD57" /></StackPanel></Border>
-                                    <Border Grid.Column="4" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="CRIT %" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.CriticalRateText}" FontSize="14" FontWeight="Bold" Foreground="#FFBD57" /></StackPanel></Border>
-                                    <Border Grid.Column="6" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="SPELL CRIT %" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.SpellCriticalRateText}" FontSize="14" FontWeight="Bold" Foreground="#2FD8C7" /></StackPanel></Border>
-                                    <Border Grid.Column="8" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="RESISTED" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.SpellResists}" FontSize="14" FontWeight="Bold" Foreground="#FF6C91" /></StackPanel></Border>
-                                    <Border Grid.Column="10" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="FIZZLED" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.SpellFizzles}" FontSize="14" FontWeight="Bold" Foreground="#A985FF" /></StackPanel></Border>
-                                    <Border Grid.Column="12" Style="{StaticResource InnerCard}" Padding="6,3"><StackPanel><TextBlock Text="STUNS" Style="{StaticResource MetricLabel}" FontSize="9" /><TextBlock Text="{Binding SelectedCombatant.StunsLanded}" FontSize="14" FontWeight="Bold" Foreground="#7FC6FF" /></StackPanel></Border>
-                                </Grid>
+                                <!-- Compact offense metrics: inline label+value, two tight strips -->
+                                <Border Style="{StaticResource CompactMetricStrip}">
+                                    <UniformGrid Columns="7" Rows="1">
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Hits landed">
+                                            <TextBlock Text="HITS" Style="{StaticResource CompactMetricLabel}" />
+                                            <TextBlock Text="{Binding SelectedCombatant.Hits}" Style="{StaticResource CompactMetricValue}" Foreground="#E8F5FC" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Misses">
+                                            <TextBlock Text="MISS" Style="{StaticResource CompactMetricLabel}" />
+                                            <TextBlock Text="{Binding SelectedCombatant.Misses}" Style="{StaticResource CompactMetricValue}" Foreground="#FFBD57" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Melee crit rate">
+                                            <TextBlock Text="CRT" Style="{StaticResource CompactMetricLabel}" />
+                                            <TextBlock Text="{Binding SelectedCombatant.CriticalRateText}" Style="{StaticResource CompactMetricValue}" Foreground="#FFBD57" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Spell crit rate">
+                                            <TextBlock Text="S.CRT" Style="{StaticResource CompactMetricLabel}" />
+                                            <TextBlock Text="{Binding SelectedCombatant.SpellCriticalRateText}" Style="{StaticResource CompactMetricValue}" Foreground="#2FD8C7" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Spells resisted">
+                                            <TextBlock Text="RES" Style="{StaticResource CompactMetricLabel}" />
+                                            <TextBlock Text="{Binding SelectedCombatant.SpellResists}" Style="{StaticResource CompactMetricValue}" Foreground="#FF6C91" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Spells fizzled">
+                                            <TextBlock Text="FIZ" Style="{StaticResource CompactMetricLabel}" />
+                                            <TextBlock Text="{Binding SelectedCombatant.SpellFizzles}" Style="{StaticResource CompactMetricValue}" Foreground="#A985FF" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Stuns landed">
+                                            <TextBlock Text="STUN" Style="{StaticResource CompactMetricLabel}" />
+                                            <TextBlock Text="{Binding SelectedCombatant.StunsLanded}" Style="{StaticResource CompactMetricValue}" Foreground="#7FC6FF" />
+                                        </StackPanel>
+                                    </UniformGrid>
+                                </Border>
+                                <Border Style="{StaticResource CompactMetricStrip}" Margin="0,3,0,0">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <UniformGrid Columns="3" Rows="1">
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Double attack rate">
+                                                <TextBlock Text="DBL ATT" Style="{StaticResource CompactMetricLabel}" />
+                                                <TextBlock Text="{Binding SelectedCombatant.DoubleAttackRateText}" Style="{StaticResource CompactMetricValue}" Foreground="#A985FF" />
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Triple attack rate">
+                                                <TextBlock Text="TRI ATT" Style="{StaticResource CompactMetricLabel}" />
+                                                <TextBlock Text="{Binding SelectedCombatant.TripleAttackRateText}" Style="{StaticResource CompactMetricValue}" Foreground="#2FD8C7" />
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Quad attack rate">
+                                                <TextBlock Text="QUAD ATT" Style="{StaticResource CompactMetricLabel}" />
+                                                <TextBlock Text="{Binding SelectedCombatant.QuadAttackRateText}" Style="{StaticResource CompactMetricValue}" Foreground="#FFBD57" />
+                                            </StackPanel>
+                                        </UniformGrid>
+                                        <Rectangle Grid.Column="1" Width="1" Fill="#355B73" Margin="6,1" />
+                                        <UniformGrid Grid.Column="2" Columns="3" Rows="1">
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Average melee hit">
+                                                <TextBlock Text="AVG" Style="{StaticResource CompactMetricLabel}" />
+                                                <TextBlock Text="{Binding SelectedCombatant.MeleeAverageHitText}" Style="{StaticResource CompactMetricValue}" Foreground="#E8F5FC" />
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Lowest melee hit">
+                                                <TextBlock Text="LOW Hit" Style="{StaticResource CompactMetricLabel}" />
+                                                <TextBlock Text="{Binding SelectedCombatant.MeleeLowestHitText}" Style="{StaticResource CompactMetricValue}" Foreground="#7FC6FF" />
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Highest melee hit">
+                                                <TextBlock Text="HIGH Hit" Style="{StaticResource CompactMetricLabel}" />
+                                                <TextBlock Text="{Binding SelectedCombatant.MeleeHighestHitText}" Style="{StaticResource CompactMetricValue}" Foreground="#FF6C91" />
+                                            </StackPanel>
+                                        </UniformGrid>
+                                    </Grid>
+                                </Border>
 
-                                <TextBlock Text="ABILITY BREAKDOWN" Style="{StaticResource MetricLabel}"
-                                           HorizontalAlignment="Center" Margin="0,12,0,0" />
+                                <Grid Margin="0,8,0,0">
+                                    <TextBlock Text="ABILITY BREAKDOWN" Style="{StaticResource MetricLabel}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <Button Content="Logs" Padding="12,4" HorizontalAlignment="Right"
+                                            Click="FightLogs_Click"
+                                            ToolTip="Show formatted combat log lines for this fight" />
+                                </Grid>
                                 <Grid MinHeight="220" Margin="0,6,0,8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="240" />

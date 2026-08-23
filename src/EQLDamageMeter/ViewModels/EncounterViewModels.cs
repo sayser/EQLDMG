@@ -10,10 +10,16 @@ public sealed class EncounterHistoryViewModel : ObservableObject
     private string _mode = "SOLO";
     private DateTime _startedAt;
     private string _timeLabel = "LIVE";
+    private IReadOnlyList<FightLogEntry> _logLines = [];
 
     public bool IsLive { get; private init; }
     public EncounterSnapshot? Snapshot { get; private init; }
     public string CharacterName { get; private init; } = string.Empty;
+    public IReadOnlyList<FightLogEntry> LogLines
+    {
+        get => _logLines;
+        private set => SetProperty(ref _logLines, value);
+    }
     public DateTime StartedAt
     {
         get => _startedAt;
@@ -62,7 +68,8 @@ public sealed class EncounterHistoryViewModel : ObservableObject
         TimeLabel = "LIVE"
     };
 
-    public static EncounterHistoryViewModel CreateArchived(EncounterSnapshot snapshot, string mode, string characterName)
+    public static EncounterHistoryViewModel CreateArchived(EncounterSnapshot snapshot, string mode, string characterName,
+        IReadOnlyList<FightLogEntry>? logLines = null)
     {
         var damage = snapshot.Combatants.FirstOrDefault(item =>
             item.Name.Equals(characterName, StringComparison.OrdinalIgnoreCase))?.Damage ?? 0;
@@ -77,7 +84,8 @@ public sealed class EncounterHistoryViewModel : ObservableObject
             Damage = damage,
             Dps = damage / seconds,
             TargetNames = FormatTargets(snapshot.Targets),
-            TimeLabel = snapshot.StartedAt.ToString("t")
+            TimeLabel = snapshot.StartedAt.ToString("t"),
+            LogLines = logLines ?? []
         };
     }
 
