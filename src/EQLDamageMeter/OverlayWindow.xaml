@@ -6,12 +6,22 @@
         Topmost="True" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip"
         SizeChanged="Overlay_SizeChanged"
         PreviewMouseLeftButtonDown="Overlay_PreviewMouseLeftButtonDown">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibility" />
+    </Window.Resources>
     <!-- A 1/255 alpha surface is visually transparent, but unlike alpha zero it remains
          part of Windows hit testing so the entire overlay can be dragged. -->
     <Border Background="#01000000" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
             CornerRadius="12" Padding="7">
         <Grid>
-            <ListBox ItemsSource="{Binding Combatants}" Background="Transparent" BorderThickness="0"
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Text="{Binding CompanionHint}" TextWrapping="Wrap"
+                       Foreground="#FFBD57" FontSize="11" Margin="6,2,28,6"
+                       Visibility="{Binding HasCompanionHint, Converter={StaticResource BooleanToVisibility}}" />
+            <ListBox Grid.Row="1" ItemsSource="{Binding Combatants}" Background="Transparent" BorderThickness="0"
                      Foreground="{StaticResource TextBrush}"
                      ScrollViewer.VerticalScrollBarVisibility="Auto"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">

@@ -34,7 +34,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly SemaphoreSlim _loadGate = new(1, 1);
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly BuffTracker _buffTracker = new();
-    private readonly MeleeAbilityResolver _meleeAbilityResolver = new();
     private readonly BuffAlertService _buffAlertService = new();
     private readonly SemaphoreSlim _buffTimingGate = new(1, 1);
     private readonly SessionTracker _sessionTracker = new();
@@ -86,6 +85,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public bool IsControlOverlayOpen { get; set; }
     public bool IsHostileOverlayOpen { get; set; }
     private bool _combinePetDamage;
+    private string? _companionHint;
     private bool _isPetDamageExpanded;
     private BuffRuleViewModel? _selectedBuffRule;
     private string _buffSearchText = string.Empty;
@@ -304,6 +304,16 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             RefreshDisplay(force: true);
         }
     }
+    public string? CompanionHint
+    {
+        get => _companionHint;
+        private set
+        {
+            if (!SetProperty(ref _companionHint, value)) return;
+            RaisePropertyChanged(nameof(HasCompanionHint));
+        }
+    }
+    public bool HasCompanionHint => !string.IsNullOrWhiteSpace(CompanionHint);
     public bool IsPetDamageExpanded
     {
         get => _isPetDamageExpanded;
@@ -341,7 +351,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public void ResetEncounter()
     {
         _encounter?.Reset();
-        _meleeAbilityResolver.ClearRuntime();
         ClearLiveFightLog();
         _dataVersion++;
         SelectLiveHistory();
@@ -661,7 +670,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _parser = parser;
         _group = group;
         _encounter = new EncounterTracker(identity.Character);
-        _meleeAbilityResolver.ClearRuntime();
         ClearLiveFightLog();
         _buffTracker.ClearRuntime();
         DotSpellTracker.ClearRuntime();
@@ -948,11 +956,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _encounter.ApplyGroupChange(change);
         if (EncounterTracker.ShouldProcessMessage(parsed.Message))
             _encounter.ProcessMessage(parsed.Timestamp, parsed.Message);
-        if (parsed.Damage is not null)
-        {
-            var damage = _meleeAbilityResolver.ResolveOutgoingDamage(parsed.Damage, CharacterName);
-            _encounter.Process(damage, _group);
-        }
+        if (parsed.Damage is not null) _encounter.Process(parsed.Damage, _group);
         if (parsed.Healing is not null) _encounter.ProcessHealing(parsed.Healing, _group);
         if (parsed.Outcome is not null) _encounter.ProcessOutcome(parsed.Outcome, _group);
 
@@ -1030,9 +1034,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         _lastFullDisplayRefreshUtc = now;
-        var rawAggregates = snapshot is null
-            ? _encounter.CreateCombatantArray()
-            : snapshot.Combatants.ToArray();
+        var rawAggregates = snapshot is not null
+            ? snapshot.Combatants.ToArray()
+            : _encounter.CreateCombatantArray();
         var combined = GetCombinedAggregates(rawAggregates);
         var aggregates = combined
             .OrderByDescending(item => item.Damage / Math.Max(1, seconds))
@@ -1067,9 +1071,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void RefreshDisplaySummaryOnly(double seconds, EncounterHistoryViewModel? history, bool viewingArchive)
     {
         ModeText = viewingArchive ? history!.Mode : (_group!.IsGrouped ? "GROUP" : "SOLO");
-        EncounterTime = TimeSpan.FromSeconds(seconds).ToString(@"m\:ss", CultureInfo.InvariantCulture);
         var rawAggregates = _encounter!.CreateCombatantArray();
         var combined = GetCombinedAggregates(rawAggregates);
+        EncounterTime = TimeSpan.FromSeconds(seconds).ToString(@"m\:ss", CultureInfo.InvariantCulture);
         var hasEncounter = _encounter.StartedAt.HasValue;
         var isWarmingUp = hasEncounter && !_encounter.IsFinalized && seconds < 3;
         var localSources = combined.Where(item =>
@@ -1125,6 +1129,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         PersistSessionHistoryIfNeeded(force: false);
+        if (_group is not null)
+        {
+            _group.RefreshCompanionHint(now);
+            CompanionHint = _group.CompanionHint;
+        }
     }
 
     private void RefreshSessionHistoryDuration()
@@ -1475,6 +1484,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 DoubleAttacks = owner.DoubleAttacks + (int)petDoubles,
                 TripleAttacks = owner.TripleAttacks + (int)petTriples,
                 QuadAttacks = owner.QuadAttacks + (int)petQuads,
+                HighMultiAttackIsApproximate = owner.HighMultiAttackIsApproximate ||
+                    pets.Any(pet => pet.HighMultiAttackIsApproximate),
                 MeleeDamage = owner.MeleeDamage + petMeleeDamage,
                 MeleeHitMin = MinPositive(owner.MeleeHitMin, petMeleeMin),
                 MeleeHitMax = Math.Max(owner.MeleeHitMax, petMeleeMax),
@@ -1607,7 +1618,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var history = SelectedHistory;
         var viewingArchive = history is { IsLive: false, Snapshot: not null };
         var snapshot = viewingArchive ? history!.Snapshot : null;
-        var seconds = snapshot is null ? _encounter.GetElapsedSeconds(finalizeAt) : history!.Seconds;
+        var seconds = snapshot is null
+            ? _encounter.GetElapsedSeconds(finalizeAt)
+            : history!.Seconds;
         var hasEncounter = snapshot is not null || _encounter.StartedAt.HasValue;
         var isWarmingUp = snapshot is null && hasEncounter && !_encounter.IsFinalized && seconds < 3;
         var rawAggregates = snapshot is null
@@ -1757,6 +1770,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         var procs = source.SelectMany(Flatten)
+            .Where(item => item.ProcDamage > 0)
             .GroupBy(item => SpellNameNormalizer.GetFamilyName(item.Name), StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {

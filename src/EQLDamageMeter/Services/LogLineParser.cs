@@ -14,8 +14,17 @@ public sealed class LogLineParser(string localPlayerName)
     private static readonly HashSet<string> MetaDamageFlags = new(StringComparer.OrdinalIgnoreCase)
     {
         "Critical", "Critical Flurry", "Riposte", "Flurry", "Finishing Blow", "Crippling Blow",
-        "Crushing Blow", "Slashing Blow", "Stunning Blow", "Rampage"
+        "Crushing Blow", "Slashing Blow", "Stunning Blow", "Rampage", "Strikethrough", "Slay Undead",
+        "Double Attack", "Triple Attack", "Quad Attack", "Flurry of Kicks"
     };
+
+    // Longest first so "Slay Undead" is not split into a fake named flag.
+    private static readonly string[] MultiWordMetaFlags =
+    [
+        "Critical Flurry", "Flurry of Kicks", "Finishing Blow", "Crippling Blow",
+        "Crushing Blow", "Slashing Blow", "Stunning Blow", "Slay Undead",
+        "Double Attack", "Triple Attack", "Quad Attack"
+    ];
 
     private static readonly Regex FlagToken = new(@"\((?<flag>[^)]+)\)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -239,7 +248,8 @@ public sealed class LogLineParser(string localPlayerName)
                 : result.Contains("absorbs", StringComparison.OrdinalIgnoreCase) ? CombatOutcomeKind.DefensiveAbsorb
                 : CombatOutcomeKind.MissedAttack;
             return new CombatOutcomeEvent(timestamp, source, target,
-                NormalizeMeleeAbility(match.Groups["ability"].Value), kind);
+                NormalizeMeleeAbility(match.Groups["ability"].Value), kind,
+                CountsAsAttackRound: !IsBonusSwing(match.Groups["flags"].Value));
         }
 
         if ((match = LocalFizzle.Match(message)).Success)
@@ -366,11 +376,20 @@ public sealed class LogLineParser(string localPlayerName)
     {
         source = NormalizeSource(source);
         var rawAbility = match.Groups["ability"].Value;
+        var flags = match.Groups["flags"].Value;
         var ability = forcedAbility ??
-                      ExtractNamedAbilityFromFlags(match.Groups["flags"].Value) ??
+                      ExtractNamedAbilityFromFlags(flags) ??
                       (category == DamageCategory.Melee
                           ? NormalizeMeleeAbility(rawAbility)
                           : rawAbility);
+        string? abilityRow = null;
+        if (category == DamageCategory.Melee)
+        {
+            var row = MeleeAbilityRowFromFlags(flags);
+            if (row is not null && !row.Equals(ability, StringComparison.OrdinalIgnoreCase))
+                abilityRow = row;
+        }
+
         return new DamageEvent(
             timestamp,
             source,
@@ -378,7 +397,9 @@ public sealed class LogLineParser(string localPlayerName)
             int.Parse(match.Groups["amount"].Value, CultureInfo.InvariantCulture),
             ability,
             category,
-            IsCritical(match));
+            IsCritical(match),
+            CountsAsAttackRound: category != DamageCategory.Melee || !IsBonusSwing(flags),
+            AbilityRow: abilityRow);
     }
 
     public static string? ExtractNamedAbilityFromFlags(string flags)
@@ -387,11 +408,41 @@ public sealed class LogLineParser(string localPlayerName)
         foreach (Match match in FlagToken.Matches(flags))
         {
             var flag = match.Groups["flag"].Value.Trim();
-            if (flag.Length == 0 || MetaDamageFlags.Contains(flag)) continue;
+            if (flag.Length == 0) continue;
+            var tokens = TokenizeFlagGroup(flag);
+            if (tokens.Count == 0 || tokens.All(token => MetaDamageFlags.Contains(token))) continue;
             return flag;
         }
 
         return null;
+    }
+
+    public static string? MeleeAbilityRowFromFlags(string flags)
+    {
+        if (flags.Contains("Slay Undead", StringComparison.OrdinalIgnoreCase)) return "Slay Undead";
+        if (flags.Contains("Finishing Blow", StringComparison.OrdinalIgnoreCase)) return "Finishing Blow";
+        if (flags.Contains("Strikethrough", StringComparison.OrdinalIgnoreCase)) return "Strikethrough";
+        return ExtractNamedAbilityFromFlags(flags);
+    }
+
+    private static List<string> TokenizeFlagGroup(string raw)
+    {
+        var rest = raw;
+        var tokens = new List<string>();
+        foreach (var phrase in MultiWordMetaFlags)
+        {
+            int index;
+            while ((index = rest.IndexOf(phrase, StringComparison.OrdinalIgnoreCase)) >= 0)
+            {
+                tokens.Add(phrase);
+                rest = rest.Remove(index, phrase.Length);
+            }
+        }
+
+        foreach (var word in rest.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            tokens.Add(word);
+
+        return tokens;
     }
 
     private string NormalizeSource(string source) =>
@@ -412,6 +463,11 @@ public sealed class LogLineParser(string localPlayerName)
 
     private static bool IsCritical(Match match) =>
         match.Groups["flags"].Value.Contains("Critical", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsBonusSwing(string flags) =>
+        flags.Contains("Riposte", StringComparison.OrdinalIgnoreCase) ||
+        flags.Contains("Flurry", StringComparison.OrdinalIgnoreCase) ||
+        flags.Contains("Rampage", StringComparison.OrdinalIgnoreCase);
 
     private static string NormalizeMeleeAbility(string value)
     {

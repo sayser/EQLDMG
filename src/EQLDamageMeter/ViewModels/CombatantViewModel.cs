@@ -48,6 +48,7 @@ public sealed class CombatantViewModel : ObservableObject
     private AbilityViewModel[] _mitigations = [];
     private AbilityViewModel[] _healingAbilities = [];
     private AbilityViewModel[] _procs = [];
+    private bool _highMultiAttackIsApproximate;
     private bool _isGraphExpanded;
     private double[] _dpsTimeline = [];
     private double[] _petDpsTimeline = [];
@@ -418,8 +419,18 @@ public sealed class CombatantViewModel : ObservableObject
     public string SpellCriticalRateText => FormatRate(SpellCriticalHits, SpellHits);
     public string HealingCriticalRateText => FormatRate(CriticalHeals, DirectHeals + HealOverTimeTicks);
     public string DoubleAttackRateText => FormatRate(DoubleAttacks, MeleeSwingAttempts);
-    public string TripleAttackRateText => FormatRate(TripleAttacks, MeleeSwingAttempts);
-    public string QuadAttackRateText => FormatRate(QuadAttacks, MeleeSwingAttempts);
+    public string TripleAttackRateText => FormatRate(TripleAttacks, MeleeSwingAttempts, HighMultiAttackIsApproximate);
+    public string QuadAttackRateText => FormatRate(QuadAttacks, MeleeSwingAttempts, HighMultiAttackIsApproximate);
+    public bool HighMultiAttackIsApproximate
+    {
+        get => _highMultiAttackIsApproximate;
+        private set
+        {
+            if (!SetProperty(ref _highMultiAttackIsApproximate, value)) return;
+            RaisePropertyChanged(nameof(TripleAttackRateText));
+            RaisePropertyChanged(nameof(QuadAttackRateText));
+        }
+    }
     public string MeleeAverageHitText =>
         MeleeHits == 0 ? "—" : (MeleeDamage / (double)MeleeHits).ToString("N0", CultureInfo.CurrentCulture);
     public string MeleeLowestHitText =>
@@ -454,6 +465,7 @@ public sealed class CombatantViewModel : ObservableObject
         MeleeSwingAttempts = aggregate.MeleeSwingAttempts;
         DoubleAttacks = aggregate.DoubleAttacks;
         TripleAttacks = aggregate.TripleAttacks;
+        HighMultiAttackIsApproximate = aggregate.HighMultiAttackIsApproximate;
         QuadAttacks = aggregate.QuadAttacks;
         MeleeDamage = aggregate.MeleeDamage;
         MeleeHitMin = aggregate.MeleeHitMin;
@@ -504,6 +516,7 @@ public sealed class CombatantViewModel : ObservableObject
         MeleeSwingAttempts = aggregate.MeleeSwingAttempts;
         DoubleAttacks = aggregate.DoubleAttacks;
         TripleAttacks = aggregate.TripleAttacks;
+        HighMultiAttackIsApproximate = aggregate.HighMultiAttackIsApproximate;
         QuadAttacks = aggregate.QuadAttacks;
         MeleeDamage = aggregate.MeleeDamage;
         MeleeHitMin = aggregate.MeleeHitMin;
@@ -555,7 +568,11 @@ public sealed class CombatantViewModel : ObservableObject
         return points;
     }
 
-    private static string FormatRate(int criticals, int total) =>
-        total == 0 ? "0.0%" : $"{criticals * 100d / total:0.0}%";
+    private static string FormatRate(int count, int total, bool approximate = false)
+    {
+        if (total == 0) return "0.0%";
+        var text = $"{count * 100d / total:0.0}%";
+        return approximate && count > 0 ? "~" + text : text;
+    }
 }
 

@@ -147,6 +147,16 @@ public partial class MainWindow : Window, IAsyncDisposable
         e.Handled = true;
     }
 
+    private void SessionLoot_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (sender is not ScrollViewer viewer || viewer.ScrollableHeight <= 0) return;
+        var goingUp = e.Delta > 0;
+        if (goingUp && viewer.VerticalOffset <= 0) return;
+        if (!goingUp && viewer.VerticalOffset >= viewer.ScrollableHeight) return;
+        viewer.ScrollToVerticalOffset(viewer.VerticalOffset - e.Delta / 3.0);
+        e.Handled = true;
+    }
+
     private void CombatantGraphExpand_Click(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { DataContext: CombatantViewModel combatant })

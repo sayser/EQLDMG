@@ -32,6 +32,9 @@ public static class AppUpdateService
         }
     }
 
+    public static string ProductUserAgent =>
+        $"EQDM/{CurrentVersionText} (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)";
+
     public static void Configure(Window? owner = null)
     {
         if (!_configured)
@@ -46,7 +49,7 @@ public static class AppUpdateService
             AutoUpdater.DownloadPath = Path.Combine(Path.GetTempPath(), "EQDMUpdates");
             // Relative to InstallationPath; ZipExtractor relaunches this after extract.
             AutoUpdater.ExecutablePath = "EQLDamageMeter.exe";
-            AutoUpdater.HttpUserAgent = $"EQDM/{CurrentVersionText}";
+            AutoUpdater.HttpUserAgent = ProductUserAgent;
             AutoUpdater.ApplicationExitEvent += OnApplicationExitForUpdate;
         }
 

@@ -506,8 +506,7 @@ public static partial class BisGearCatalog
     private static HttpClient CreateClient()
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "EQDM/1.5.1 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(AppUpdateService.ProductUserAgent);
         return client;
     }
 

@@ -3,56 +3,157 @@ using EQLDamageMeter.Models;
 namespace EQLDamageMeter.Services;
 
 /// <summary>
-/// Tags multi-attack extra swings (same log ability, same target, same second) as
-/// MultiAttackLevel 2/3/4 for DOUBLE/TRIPLE/QUAD ATT % cards. Ability names stay
-/// exactly as logged (Kick, Bash, Cleave, Punch, etc.) — no autoskill remapping.
+/// Groups melee swing attempts into attack rounds for DBL/TRI/QUAD rates.
+/// Extra annotated swings (riposte, flurry, rampage, frenzy) stay out of the round.
+/// Misses count as attempts. Same-second hits of one skill on several targets collapse
+/// to one firing (depth is the busiest target, so dual-wield still reads as a double).
 /// </summary>
 public sealed class MeleeAbilityResolver
 {
-    private readonly record struct SwingKey(long Second, string Source, string Target);
+    public readonly record struct RoundTally(
+        int Rounds,
+        int Doubles,
+        int Triples,
+        int Quads,
+        bool HighDepthIsApproximate);
 
-    private readonly Dictionary<SwingKey, Dictionary<string, int>> _swingHits = new();
-
-    public void ClearRuntime()
+    private sealed class Lane
     {
-        _swingHits.Clear();
+        public string Ability = "";
+        public int Tokens;
     }
 
-    public DamageEvent ResolveOutgoingDamage(DamageEvent damage, string localPlayerName)
+    private sealed class SourceState
     {
-        if (damage.Category != DamageCategory.Melee ||
-            !damage.Source.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase))
-            return damage;
-
-        var level = NextMultiAttackLevel(damage.Timestamp, damage.Source, damage.Target, damage.Ability);
-        return level == damage.MultiAttackLevel
-            ? damage
-            : damage with { MultiAttackLevel = level };
+        public long OpenSecond = long.MinValue;
+        public readonly Dictionary<string, Lane> Pending = new(StringComparer.OrdinalIgnoreCase);
+        public int Rounds;
+        public int Doubles;
+        public int Triples;
+        public int Quads;
+        public bool HighDepthIsApproximate;
     }
 
-    private int NextMultiAttackLevel(DateTime timestamp, string source, string target, string ability)
+    private readonly Dictionary<string, SourceState> _sources = new(StringComparer.OrdinalIgnoreCase);
+
+    public void ClearRuntime() => _sources.Clear();
+
+    public void ObserveLanded(DamageEvent damage)
     {
+        if (damage.Category != DamageCategory.Melee) return;
+        if (!damage.CountsAsAttackRound) return;
+        Observe(damage.Timestamp, damage.Source, damage.Target, damage.Ability);
+    }
+
+    public void ObserveAttempt(DateTime timestamp, string source, string? target, string ability, bool extraSwing)
+    {
+        if (extraSwing || target is null) return;
+        if (IsMultiHitSkill(ability)) return;
+        Observe(timestamp, source, target, ability);
+    }
+
+    public RoundTally GetTally(string source)
+    {
+        if (!_sources.TryGetValue(source, out var state))
+            return default;
+        var rounds = state.Rounds;
+        var doubles = state.Doubles;
+        var triples = state.Triples;
+        var quads = state.Quads;
+        var approx = state.HighDepthIsApproximate;
+        if (state.Pending.Count > 0)
+            ApplyCollapsed(state.Pending.Values, ref rounds, ref doubles, ref triples, ref quads, ref approx);
+        return new RoundTally(rounds, doubles, triples, quads, approx);
+    }
+
+    public void OverlayOnto(CombatantAggregate combatant)
+    {
+        var tally = GetTally(combatant.Name);
+        combatant.MeleeSwingAttempts = tally.Rounds;
+        combatant.DoubleAttacks = tally.Doubles;
+        combatant.TripleAttacks = tally.Triples;
+        combatant.QuadAttacks = tally.Quads;
+        combatant.HighMultiAttackIsApproximate = tally.HighDepthIsApproximate;
+    }
+
+    public static bool IsTimedSkill(string ability) =>
+        ability.Equals("Kick", StringComparison.OrdinalIgnoreCase) ||
+        ability.Equals("Bash", StringComparison.OrdinalIgnoreCase) ||
+        ability.Equals("Backstab", StringComparison.OrdinalIgnoreCase) ||
+        ability.Equals("Strike", StringComparison.OrdinalIgnoreCase) ||
+        ability.Equals("Smite", StringComparison.OrdinalIgnoreCase) ||
+        ability.Equals("Cleave", StringComparison.OrdinalIgnoreCase) ||
+        SpecialAttackNames.IsNamedSpecial(ability);
+
+    private void Observe(DateTime timestamp, string source, string target, string ability)
+    {
+        if (IsMultiHitSkill(ability)) return;
         var second = timestamp.Ticks / TimeSpan.TicksPerSecond;
-        PruneOldSwings(second);
-
-        var key = new SwingKey(second, source, target);
-        if (!_swingHits.TryGetValue(key, out var counts))
+        if (!_sources.TryGetValue(source, out var state))
         {
-            counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            _swingHits[key] = counts;
+            state = new SourceState();
+            _sources[source] = state;
         }
 
-        counts.TryGetValue(ability, out var hitIndex);
-        hitIndex++;
-        counts[ability] = hitIndex;
-        return hitIndex;
+        if (state.OpenSecond != second)
+        {
+            Commit(state);
+            state.OpenSecond = second;
+        }
+
+        var key = ability + "\n" + target;
+        if (!state.Pending.TryGetValue(key, out var lane))
+        {
+            lane = new Lane { Ability = ability };
+            state.Pending[key] = lane;
+        }
+
+        lane.Tokens++;
     }
 
-    private void PruneOldSwings(long currentSecond)
+    private static void Commit(SourceState state)
     {
-        if (_swingHits.Count == 0) return;
-        var minSecond = currentSecond - 2;
-        foreach (var key in _swingHits.Keys.Where(key => key.Second < minSecond).ToArray())
-            _swingHits.Remove(key);
+        if (state.Pending.Count == 0) return;
+        ApplyCollapsed(state.Pending.Values, ref state.Rounds, ref state.Doubles, ref state.Triples,
+            ref state.Quads, ref state.HighDepthIsApproximate);
+        state.Pending.Clear();
     }
+
+    private static void ApplyCollapsed(IEnumerable<Lane> lanes, ref int roundCount,
+        ref int doubles, ref int triples, ref int quads, ref bool approximate)
+    {
+        // One skill in one second is one firing. Several targets share that firing;
+        // depth is whatever the busiest defender saw (dual wield / DA still stack).
+        Dictionary<string, int>? depthByAbility = null;
+        foreach (var lane in lanes)
+        {
+            depthByAbility ??= new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            if (!depthByAbility.TryGetValue(lane.Ability, out var depth) || lane.Tokens > depth)
+                depthByAbility[lane.Ability] = lane.Tokens;
+        }
+
+        if (depthByAbility is null) return;
+        foreach (var pair in depthByAbility)
+        {
+            roundCount++;
+            switch (pair.Value)
+            {
+                case >= 4:
+                    quads++;
+                    if (!IsTimedSkill(pair.Key)) approximate = true;
+                    break;
+                case 3:
+                    triples++;
+                    if (!IsTimedSkill(pair.Key)) approximate = true;
+                    break;
+                case 2:
+                    doubles++;
+                    break;
+            }
+        }
+    }
+
+    private static bool IsMultiHitSkill(string ability) =>
+        ability.Equals("Frenzy", StringComparison.OrdinalIgnoreCase) ||
+        ability.Equals("Flurry", StringComparison.OrdinalIgnoreCase);
 }

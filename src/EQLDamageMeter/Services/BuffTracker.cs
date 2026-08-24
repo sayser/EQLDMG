@@ -24,6 +24,22 @@ public sealed class BuffTracker
     private static readonly DateTime IndefiniteSongExpiresAt = DateTime.MaxValue;
     /// <summary>Fallback pulse silence when a pulse-tracked song has no configured duration.</summary>
     private static readonly TimeSpan DefaultSongLandPulseSilence = TimeSpan.FromSeconds(12);
+    /// <summary>
+    /// Incoming from this name shortly before charm land means another living NPC (or the
+    /// same one) was already hitting you. Logs cannot tell two "an ire ghast" apart.
+    /// </summary>
+    private static readonly TimeSpan CharmIncomingLookback = TimeSpan.FromSeconds(4);
+    /// <summary>
+    /// After land, a hit on you this soon is the other same-named NPC continuing, not a break.
+    /// </summary>
+    private static readonly TimeSpan CharmLandGrace = TimeSpan.FromSeconds(3);
+    /// <summary>Quiet stretch with no hits from that name — incoming later is a real break.</summary>
+    private static readonly TimeSpan CharmIncomingGap = TimeSpan.FromSeconds(5);
+    /// <summary>
+    /// Hits on you from the charmed name are a break only after the pet has stopped
+    /// attacking anyone else. Same-named hostiles are common; logs cannot tell them apart.
+    /// </summary>
+    private static readonly TimeSpan CharmPetAllySilence = TimeSpan.FromSeconds(5);
 
     private static TimeSpan SongLandPulseSilence(BuffRuleSettings rule) =>
         rule.DurationSeconds > 0
@@ -43,6 +59,10 @@ public sealed class BuffTracker
         /// just because some nearby mob with that name died.
         /// </summary>
         public bool ClearsOnTargetDeath { get; set; }
+        /// <summary>True once this name has stopped hitting you since the charm landed.</summary>
+        public bool SawIncomingGap { get; set; } = true;
+        public DateTime? LastIncomingAt { get; set; }
+        public DateTime? LastPetAllyAt { get; set; }
     }
 
     private sealed class RuleRuntime
@@ -130,6 +150,8 @@ public sealed class BuffTracker
     private readonly HashSet<Guid> _pulseSongRuleIds = [];
     private readonly HashSet<Guid> _songDamageRuleIds = [];
     private bool _hasEnabledRules;
+    private bool _hasEnabledCharmRule;
+    private readonly Dictionary<string, DateTime> _recentIncomingOnYou = new(StringComparer.OrdinalIgnoreCase);
     private List<BuffRuleSettings> _enabledRules = [];
     private HashSet<string> _configuredSelfMessages = new(StringComparer.OrdinalIgnoreCase);
     private string[] _configuredFadeFragments = [];
@@ -229,7 +251,8 @@ public sealed class BuffTracker
             if (message.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) return true;
         }
 
-        return false;
+        if (_hasEnabledCharmRule && LooksLikeIncomingSwingOnYou(message)) return true;
+        return HasLiveCharmTarget() && StartsWithLiveCharmTarget(message);
     }
 
     public void ClearRuntime()
@@ -239,6 +262,7 @@ public sealed class BuffTracker
         _lastSpecificFadeAt = null;
         _ownSongLandWindowUntil = null;
         _lastSpellHit = null;
+        _recentIncomingOnYou.Clear();
     }
 
     public void Observe(DateTime timestamp, string message)
@@ -293,6 +317,12 @@ public sealed class BuffTracker
                 return;
             }
         }
+
+        if (LooksLikeIncomingSwingOnYou(message))
+            NoteRecentIncomingOnYou(timestamp, message);
+        RefreshCharmIncomingGaps(timestamp);
+        NoteCharmPetAlly(timestamp, message);
+        if (TryBreakCharmOnHostileSwing(timestamp, message)) return;
 
         if (message.Contains("died", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("slain", StringComparison.OrdinalIgnoreCase))
@@ -501,10 +531,16 @@ public sealed class BuffTracker
     }
 
     public bool HasActiveCharmTarget(string target, DateTime now) =>
-        _rules.Values.Any(rule => rule.IsEnabled && rule.Category == SpellTrackerCategory.Control &&
-            rule.ControlType == ControlEffectType.Charm && _states[rule.Id].Instances.Values.Any(instance =>
-                instance.TargetName.Equals(target.Trim(), StringComparison.OrdinalIgnoreCase) &&
-                now < instance.ExpiresAt + CharmMaxOverdue));
+        _rules.Values.Any(rule => rule.IsEnabled && IsAnyCharmRule(rule) &&
+            _states[rule.Id].Instances.Values.Any(instance =>
+                NamesMatchCharmTarget(instance.TargetName, target) &&
+                (IsCharmControl(rule)
+                    ? now < instance.ExpiresAt + CharmMaxOverdue
+                    : now < instance.ExpiresAt)));
+
+    private bool HasLiveCharmTarget() =>
+        _rules.Values.Any(rule => rule.IsEnabled && IsAnyCharmRule(rule) &&
+            _states[rule.Id].Instances.Values.Any(instance => !instance.IsSelf));
 
     private void BeginMatchingRules(DateTime timestamp, string spell)
     {
@@ -788,13 +824,13 @@ public sealed class BuffTracker
         if (pending.Length > 0)
         {
             var rule = pending.OrderByDescending(item => _states[item.Id].PendingCastStartedAt).First();
-            ActivateSongDamage(_states[rule.Id], rule, timestamp);
+            ActivateSongDamage(_states[rule.Id], rule, timestamp, target);
             return true;
         }
 
         if (matching.Length == 1)
         {
-            ActivateSongDamage(_states[matching[0].Id], matching[0], timestamp);
+            ActivateSongDamage(_states[matching[0].Id], matching[0], timestamp, target);
             return true;
         }
 
@@ -809,7 +845,7 @@ public sealed class BuffTracker
             .Where(rule => AcceptsLandAttribution(rule, target, timestamp, requireAbilityMatch: true)).ToArray();
         if (attributed.Length == 1)
         {
-            ActivateSongDamage(_states[attributed[0].Id], attributed[0], timestamp);
+            ActivateSongDamage(_states[attributed[0].Id], attributed[0], timestamp, target);
             return true;
         }
 
@@ -845,10 +881,22 @@ public sealed class BuffTracker
         ClearPendingCast(state);
     }
 
-    private void ActivateSongDamage(RuleRuntime state, BuffRuleSettings rule, DateTime timestamp)
+    private void ActivateSongDamage(RuleRuntime state, BuffRuleSettings rule, DateTime timestamp,
+        string? landTarget = null)
     {
         ClearOtherTimedDamageSongInstances(rule.Id);
         ClearPendingCast(state);
+        // Bard charm songs are TrackSelf=false: one pet, one timer on that name.
+        // AE damage songs stay on Self so one twist covers every wince.
+        if (!rule.TrackSelf && !string.IsNullOrWhiteSpace(landTarget))
+        {
+            foreach (var key in state.Instances.Keys.ToArray())
+                state.Instances.Remove(key);
+            var target = landTarget.Trim();
+            Activate(state, rule, target, target, false, timestamp, clearsOnTargetDeath: true);
+            return;
+        }
+
         Activate(state, rule, SelfTargetKey, "Self", true, timestamp, clearsOnTargetDeath: false);
     }
 
@@ -867,7 +915,8 @@ public sealed class BuffTracker
         var matched = false;
         foreach (var rule in MatchingEnabledRules(ability).Where(IsTimedDamageSong))
         {
-            ActivateSongDamage(_states[rule.Id], rule, timestamp);
+            var hitTarget = match.Groups["target"].Value.Trim();
+            ActivateSongDamage(_states[rule.Id], rule, timestamp, rule.TrackSelf ? null : hitTarget);
             matched = true;
         }
 
@@ -989,10 +1038,10 @@ public sealed class BuffTracker
             if (IsTimedDamageSong(rule))
             {
                 var state = _states[rule.Id];
-                if (state.Instances.ContainsKey(SelfTargetKey))
+                if (rule.TrackSelf && state.Instances.ContainsKey(SelfTargetKey))
                     RefreshSongDamage(state, rule, timestamp);
                 else
-                    ActivateSongDamage(state, rule, timestamp);
+                    ActivateSongDamage(state, rule, timestamp, rule.TrackSelf ? null : target);
                 matched = true;
                 continue;
             }
@@ -1064,7 +1113,7 @@ public sealed class BuffTracker
             state.Instances.Clear();
             // Do not ClearPendingCast — a refresh cast may already be pending.
             state.StopReason = BuffStopReason.Expired;
-            if (rule.Category == SpellTrackerCategory.Control)
+            if (rule.Category == SpellTrackerCategory.Control || IsBardCharmSongRule(rule))
                 _queuedAlerts.Enqueue(new BuffExpirationAlert(rule));
         }
 
@@ -1080,6 +1129,16 @@ public sealed class BuffTracker
             // Do not ClearPendingCast here — worn-off on target A must not cancel a
             // recast already pending for target B.
             var key = FindTargetInstanceKey(state, target);
+            // Charm songs used to live on Self; Leave still names the pet in worn-off.
+            if (key is null && IsBardCharmSongRule(rule) && state.Instances.ContainsKey(SelfTargetKey))
+                key = SelfTargetKey;
+            if (key is null && IsBardCharmSongRule(rule) && state.Instances.Count > 0)
+            {
+                state.Instances.Clear();
+                state.StopReason = BuffStopReason.Expired;
+                _queuedAlerts.Enqueue(new BuffExpirationAlert(rule));
+                continue;
+            }
             if (key is null) continue;
             var removed = state.Instances[key];
             var normalized = target.Trim();
@@ -1111,7 +1170,7 @@ public sealed class BuffTracker
 
             state.Instances.Remove(key);
 
-            if (!isOverwrite && rule.Category == SpellTrackerCategory.Control)
+            if (!isOverwrite && ShouldAlertOnWearOff(rule))
                 _queuedAlerts.Enqueue(new BuffExpirationAlert(rule));
             if (state.Instances.Count == 0 && state.StopReason == BuffStopReason.None)
                 state.StopReason = BuffStopReason.Expired;
@@ -1122,12 +1181,12 @@ public sealed class BuffTracker
         rule.TrackingMode == BuffTrackingMode.Song &&
         rule.Category == SpellTrackerCategory.DamageOverTime;
 
-    private static void Activate(RuleRuntime state, BuffRuleSettings rule, string targetKey,
+    private void Activate(RuleRuntime state, BuffRuleSettings rule, string targetKey,
         string targetName, bool isSelf, DateTime startedAt, bool clearPending = true,
         bool clearsOnTargetDeath = true)
     {
         if (clearPending) ClearPendingCast(state);
-        state.Instances[targetKey] = new ActiveInstance
+        var instance = new ActiveInstance
         {
             TargetName = targetName,
             IsSelf = isSelf,
@@ -1138,7 +1197,19 @@ public sealed class BuffTracker
             LastLandPulseAt = startedAt,
             ClearsOnTargetDeath = clearsOnTargetDeath
         };
+        if (!isSelf && IsAnyCharmRule(rule))
+            SeedCharmCollisionState(instance, startedAt);
+        state.Instances[targetKey] = instance;
         state.StopReason = BuffStopReason.None;
+    }
+
+    private void SeedCharmCollisionState(ActiveInstance instance, DateTime startedAt)
+    {
+        var incomingAtLand = _recentIncomingOnYou.TryGetValue(instance.TargetName, out var hitAt) &&
+                             startedAt - hitAt <= CharmIncomingLookback;
+        instance.LastIncomingAt = null;
+        instance.LastPetAllyAt = null;
+        instance.SawIncomingGap = !incomingAtLand;
     }
 
     private void ActivateAndAlert(RuleRuntime state, BuffRuleSettings rule, string targetKey,
@@ -1168,6 +1239,168 @@ public sealed class BuffTracker
 
     private static bool IsCharmControl(BuffRuleSettings rule) =>
         rule.Category == SpellTrackerCategory.Control && rule.ControlType == ControlEffectType.Charm;
+
+    private static bool IsBardCharmSongRule(BuffRuleSettings rule) =>
+        rule.TrackingMode == BuffTrackingMode.Song &&
+        !rule.TrackSelf &&
+        SpellDataCatalog.LooksLikeBardCharmSongName(rule.SpellName);
+
+    private static bool IsAnyCharmRule(BuffRuleSettings rule) =>
+        IsCharmControl(rule) || IsBardCharmSongRule(rule);
+
+    private static bool ShouldAlertOnWearOff(BuffRuleSettings rule) =>
+        rule.Category == SpellTrackerCategory.Control || IsBardCharmSongRule(rule);
+
+    /// <summary>
+    /// Bard charm often breaks without a worn-off line. Hits on you from that name are a
+    /// break only when logs are not also showing a same-named hostile already swinging.
+    /// </summary>
+    private bool TryBreakCharmOnHostileSwing(DateTime timestamp, string message)
+    {
+        if (!LooksLikeIncomingSwingOnYou(message)) return false;
+        var broke = false;
+        foreach (var rule in _rules.Values.Where(item => item.IsEnabled && IsAnyCharmRule(item)))
+        {
+            var state = _states[rule.Id];
+            var keys = state.Instances
+                .Where(pair => !pair.Value.IsSelf &&
+                               MessageStartsWithCharmTarget(message, pair.Value.TargetName) &&
+                               ShouldBreakCharmOnIncoming(pair.Value, timestamp))
+                .Select(pair => pair.Key)
+                .ToArray();
+            if (keys.Length == 0) continue;
+            foreach (var key in keys)
+                state.Instances.Remove(key);
+            if (state.Instances.Count == 0)
+                state.StopReason = BuffStopReason.Expired;
+            _queuedAlerts.Enqueue(new BuffExpirationAlert(rule));
+            broke = true;
+        }
+
+        return broke;
+    }
+
+    private static bool ShouldBreakCharmOnIncoming(ActiveInstance instance, DateTime timestamp)
+    {
+        if (instance.LastPetAllyAt is { } ally && timestamp - ally < CharmPetAllySilence)
+        {
+            instance.LastIncomingAt = timestamp;
+            instance.SawIncomingGap = false;
+            return false;
+        }
+
+        if (instance.SawIncomingGap)
+            return true;
+
+        if (instance.LastIncomingAt is null)
+        {
+            if (timestamp - instance.StartedAt >= CharmLandGrace)
+                return true;
+            instance.LastIncomingAt = timestamp;
+            return false;
+        }
+
+        instance.LastIncomingAt = timestamp;
+        return instance.LastPetAllyAt is not null;
+    }
+
+    private void NoteRecentIncomingOnYou(DateTime timestamp, string message)
+    {
+        if (!TryGetIncomingAttackerOnYou(message, out var name)) return;
+        _recentIncomingOnYou[name] = timestamp;
+        foreach (var stale in _recentIncomingOnYou
+                     .Where(pair => timestamp - pair.Value > CharmIncomingLookback + CharmIncomingGap)
+                     .Select(pair => pair.Key)
+                     .ToArray())
+            _recentIncomingOnYou.Remove(stale);
+    }
+
+    private void RefreshCharmIncomingGaps(DateTime timestamp)
+    {
+        foreach (var instance in LiveCharmInstances())
+        {
+            if (instance.SawIncomingGap || instance.LastIncomingAt is not { } last) continue;
+            if (timestamp - last >= CharmIncomingGap)
+                instance.SawIncomingGap = true;
+        }
+    }
+
+    private void NoteCharmPetAlly(DateTime timestamp, string message)
+    {
+        if (LooksLikeIncomingSwingOnYou(message)) return;
+        if (message.Contains("glaze over", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("told you", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("tells you", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("says,", StringComparison.OrdinalIgnoreCase))
+            return;
+        if (!message.Contains(" for ", StringComparison.OrdinalIgnoreCase) &&
+            !message.Contains("tries to ", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        foreach (var instance in LiveCharmInstances())
+        {
+            if (MessageStartsWithCharmTarget(message, instance.TargetName))
+                instance.LastPetAllyAt = timestamp;
+        }
+    }
+
+    private IEnumerable<ActiveInstance> LiveCharmInstances() =>
+        _rules.Values.Where(rule => rule.IsEnabled && IsAnyCharmRule(rule))
+            .SelectMany(rule => _states[rule.Id].Instances.Values)
+            .Where(instance => !instance.IsSelf);
+
+    private bool StartsWithLiveCharmTarget(string message) =>
+        LiveCharmInstances().Any(instance => MessageStartsWithCharmTarget(message, instance.TargetName));
+
+    private static bool LooksLikeIncomingSwingOnYou(string message)
+    {
+        if (message.StartsWith("You ", StringComparison.OrdinalIgnoreCase) ||
+            message.StartsWith("Your ", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (message.Contains("told you", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("tells you", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("says,", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return message.Contains(" YOU for ", StringComparison.OrdinalIgnoreCase) ||
+               (message.Contains("tries to ", StringComparison.OrdinalIgnoreCase) &&
+                message.Contains(" YOU", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool TryGetIncomingAttackerOnYou(string message, out string name)
+    {
+        name = string.Empty;
+        var marker = message.IndexOf(" YOU for ", StringComparison.OrdinalIgnoreCase);
+        string before;
+        if (marker >= 0)
+        {
+            before = message[..marker];
+        }
+        else
+        {
+            var tries = message.IndexOf("tries to ", StringComparison.OrdinalIgnoreCase);
+            if (tries <= 0 ||
+                message.IndexOf(" YOU", StringComparison.OrdinalIgnoreCase) < 0)
+                return false;
+            before = message[..tries];
+        }
+
+        var lastSpace = before.LastIndexOf(' ');
+        if (lastSpace <= 0) return false;
+        name = before[..lastSpace].Trim();
+        return name.Length > 0;
+    }
+
+    private static bool MessageStartsWithCharmTarget(string message, string target)
+    {
+        var name = target.Trim();
+        if (name.Length == 0 || message.Length <= name.Length) return false;
+        if (!message.StartsWith(name, StringComparison.OrdinalIgnoreCase)) return false;
+        var next = message[name.Length];
+        return next is ' ' or '\'';
+    }
+
+    private static bool NamesMatchCharmTarget(string left, string right) =>
+        left.Trim().Equals(right.Trim(), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Charm is always a single pet. Any successful charm land replaces all prior charm tracks.
@@ -1231,9 +1464,9 @@ public sealed class BuffTracker
         {
             // A death line contains only the NPC's visible name. When a charmed pet
             // and an enemy share that name, removing charm here produces a false
-            // break. Charm is instead ended by its explicit worn-off line, a new
-            // charm landing, player death, or the configured maximum duration.
-            if (rule.Category == SpellTrackerCategory.Control && rule.ControlType == ControlEffectType.Charm)
+            // break. Charm is instead ended by worn-off, a swing on you that is not
+            // a same-named twin, a new charm landing, player death, or max duration.
+            if (IsAnyCharmRule(rule))
                 continue;
             if (rule.Category == SpellTrackerCategory.Buff &&
                 PreserveBuffTargetOnDeath?.Invoke(normalized, timestamp) == true)
@@ -1351,6 +1584,7 @@ public sealed class BuffTracker
     private void RebuildMessageRelevanceHints()
     {
         _hasEnabledRules = _rules.Values.Any(rule => rule.IsEnabled);
+        _hasEnabledCharmRule = _rules.Values.Any(rule => rule.IsEnabled && IsAnyCharmRule(rule));
         _enabledRules = _hasEnabledRules
             ? _rules.Values.Where(rule => rule.IsEnabled).ToList()
             : [];

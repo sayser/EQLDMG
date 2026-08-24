@@ -87,7 +87,7 @@ public sealed class SpellDataCatalog
         @"Jonth|Innoruuk|Veeshan|Trakanon|Combine|Vishrant|Armee|Arms|Travel|Sionachie|Kaficus|Accelerando|" +
         @"Sonorous|Lucid|Lament|Aquatic|Disenchanting|Clouding|Binding|Warmth|Cooling|Vitality|Purity|Mystic|" +
         @"Bellow|Boastful|Rhythms|Discord|Solidarity|Locating|Lugubrious|Melodic|Regen|Charming|Mesmer|Speed|" +
-        @"Haste|Selo|Jaxan|Jig|Dirge|Dance of|Composition|Ervaj|Shield of Songs|Nillipus|Spry Sonata|Warble|" +
+        @"Haste|Selo|Jaxan|Jig|Dirge|Dance of|Blade Dance|Composition|Ervaj|Shield of Songs|Nillipus|Spry Sonata|Warble|" +
         @"Concordia|Katta|Symphony|Staccato|March of the Wee|Chords|Dissonance|Solon|Sionachie)",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     /// <summary>Level used when seeding catalog durations (caps match high-level play).</summary>

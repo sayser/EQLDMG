@@ -93,6 +93,9 @@ internal static class Program
             "a rat hit a rat for 12 points of non-melee damage."));
         Check("Encounter prefilter allows slain",
             EncounterTracker.ShouldProcessMessage("You have slain a glyphed guard!"));
+        Check("Encounter prefilter allows special grant",
+            EncounterTracker.ShouldProcessMessage(
+                "You will now use Eagle Strike instead of Tiger Claw while attacking."));
         Check("Belongs rank", SpellNameNormalizer.BelongsToFamily("Venom of the Snake III", "Venom of the Snake"));
         Check("Belongs mismatch", !SpellNameNormalizer.BelongsToFamily("Charm", "Mesmerize"));
         Check("Item Benefit family",
@@ -151,6 +154,11 @@ internal static class Program
             frenzy!.Outcome is { Kind: CombatOutcomeKind.MissedAttack, Ability: "Frenzy" } &&
             frenzy.Outcome.Target == "a kobold");
 
+        Check("Outgoing spell resist names the ability",
+            parser.TryParse(stamp + "A forsaken revenant resisted your Earthquake!", out var eqResist) &&
+            eqResist!.Outcome is { Kind: CombatOutcomeKind.SpellResist, Ability: "Earthquake",
+                Source: "Sayser", Target: "A forsaken revenant" });
+
         Check("Stun no source",
             parser.TryParse(stamp + "a rat is stunned by Bash.", out var stun) &&
             stun!.Outcome is { Kind: CombatOutcomeKind.StunApplied, Ability: "Bash" } &&
@@ -172,39 +180,67 @@ internal static class Program
             LogLineParser.ExtractNamedAbilityFromFlags(" (Double Bow Shot)") == "Double Bow Shot");
         Check("Flag ignores Critical",
             LogLineParser.ExtractNamedAbilityFromFlags(" (Critical)") is null);
+        Check("Flag ignores Double Attack",
+            LogLineParser.ExtractNamedAbilityFromFlags(" (Double Attack)") is null);
+        Check("Flag ignores Slay Undead",
+            LogLineParser.ExtractNamedAbilityFromFlags(" (Slay Undead)") is null);
+        Check("Flag ignores Strikethrough",
+            LogLineParser.ExtractNamedAbilityFromFlags(" (Strikethrough)") is null);
+        Check("Flag ignores compound extras",
+            LogLineParser.ExtractNamedAbilityFromFlags(" (Riposte Strikethrough Critical)") is null);
+
+        Check("Double Attack flag keeps weapon verb",
+            parser.TryParse(stamp + "You slash a rat for 12 points of damage. (Double Attack)", out var daLine) &&
+            daLine!.Damage is { Ability: "Slash", CountsAsAttackRound: true });
+        Check("Riposte hit is extra swing",
+            parser.TryParse(stamp + "You slash a rat for 12 points of damage. (Riposte)", out var ripLine) &&
+            ripLine!.Damage is { CountsAsAttackRound: false });
+        Check("Riposte miss is extra swing",
+            parser.TryParse(stamp + "You try to slash a rat, but miss! (Riposte)", out var ripMiss) &&
+            ripMiss!.Outcome is { CountsAsAttackRound: false });
+
+        Check("Slay Undead keeps weapon verb",
+            parser.TryParse(stamp + "You slash a skeleton for 40 points of damage. (Slay Undead)", out var slayLine) &&
+            slayLine!.Damage is { Ability: "Slash", AbilityRow: "Slay Undead", CountsAsAttackRound: true });
+        Check("Finishing Blow keeps weapon verb",
+            parser.TryParse(stamp + "You slash a rat for 90 points of damage. (Finishing Blow)", out var fbLine) &&
+            fbLine!.Damage is { Ability: "Slash", AbilityRow: "Finishing Blow", CountsAsAttackRound: true });
+        Check("Strikethrough keeps weapon verb",
+            parser.TryParse(stamp + "You slash a rat for 12 points of damage. (Strikethrough)", out var stLine) &&
+            stLine!.Damage is { Ability: "Slash", AbilityRow: "Strikethrough", CountsAsAttackRound: true });
+        Check("Riposte Strikethrough is extra swing with strikethrough row",
+            parser.TryParse(stamp + "You slash a rat for 12 points of damage. (Riposte Strikethrough Critical)",
+                out var ripSt) &&
+            ripSt!.Damage is { Ability: "Slash", AbilityRow: "Strikethrough", CountsAsAttackRound: false });
+        Check("Double Bow Shot stays a named flag",
+            parser.TryParse(stamp + "You shoot a rat for 25 points of damage. (Double Bow Shot)", out var dbsLine) &&
+            dbsLine!.Damage is { Ability: "Shoot", AbilityRow: "Double Bow Shot" });
 
         var resolver = new MeleeAbilityResolver();
         var t = new DateTime(2026, 8, 22, 15, 4, 8);
-        var kick = resolver.ResolveOutgoingDamage(
-            new DamageEvent(t, "Sayser", "a rat", 90, "Kick", DamageCategory.Melee, false), "Sayser");
-        Check("Log ability stays Kick", kick.Ability == "Kick" && kick.MultiAttackLevel == 1, kick.Ability);
-        var kick2 = resolver.ResolveOutgoingDamage(
-            new DamageEvent(t, "Sayser", "a rat", 120, "Kick", DamageCategory.Melee, false), "Sayser");
-        Check("Double attack keeps Kick name",
-            kick2.Ability == "Kick" && kick2.MultiAttackLevel == 2,
-            $"{kick2.Ability}/{kick2.MultiAttackLevel}");
+        resolver.ObserveLanded(new DamageEvent(t, "Sayser", "a rat", 90, "Kick", DamageCategory.Melee, false));
+        resolver.ObserveLanded(new DamageEvent(t, "Sayser", "a rat", 120, "Kick", DamageCategory.Melee, false));
+        var kickTally = resolver.GetTally("Sayser");
+        Check("Kick double is one round",
+            kickTally.Rounds == 1 && kickTally.Doubles == 1 && !kickTally.HighDepthIsApproximate,
+            $"{kickTally.Rounds}/{kickTally.Doubles}/{kickTally.HighDepthIsApproximate}");
 
-        var bash = resolver.ResolveOutgoingDamage(
-            new DamageEvent(t.AddSeconds(1), "Sayser", "a rat", 50, "Bash", DamageCategory.Melee, false),
-            "Sayser");
-        Check("Log ability stays Bash", bash.Ability == "Bash", bash.Ability);
+        resolver.ObserveLanded(new DamageEvent(t.AddSeconds(1), "Sayser", "a rat", 50, "Bash", DamageCategory.Melee, false));
+        resolver.ObserveLanded(new DamageEvent(t.AddSeconds(1), "Sayser", "a rat", 80, "Cleave", DamageCategory.Melee, false));
+        var mixed = resolver.GetTally("Sayser");
+        Check("Bash and Cleave are separate rounds",
+            mixed.Rounds == 3 && mixed.Doubles == 1,
+            $"{mixed.Rounds}/{mixed.Doubles}");
 
-        var cleave = resolver.ResolveOutgoingDamage(
-            new DamageEvent(t.AddSeconds(1), "Sayser", "a rat", 80, "Cleave", DamageCategory.Melee, false),
-            "Sayser");
-        Check("Log ability stays Cleave", cleave.Ability == "Cleave", cleave.Ability);
-
+        var punchResolver = new MeleeAbilityResolver();
         var tripleTime = t.AddSeconds(2);
-        var punch1 = resolver.ResolveOutgoingDamage(
-            new DamageEvent(tripleTime, "Sayser", "a rat", 40, "Punch", DamageCategory.Melee, false), "Sayser");
-        Check("Log ability stays Punch", punch1.Ability == "Punch", punch1.Ability);
-        _ = resolver.ResolveOutgoingDamage(
-            new DamageEvent(tripleTime, "Sayser", "a rat", 41, "Punch", DamageCategory.Melee, false), "Sayser");
-        var triple = resolver.ResolveOutgoingDamage(
-            new DamageEvent(tripleTime, "Sayser", "a rat", 42, "Punch", DamageCategory.Melee, false), "Sayser");
-        Check("Triple attack keeps Punch name",
-            triple.Ability == "Punch" && triple.MultiAttackLevel == 3,
-            $"{triple.Ability}/{triple.MultiAttackLevel}");
+        punchResolver.ObserveLanded(new DamageEvent(tripleTime, "Sayser", "a rat", 40, "Punch", DamageCategory.Melee, false));
+        punchResolver.ObserveLanded(new DamageEvent(tripleTime, "Sayser", "a rat", 41, "Punch", DamageCategory.Melee, false));
+        punchResolver.ObserveLanded(new DamageEvent(tripleTime, "Sayser", "a rat", 42, "Punch", DamageCategory.Melee, false));
+        var punchTally = punchResolver.GetTally("Sayser");
+        Check("Weapon-verb triple is inferred",
+            punchTally.Rounds == 1 && punchTally.Triples == 1 && punchTally.HighDepthIsApproximate,
+            $"{punchTally.Rounds}/{punchTally.Triples}/{punchTally.HighDepthIsApproximate}");
 
         var rateEncounter = new EncounterTracker("Sayser");
         var rateGroup = new GroupStateTracker("Sayser");
@@ -236,7 +272,7 @@ internal static class Program
         rateEncounter.Process(
             new DamageEvent(d2, "Sayser", "a rat", 18, "Kick", DamageCategory.Melee, false, 4), rateGroup);
 
-        var sayser = rateEncounter.CreateSnapshot(d2).Combatants
+        var sayser = rateEncounter.CreateSnapshot(d2)!.Combatants
             .First(c => c.Name.Equals("Sayser", StringComparison.OrdinalIgnoreCase));
         Check("Multi-attack final depth only",
             sayser.MeleeSwingAttempts == 3 && sayser.DoubleAttacks == 1 &&
@@ -258,7 +294,7 @@ internal static class Program
         hitEncounter.Process(
             new DamageEvent(h0.AddSeconds(2), "Sayser", "a rat", 500, "Odium", DamageCategory.Spell, false),
             hitGroup);
-        var hitSayser = hitEncounter.CreateSnapshot(h0.AddSeconds(2)).Combatants
+        var hitSayser = hitEncounter.CreateSnapshot(h0.AddSeconds(2))!.Combatants
             .First(c => c.Name.Equals("Sayser", StringComparison.OrdinalIgnoreCase));
         Check("Melee hit stats ignore spells",
             hitSayser.MeleeHits == 3 && hitSayser.MeleeDamage == 170 &&
@@ -358,7 +394,7 @@ internal static class Program
         Check("Encounter open damage",
             encounter.Combatants.Any(c => c.Name == "Sayser" && c.Damage == 100));
 
-        Feed("You hit a rat for 10 points of damage.", e0.AddSeconds(12));
+        Feed("You hit a rat for 10 points of damage.", e0.AddSeconds(62));
         Check("Timeout starts new encounter",
             encounter.Combatants.Any(c => c.Name == "Sayser" && c.Damage == 10));
 
@@ -369,7 +405,7 @@ internal static class Program
         var dmg = new DamageEvent(k0, "Sayser", "a beetle", 20, "Hit", DamageCategory.Melee, false);
         encounter2.Process(dmg, g3);
         encounter2.ProcessMessage(k0.AddSeconds(1), "You have slain a beetle!");
-        encounter2.FinalizeIfInactive(k0.AddSeconds(4));
+        encounter2.FinalizeIfInactive(k0.AddSeconds(6));
         Check("Kill grace finalize", encounter2.IsFinalized);
 
         // Ranked DoT ticks + unranked direct hit must merge (EQ log quirk).
@@ -402,7 +438,7 @@ internal static class Program
         var aliceTaken = encounter3.Combatants.FirstOrDefault(c => c.Name == "Alice");
         Check("Friendly fire credited as incoming", aliceTaken is { DamageTaken: 9 });
         // Player-on-player FF must not keep the encounter alive via hostile targeting
-        encounter3.FinalizeIfInactive(k0.AddSeconds(15));
+        encounter3.FinalizeIfInactive(k0.AddSeconds(62));
         Check("Friendly fire does not block timeout finalize", encounter3.IsFinalized || !encounter3.StartedAt.HasValue);
 
         // Charm name collision: pet and hostile share "an imp protector"
@@ -436,6 +472,276 @@ internal static class Program
         Check("Charm name collision local DPS counted", sayserDps is { Damage: 312 });
         Check("Charm name collision local miss counted", sayserDps is { Misses: >= 1 });
         Check("Charm name collision pet DPS counted", petDps is not null && petDps.Damage >= 92 + 313);
+
+        var procEncounter = new EncounterTracker("Sayser");
+        var procGroup = new GroupStateTracker("Sayser");
+        var p0 = new DateTime(2026, 8, 24, 9, 0, 0);
+        procEncounter.Process(new DamageEvent(p0, "Sayser", "a rat", 20, "Slash", DamageCategory.Melee, false),
+            procGroup);
+        procEncounter.ProcessMessage(p0, "You begin casting Fire.");
+        procEncounter.Process(new DamageEvent(p0.AddMilliseconds(200), "Sayser", "a rat", 40, "Fire",
+            DamageCategory.Spell, false), procGroup);
+        procEncounter.Process(new DamageEvent(p0.AddMilliseconds(400), "Sayser", "a beetle", 38, "Fire",
+            DamageCategory.Spell, false), procGroup);
+        var fire = procEncounter.CreateCombatantArray().First(c => c.Name == "Sayser")
+            .Abilities.Values.First(a => a.Name.Equals("Fire", StringComparison.OrdinalIgnoreCase));
+        Check("AoE same-second share one cast",
+            fire.Hits == 2 && fire.ProcHits == 0,
+            $"{fire.Hits}/{fire.ProcHits}");
+        procEncounter.Process(new DamageEvent(p0.AddSeconds(2), "Sayser", "a rat", 41, "Fire",
+            DamageCategory.Spell, false), procGroup);
+        fire = procEncounter.CreateCombatantArray().First(c => c.Name == "Sayser")
+            .Abilities.Values.First(a => a.Name.Equals("Fire", StringComparison.OrdinalIgnoreCase));
+        Check("Later second without a new cast is a proc",
+            fire.Hits == 3 && fire.ProcHits == 1,
+            $"{fire.Hits}/{fire.ProcHits}");
+
+        procEncounter.Process(new DamageEvent(p0.AddSeconds(3), "Sayser", "a rat", 12, "Envenomed Bolt VI",
+            DamageCategory.DamageOverTime, false), procGroup);
+        var bolt = procEncounter.CreateCombatantArray().First(c => c.Name == "Sayser")
+            .Abilities.Values.First(a => a.Name.Contains("Envenomed", StringComparison.OrdinalIgnoreCase));
+        Check("DoT tick is never a proc", bolt.ProcHits == 0, $"{bolt.ProcHits}");
+
+        procEncounter.ProcessMessage(p0.AddSeconds(4), "You activate Quick Buff.");
+        procEncounter.ProcessHealing(new HealingEvent(p0.AddSeconds(4), "Sayser", "Sayser", 200, 200,
+            "Complete Heal", false, false), procGroup);
+        procEncounter.Process(new DamageEvent(p0.AddSeconds(4), "Sayser", "a rat", 55, "Fangol's Breath",
+            DamageCategory.Spell, false), procGroup);
+        var breathProc = procEncounter.CreateCombatantArray().First(c => c.Name == "Sayser")
+            .Abilities.Values.First(a => a.Name.Contains("Fangol", StringComparison.OrdinalIgnoreCase));
+        Check("Quick Buff does not hide a damage proc",
+            breathProc is { ProcHits: 1 }, $"{breathProc.ProcHits}");
+
+        procEncounter.ProcessMessage(p0.AddSeconds(5), "You begin singing Denon's Desperate Dirge.");
+        procEncounter.Process(new DamageEvent(p0.AddSeconds(6), "Sayser", "a rat", 879, "Denon's Desperate Dirge",
+            DamageCategory.Spell, false), procGroup);
+        procEncounter.Process(new DamageEvent(p0.AddSeconds(6), "Sayser", "a beetle", 879, "Denon's Desperate Dirge",
+            DamageCategory.Spell, false), procGroup);
+        procEncounter.Process(new DamageEvent(p0.AddSeconds(6), "Sayser", "Cleric of Innoruuk", 879,
+            "Denon's Desperate Dirge", DamageCategory.Spell, false), procGroup);
+        var dirge = procEncounter.CreateCombatantArray().First(c => c.Name == "Sayser")
+            .Abilities.Values.First(a => a.Name.Contains("Dirge", StringComparison.OrdinalIgnoreCase));
+        Check("Sung damage song is not a proc",
+            dirge is { Hits: 3, ProcHits: 0 },
+            dirge is null ? "missing" : $"{dirge.Hits}/{dirge.ProcHits}");
+        procEncounter.Process(new DamageEvent(p0.AddSeconds(8), "Sayser", "a rat", 246, "Earthquake",
+            DamageCategory.Spell, false), procGroup);
+        var quake = procEncounter.CreateCombatantArray().First(c => c.Name == "Sayser")
+            .Abilities.Values.First(a => a.Name.Equals("Earthquake", StringComparison.OrdinalIgnoreCase));
+        Check("Weapon proc without a matching start is still a proc",
+            quake is { ProcHits: 1 }, $"{quake.ProcHits}");
+
+        procEncounter.ProcessOutcome(new CombatOutcomeEvent(p0.AddSeconds(8), "Sayser", "a beetle", "Earthquake",
+            CombatOutcomeKind.SpellResist), procGroup);
+        var quakeAfterResist = procEncounter.CreateCombatantArray().First(c => c.Name == "Sayser")
+            .Abilities.Values.First(a => a.Name.Equals("Earthquake", StringComparison.OrdinalIgnoreCase));
+        Check("Resisted weapon proc still counts as a proc",
+            quakeAfterResist is { ProcHits: 2, ProcDamage: 246 },
+            $"{quakeAfterResist.ProcHits}/{quakeAfterResist.ProcDamage}");
+
+        var resistOnly = new EncounterTracker("Sayser");
+        var resistGroup = new GroupStateTracker("Sayser");
+        resistOnly.Process(new DamageEvent(p0.AddMinutes(3), "Sayser", "a revenant", 10, "Slash",
+            DamageCategory.Melee, false), resistGroup);
+        resistOnly.ProcessOutcome(new CombatOutcomeEvent(p0.AddMinutes(3), "Sayser", "a revenant", "Earthquake",
+            CombatOutcomeKind.SpellResist), resistGroup);
+        Check("Resist-only Earthquake without a land is not a ghost proc row",
+            !resistOnly.CreateCombatantArray().First(c => c.Name == "Sayser")
+                .Abilities.ContainsKey("Earthquake"));
+
+        var seloResist = new EncounterTracker("Sayser");
+        var seloGroup = new GroupStateTracker("Sayser");
+        seloResist.Process(new DamageEvent(p0.AddMinutes(5), "Sayser", "a chest", 10, "Slash",
+            DamageCategory.Melee, false), seloGroup);
+        seloResist.Process(new DamageEvent(p0.AddMinutes(5), "Sayser", "a chest", 43,
+            "Selo's Chords of Cessation", DamageCategory.DamageOverTime, false), seloGroup);
+        seloResist.ProcessOutcome(new CombatOutcomeEvent(p0.AddMinutes(5), "Sayser", "a chest",
+            "Selo's Chords of Cessation", CombatOutcomeKind.SpellResist), seloGroup);
+        var selo = seloResist.CreateCombatantArray().First(c => c.Name == "Sayser")
+            .Abilities.Values.First(a => a.Name.Contains("Cessation", StringComparison.OrdinalIgnoreCase));
+        Check("Sung DoT resist is not a proc",
+            selo is { Damage: 43, ProcHits: 0 }, $"{selo.ProcHits}/{selo.Damage}");
+
+        var bladeResist = new EncounterTracker("Sayser");
+        var bladeGroup = new GroupStateTracker("Sayser");
+        bladeResist.Process(new DamageEvent(p0.AddMinutes(6), "Sayser", "a golem", 10, "Slash",
+            DamageCategory.Melee, false), bladeGroup);
+        bladeResist.ProcessOutcome(new CombatOutcomeEvent(p0.AddMinutes(6), "Sayser", "a golem",
+            "Blade Dance", CombatOutcomeKind.SpellResist), bladeGroup);
+        Check("Blade Dance resist is not a proc",
+            !bladeResist.CreateCombatantArray().First(c => c.Name == "Sayser")
+                .Abilities.ContainsKey("Blade Dance"));
+
+        var castResist = new EncounterTracker("Sayser");
+        var castResistGroup = new GroupStateTracker("Sayser");
+        castResist.Process(new DamageEvent(p0.AddMinutes(4), "Sayser", "a rat", 10, "Slash",
+            DamageCategory.Melee, false), castResistGroup);
+        castResist.ProcessMessage(p0.AddMinutes(4), "You begin casting Firebolt.");
+        castResist.ProcessOutcome(new CombatOutcomeEvent(p0.AddMinutes(4).AddSeconds(1), "Sayser", "a rat",
+            "Firebolt", CombatOutcomeKind.SpellResist), castResistGroup);
+        Check("Cast resist is not credited as a proc",
+            !castResist.CreateCombatantArray().First(c => c.Name == "Sayser")
+                .Abilities.ContainsKey("Firebolt"));
+
+        procEncounter.ProcessMessage(p0.AddSeconds(9), "You begin singing Chords of Dissonance.");
+        procEncounter.ProcessMessage(p0.AddSeconds(9.2), "Your melody has been interrupted!");
+        procEncounter.Process(new DamageEvent(p0.AddSeconds(10), "Sayser", "a rat", 50, "Chords of Dissonance",
+            DamageCategory.Spell, false), procGroup);
+        var chords = procEncounter.CreateCombatantArray().First(c => c.Name == "Sayser")
+            .Abilities.Values.First(a => a.Name.Contains("Dissonance", StringComparison.OrdinalIgnoreCase));
+        Check("Interrupted song does not explain a later hit",
+            chords is { ProcHits: 1 }, $"{chords.ProcHits}");
+
+        var roundEncounter = new EncounterTracker("Sayser");
+        var roundGroup = new GroupStateTracker("Sayser");
+        var r1 = p0.AddMinutes(1);
+        roundEncounter.Process(new DamageEvent(r1, "Sayser", "a rat", 10, "Slash", DamageCategory.Melee, false),
+            roundGroup);
+        roundEncounter.Process(new DamageEvent(r1, "Sayser", "a beetle", 14, "Slash", DamageCategory.Melee, false),
+            roundGroup);
+        var fan = roundEncounter.CreateSnapshot(r1)!.Combatants.First(c => c.Name == "Sayser");
+        Check("Same-second fan-out is one round",
+            fan.MeleeSwingAttempts == 1 && fan.DoubleAttacks == 0,
+            $"{fan.MeleeSwingAttempts}/{fan.DoubleAttacks}");
+
+        roundEncounter.Process(new DamageEvent(r1.AddSeconds(1), "Sayser", "a rat", 11, "Slash", DamageCategory.Melee,
+            false, CountsAsAttackRound: false), roundGroup);
+        var riposteRound = roundEncounter.CreateSnapshot(r1.AddSeconds(1))!.Combatants.First(c => c.Name == "Sayser");
+        Check("Riposte extra is not a new round",
+            riposteRound.MeleeSwingAttempts == 1,
+            $"{riposteRound.MeleeSwingAttempts}");
+
+        roundEncounter.ProcessOutcome(new CombatOutcomeEvent(r1.AddSeconds(2), "Sayser", "a rat", "Slash",
+            CombatOutcomeKind.MissedAttack), roundGroup);
+        var missRound = roundEncounter.CreateSnapshot(r1.AddSeconds(2))!.Combatants.First(c => c.Name == "Sayser");
+        Check("Miss counts as a round",
+            missRound.MeleeSwingAttempts == 2 && missRound.Misses >= 1,
+            $"{missRound.MeleeSwingAttempts}/{missRound.Misses}");
+
+        var kickTriple = new MeleeAbilityResolver();
+        kickTriple.ObserveLanded(new DamageEvent(r1, "Sayser", "a rat", 20, "Kick", DamageCategory.Melee, false));
+        kickTriple.ObserveLanded(new DamageEvent(r1, "Sayser", "a rat", 21, "Kick", DamageCategory.Melee, false));
+        kickTriple.ObserveLanded(new DamageEvent(r1, "Sayser", "a rat", 22, "Kick", DamageCategory.Melee, false));
+        var kickDepth = kickTriple.GetTally("Sayser");
+        Check("Timed-skill triple is exact",
+            kickDepth.Triples == 1 && !kickDepth.HighDepthIsApproximate);
+
+        var flyingTriple = new MeleeAbilityResolver();
+        flyingTriple.ObserveLanded(new DamageEvent(r1, "Sayser", "a rat", 30, "Flying Kick", DamageCategory.Melee, false));
+        flyingTriple.ObserveLanded(new DamageEvent(r1, "Sayser", "a rat", 31, "Flying Kick", DamageCategory.Melee, false));
+        flyingTriple.ObserveLanded(new DamageEvent(r1, "Sayser", "a rat", 32, "Flying Kick", DamageCategory.Melee, false));
+        var flyingDepth = flyingTriple.GetTally("Sayser");
+        Check("Named kick triple is exact",
+            flyingDepth.Triples == 1 && !flyingDepth.HighDepthIsApproximate);
+
+        var flagEncounter = new EncounterTracker("Sayser");
+        var flagGroup = new GroupStateTracker("Sayser");
+        var flagParser = new LogLineParser("Sayser");
+        var flagStamp = "[Sat Aug 08 12:00:00 2026] ";
+        flagParser.TryParse(flagStamp + "You slash a skeleton for 40 points of damage. (Slay Undead)", out var slayHit);
+        flagParser.TryParse(flagStamp + "You slash a rat for 12 points of damage. (Strikethrough)", out var stHit);
+        flagParser.TryParse(flagStamp + "You slash a rat for 90 points of damage. (Finishing Blow)", out var fbHit);
+        flagParser.TryParse(flagStamp + "You slash a rat for 11 points of damage. (Riposte Strikethrough Critical)",
+            out var ripStHit);
+        var flagAt = p0.AddMinutes(3);
+        flagEncounter.Process(slayHit!.Damage! with { Timestamp = flagAt }, flagGroup);
+        flagEncounter.Process(stHit!.Damage! with { Timestamp = flagAt.AddSeconds(1) }, flagGroup);
+        flagEncounter.Process(fbHit!.Damage! with { Timestamp = flagAt.AddSeconds(2) }, flagGroup);
+        flagEncounter.Process(ripStHit!.Damage! with { Timestamp = flagAt.AddSeconds(3) }, flagGroup);
+        var flagCombatant = flagEncounter.CreateCombatantArray().First(c => c.Name == "Sayser");
+        Check("Slay Undead is its own ability row",
+            flagCombatant.Abilities.ContainsKey("Slay Undead") &&
+            flagCombatant.Abilities["Slay Undead"].Damage == 40 &&
+            !flagCombatant.Abilities.ContainsKey("Slash"));
+        Check("Strikethrough and Finishing Blow are ability rows",
+            flagCombatant.Abilities.ContainsKey("Strikethrough") &&
+            flagCombatant.Abilities.ContainsKey("Finishing Blow") &&
+            flagCombatant.Abilities["Strikethrough"].Damage == 23);
+        Check("Riposte Strikethrough is not a new round",
+            flagCombatant.MeleeSwingAttempts == 3,
+            $"{flagCombatant.MeleeSwingAttempts}");
+        Check("Melee flag rows are not procs",
+            flagCombatant.Abilities.Values.All(ability => ability.ProcHits == 0));
+
+        var specialEncounter = new EncounterTracker("Sayser");
+        var specialGroup = new GroupStateTracker("Sayser");
+        var specialAt = p0.AddMinutes(2);
+        specialEncounter.ProcessMessage(specialAt,
+            "You will now use Dragon Punch instead of Eagle Strike while attacking.");
+        specialEncounter.Process(new DamageEvent(specialAt.AddSeconds(1), "Sayser", "a rat", 44, "Strike",
+            DamageCategory.Melee, false), specialGroup);
+        specialEncounter.ProcessOutcome(new CombatOutcomeEvent(specialAt.AddSeconds(2), "Sayser", "a rat", "Strike",
+            CombatOutcomeKind.MissedAttack), specialGroup);
+        var punch = specialEncounter.CreateCombatantArray().First(c => c.Name == "Sayser");
+        Check("Strike grant becomes Dragon Punch",
+            punch.Abilities.ContainsKey("Dragon Punch") && punch.Abilities["Dragon Punch"].Damage == 44 &&
+            !punch.Abilities.ContainsKey("Strike"));
+        Check("Strike miss uses Dragon Punch rounds",
+            punch.MeleeSwingAttempts == 2 && punch.Misses >= 1,
+            $"{punch.MeleeSwingAttempts}/{punch.Misses}");
+
+        specialEncounter.Reset();
+        specialEncounter.Process(new DamageEvent(specialAt.AddSeconds(10), "Sayser", "a rat", 45, "Strike",
+            DamageCategory.Melee, false), specialGroup);
+        var afterReset = specialEncounter.CreateCombatantArray().First(c => c.Name == "Sayser");
+        Check("Special name survives fight reset",
+            afterReset.Abilities.ContainsKey("Dragon Punch") && !afterReset.Abilities.ContainsKey("Strike"));
+
+        specialEncounter.ProcessMessage(specialAt.AddSeconds(11),
+            "You will now use Flying Kick instead of Round Kick while attacking.");
+        specialEncounter.Process(new DamageEvent(specialAt.AddSeconds(12), "Sayser", "a rat", 50, "Kick",
+            DamageCategory.Melee, false), specialGroup);
+        var flying = specialEncounter.CreateCombatantArray().First(c => c.Name == "Sayser");
+        Check("Kick grant becomes Flying Kick",
+            flying.Abilities.ContainsKey("Flying Kick") && flying.Abilities["Flying Kick"].Damage == 50 &&
+            !flying.Abilities.ContainsKey("Kick"));
+
+        specialEncounter.ProcessMessage(specialAt.AddSeconds(13),
+            "You will now use Slam instead of Bash while attacking.");
+        specialEncounter.Process(new DamageEvent(specialAt.AddSeconds(14), "Sayser", "a rat", 20, "Bash",
+            DamageCategory.Melee, false), specialGroup);
+        var slam = specialEncounter.CreateCombatantArray().First(c => c.Name == "Sayser");
+        Check("Slam grant does not rename Bash",
+            slam.Abilities.ContainsKey("Bash") && slam.Abilities["Bash"].Damage == 20 &&
+            !slam.Abilities.ContainsKey("Slam"));
+
+        var mezEncounter = new EncounterTracker("Sayser");
+        var mezGroup = new GroupStateTracker("Sayser");
+        mezEncounter.Process(new DamageEvent(p0, "Sayser", "a rat", 10, "Slash", DamageCategory.Melee, false), mezGroup);
+        mezEncounter.ProcessMessage(p0.AddSeconds(1), "a rat has been mesmerized.");
+        mezEncounter.FinalizeIfInactive(p0.AddSeconds(70));
+        Check("Mez keeps the fight open past idle", !mezEncounter.IsFinalized);
+
+        var zoneEncounter = new EncounterTracker("Sayser");
+        var zoneGroup = new GroupStateTracker("Sayser");
+        zoneEncounter.Process(new DamageEvent(p0, "Sayser", "a rat", 50, "Slash", DamageCategory.Melee, false),
+            zoneGroup);
+        zoneEncounter.ProcessMessage(p0.AddSeconds(1), "You have slain a rat!");
+        zoneEncounter.ProcessMessage(p0.AddSeconds(2), "You have entered Everfrost Peaks.");
+        zoneEncounter.Process(new DamageEvent(p0.AddSeconds(3), "Sayser", "a beetle", 30, "Slash",
+            DamageCategory.Melee, false), zoneGroup);
+        var afterZone = zoneEncounter.CreateCombatantArray().First(c => c.Name == "Sayser");
+        Check("Zoning starts a fresh encounter",
+            afterZone.Damage == 30, $"{afterZone.Damage}");
+
+        var hintGroup = new GroupStateTracker("Sayser");
+        hintGroup.Process("You summon a guardian spirit.", p0);
+        hintGroup.RefreshCompanionHint(p0.AddSeconds(8));
+        Check("Unbound spirit shows attach hint",
+            hintGroup.CompanionHint is not null && hintGroup.CompanionHint.Contains("summoned", StringComparison.OrdinalIgnoreCase),
+            hintGroup.CompanionHint ?? "null");
+        var leaderBind = hintGroup.Process("Varer says, 'My leader is Sayser.'", p0.AddSeconds(9));
+        Check("Leader say binds the spirit",
+            leaderBind.Kind == GroupChangeKind.PetControlled &&
+            hintGroup.TryGetPetOwner("Varer", out var leaderOwner) && leaderOwner == "Sayser");
+        hintGroup.RefreshCompanionHint(p0.AddSeconds(10));
+        Check("Bound spirit clears attach hint", hintGroup.CompanionHint is null);
+
+        var buffBindGroup = new GroupStateTracker("Sayser");
+        buffBindGroup.Process("You summon a frenzied spirit.", p0);
+        var fromBuff = buffBindGroup.Process("Your Inner Fire spell has taken hold on Nokar.", p0.AddSeconds(1));
+        Check("Buff landing binds a pending spirit",
+            fromBuff.Kind == GroupChangeKind.PetControlled && fromBuff.Member == "Nokar");
     }
 
     private static void RunBuffTrackerTests()
@@ -1176,6 +1482,134 @@ internal static class Program
         solonTracker.Observe(t0.AddSeconds(4), "You are captivated by the haunting tune.");
         Check("Solon charm song ignores self captivated land",
             solonTracker.GetActiveSnapshots(t0.AddSeconds(4.1)).Count == 1);
+        var solonLanded = solonTracker.GetActiveSnapshots(t0.AddSeconds(4.1))[0];
+        Check("Solon charm timer is on the mob",
+            !solonLanded.IsSelf &&
+            solonLanded.TargetName.Equals("a sand beetle", StringComparison.OrdinalIgnoreCase));
+        solonTracker.Observe(t0.AddSeconds(8),
+            "Your Solon's Song of the Sirens spell has worn off of a sand beetle.");
+        Check("Solon charm dismiss clears overlay",
+            solonTracker.GetActiveSnapshots(t0.AddSeconds(8.1)).Count == 0);
+
+        var bravura = DamageSongRule("Solon's Bewitching Bravura", 24) with { TrackSelf = false };
+        var bravuraTracker = new BuffTracker();
+        bravuraTracker.Configure([bravura],
+            _ => ["You are no longer captivated."],
+            _ => ["You are captivated by the haunting tune."],
+            _ => ["'s eyes glaze over."],
+            suffix => suffix.Equals("'s eyes glaze over.", StringComparison.OrdinalIgnoreCase),
+            _ => false,
+            _ => false,
+            _ => true);
+        bravuraTracker.Observe(t0, "You begin singing Solon's Bewitching Bravura.");
+        bravuraTracker.Observe(t0.AddSeconds(3), "a loathling lich's eyes glaze over.");
+        Check("Bewitching Bravura starts on the lich",
+            bravuraTracker.GetActiveSnapshots(t0.AddSeconds(3.1)).Count == 1 &&
+            bravuraTracker.GetActiveSnapshots(t0.AddSeconds(3.1))[0].TargetName
+                .Equals("a loathling lich", StringComparison.OrdinalIgnoreCase));
+        bravuraTracker.Observe(t0.AddSeconds(6),
+            "Your Solon's Bewitching Bravura spell has worn off of a loathling lich.");
+        Check("Bewitching Bravura dismiss clears overlay",
+            bravuraTracker.GetActiveSnapshots(t0.AddSeconds(6.1)).Count == 0);
+        var leaveAlerts = bravuraTracker.Tick(t0.AddSeconds(6.2));
+        Check("Bewitching Bravura leave speaks expired",
+            leaveAlerts.Count == 1 &&
+            leaveAlerts[0].Phase == BuffAlertPhase.Expired &&
+            leaveAlerts[0].Rule.SpellName.Contains("Bewitching", StringComparison.OrdinalIgnoreCase),
+            $"{leaveAlerts.Count}");
+
+        var breakTracker = new BuffTracker();
+        breakTracker.Configure([bravura],
+            _ => ["You are no longer captivated."],
+            _ => ["You are captivated by the haunting tune."],
+            _ => ["'s eyes glaze over."],
+            suffix => suffix.Equals("'s eyes glaze over.", StringComparison.OrdinalIgnoreCase),
+            _ => false,
+            _ => false,
+            _ => true);
+        breakTracker.Observe(t0, "You begin singing Solon's Bewitching Bravura.");
+        breakTracker.Observe(t0.AddSeconds(3), "an ire ghast's eyes glaze over.");
+        Check("Charm prefilter allows incoming swing on you",
+            breakTracker.ShouldProcessMessage("An ire ghast hits YOU for 30 points of damage."));
+        breakTracker.Observe(t0.AddSeconds(4),
+            "An ire ghast told you, 'Attacking a forsaken revenant Master.'");
+        Check("Pet Master tell does not break charm overlay",
+            breakTracker.GetActiveSnapshots(t0.AddSeconds(4.1)).Count == 1);
+        breakTracker.Observe(t0.AddSeconds(5), "An ire ghast slashes a forsaken revenant for 40 points of damage.");
+        Check("Pet attacking others does not break charm overlay",
+            breakTracker.GetActiveSnapshots(t0.AddSeconds(5.1)).Count == 1);
+        breakTracker.Observe(t0.AddSeconds(11), "An ire ghast hits YOU for 30 points of damage.");
+        Check("Charm break on you clears overlay",
+            breakTracker.GetActiveSnapshots(t0.AddSeconds(11.1)).Count == 0);
+        var breakAlerts = breakTracker.Tick(t0.AddSeconds(11.2));
+        Check("Charm break on you speaks expired",
+            breakAlerts.Count == 1 && breakAlerts[0].Phase == BuffAlertPhase.Expired,
+            $"{breakAlerts.Count}");
+
+        var missBreakTracker = new BuffTracker();
+        missBreakTracker.Configure([bravura],
+            _ => ["You are no longer captivated."],
+            _ => ["You are captivated by the haunting tune."],
+            _ => ["'s eyes glaze over."],
+            suffix => suffix.Equals("'s eyes glaze over.", StringComparison.OrdinalIgnoreCase),
+            _ => false,
+            _ => false,
+            _ => true);
+        missBreakTracker.Observe(t0, "You begin singing Solon's Bewitching Bravura.");
+        missBreakTracker.Observe(t0.AddSeconds(3), "an ire ghast's eyes glaze over.");
+        missBreakTracker.Observe(t0.AddSeconds(7), "An ire ghast tries to hit YOU, but misses!");
+        Check("Charm break on miss against you clears overlay",
+            missBreakTracker.GetActiveSnapshots(t0.AddSeconds(7.1)).Count == 0);
+
+        var twinTracker = new BuffTracker();
+        twinTracker.Configure([bravura],
+            _ => ["You are no longer captivated."],
+            _ => ["You are captivated by the haunting tune."],
+            _ => ["'s eyes glaze over."],
+            suffix => suffix.Equals("'s eyes glaze over.", StringComparison.OrdinalIgnoreCase),
+            _ => false,
+            _ => false,
+            _ => true);
+        twinTracker.Observe(t0, "You begin singing Solon's Bewitching Bravura.");
+        twinTracker.Observe(t0.AddSeconds(1), "An ire ghast hits YOU for 20 points of damage.");
+        twinTracker.Observe(t0.AddSeconds(3), "an ire ghast's eyes glaze over.");
+        twinTracker.Observe(t0.AddSeconds(4), "An ire ghast hits YOU for 21 points of damage.");
+        twinTracker.Observe(t0.AddSeconds(5), "An ire ghast slashes a forsaken revenant for 40 points of damage.");
+        twinTracker.Observe(t0.AddSeconds(6), "An ire ghast hits YOU for 22 points of damage.");
+        twinTracker.Observe(t0.AddSeconds(7), "An ire ghast slashes a forsaken revenant for 38 points of damage.");
+        Check("Same-name hostile does not clear live charm",
+            twinTracker.GetActiveSnapshots(t0.AddSeconds(7.1)).Count == 1);
+        twinTracker.Observe(t0.AddSeconds(8), "An ire ghast hits YOU for 22 points of damage.");
+        twinTracker.Observe(t0.AddSeconds(9.5), "An ire ghast hits YOU for 23 points of damage.");
+        Check("Same-name hostile still up while pet recently attacked others",
+            twinTracker.GetActiveSnapshots(t0.AddSeconds(9.6)).Count == 1);
+        twinTracker.Observe(t0.AddSeconds(12.1), "An ire ghast hits YOU for 24 points of damage.");
+        Check("Charm break with same-name hostile clears after pet goes quiet",
+            twinTracker.GetActiveSnapshots(t0.AddSeconds(12.2)).Count == 0);
+
+        var pulledTwinTracker = new BuffTracker();
+        pulledTwinTracker.Configure([bravura],
+            _ => ["You are no longer captivated."],
+            _ => ["You are captivated by the haunting tune."],
+            _ => ["'s eyes glaze over."],
+            suffix => suffix.Equals("'s eyes glaze over.", StringComparison.OrdinalIgnoreCase),
+            _ => false,
+            _ => false,
+            _ => true);
+        pulledTwinTracker.Observe(t0, "You begin singing Solon's Bewitching Bravura.");
+        pulledTwinTracker.Observe(t0.AddSeconds(3), "a forsaken revenant's eyes glaze over.");
+        pulledTwinTracker.Observe(t0.AddSeconds(13),
+            "A forsaken revenant told you, 'Attacking a forsaken revenant Master.'");
+        pulledTwinTracker.Observe(t0.AddSeconds(13),
+            "A forsaken revenant tries to slash a forsaken revenant, but a forsaken revenant parries!");
+        pulledTwinTracker.Observe(t0.AddSeconds(14), "You slash a forsaken revenant for 206 points of damage.");
+        pulledTwinTracker.Observe(t0.AddSeconds(16), "A forsaken revenant slashes a forsaken revenant for 104 points of damage.");
+        pulledTwinTracker.Observe(t0.AddSeconds(17), "A forsaken revenant tries to hit YOU, but misses! (Riposte)");
+        Check("Pulling a same-name mob does not expire live charm",
+            pulledTwinTracker.GetActiveSnapshots(t0.AddSeconds(17.1)).Count == 1);
+        pulledTwinTracker.Observe(t0.AddSeconds(20), "You have slain a forsaken revenant!");
+        Check("Killing a same-name twin does not expire live charm",
+            pulledTwinTracker.GetActiveSnapshots(t0.AddSeconds(20.1)).Count == 1);
 
         Check("Prefilter skips pure melee combat spam",
             !solonTracker.ShouldProcessMessage(
@@ -2047,6 +2481,49 @@ internal static class Program
             breath is null ? "missing" : $"{breath.Damage}/{breath.Hits}");
         Check("Fangol Breath credited as proc", breath is { ProcHits: 1, ProcDamage: 120 },
             breath is null ? "missing" : $"{breath.ProcHits}/{breath.ProcDamage}");
+
+        var venomStamp = DateTime.Parse("2026-08-24T06:45:00", CultureInfo.InvariantCulture);
+        var venomGroup = new GroupStateTracker("Sayser");
+        var venomEncounter = new EncounterTracker("Sayser") { EncounterTimeout = TimeSpan.FromSeconds(10) };
+        venomEncounter.Process(
+            new DamageEvent(venomStamp, "Sayser", "a rat", 40, "Slash", DamageCategory.Melee, false),
+            venomGroup);
+        venomEncounter.ProcessMessage(venomStamp.AddSeconds(12), "You begin casting Venom of the Snake.");
+        venomEncounter.Process(
+            new DamageEvent(venomStamp.AddSeconds(14), "Sayser", "an ire ghast", 35, "Venom of the Snake",
+                DamageCategory.Spell, false),
+            venomGroup);
+        var venomAbility = venomEncounter.CreateCombatantArray()
+            .First(c => c.Name == "Sayser")
+            .Abilities.Values.FirstOrDefault(a =>
+                a.Name.Equals("Venom of the Snake", StringComparison.OrdinalIgnoreCase));
+        Check("Cast spell is not a proc after fight reset",
+            venomAbility is { Damage: 35, Hits: 1, ProcHits: 0, ProcDamage: 0 },
+            venomAbility is null
+                ? "missing"
+                : $"{venomAbility.ProcHits}/{venomAbility.ProcDamage}/{venomAbility.Damage}");
+
+        var petGroup = new GroupStateTracker("Sayser");
+        var petEncounter = new EncounterTracker("Sayser");
+        var petStamp = venomStamp.AddMinutes(1);
+        petGroup.Process("You summon a guardian spirit.", petStamp);
+        var petBind = petGroup.Process("Varer begins casting Inner Fire.", petStamp.AddSeconds(1));
+        petEncounter.ApplyGroupChange(petBind);
+        petEncounter.Process(
+            new DamageEvent(petStamp.AddSeconds(2), "Sayser", "a golem", 50, "Slash", DamageCategory.Melee, false),
+            petGroup);
+        petEncounter.ProcessMessage(petStamp.AddSeconds(3), "Varer begins casting Venom of the Snake.");
+        petEncounter.Process(
+            new DamageEvent(petStamp.AddSeconds(5), "Varer", "a golem", 33, "Venom of the Snake",
+                DamageCategory.Spell, false),
+            petGroup);
+        var petVenom = petEncounter.CreateCombatantArray()
+            .First(c => c.Name.Equals("Varer", StringComparison.OrdinalIgnoreCase))
+            .Abilities.Values.FirstOrDefault(a =>
+                a.Name.Equals("Venom of the Snake", StringComparison.OrdinalIgnoreCase));
+        Check("Pet cast spell is not a proc",
+            petVenom is { Damage: 33, Hits: 1, ProcHits: 0, ProcDamage: 0 },
+            petVenom is null ? "missing" : $"{petVenom.ProcHits}/{petVenom.ProcDamage}/{petVenom.Damage}");
 
         const string stonemelder = """
             MAGIC ITEM LORE ITEM

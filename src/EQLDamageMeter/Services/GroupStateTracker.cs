@@ -61,6 +61,9 @@ public sealed class GroupStateTracker(string localPlayerName)
     private static readonly Regex CharmAbility = new(
         @"(?:^|\b)(?:charm|allure|beguile|dominat\w*|enslav\w*|captivat\w*|cajol\w*|befriend\w*|tame\w*)(?:\b|$)",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static bool IsCharmAbility(string ability) =>
+        CharmAbility.IsMatch(ability) || SpellDataCatalog.LooksLikeBardCharmSongName(ability);
     private static readonly Regex LocalCompanionSummon = new(
         @"^You summon (?:a |an )?.+ spirit\.$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -72,6 +75,9 @@ public sealed class GroupStateTracker(string localPlayerName)
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex PetMasterSay = new(
         @"^(?<pet>.+?) says, '(?:Now (?:greater )?holding,? Master\..*|I beg forgiveness, Master\.  That is not a legal target\.|As you wish, oh great one\.)'",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex LocalSpellTakenHold = new(
+        @"^Your (?<ability>.+?) spell has taken hold on (?<name>.+?)\.$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex TargetSlain = new(
         @"^(?<name>.+?) (?:has been slain by .+!?|(?:has )?died\.)$",
@@ -95,6 +101,17 @@ public sealed class GroupStateTracker(string localPlayerName)
     private readonly Dictionary<string, DateTime> _controlledPetSince =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _companionPets = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Regex PetLeaderSay = new(
+        @"^(?<pet>.+?) says, 'My leader is (?<leader>.+?)\.'$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly TimeSpan CompanionHintDelay = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan CompanionHintVisible = TimeSpan.FromSeconds(40);
+    private static readonly TimeSpan CompanionHintQuiet = TimeSpan.FromMinutes(4);
+
+    private DateTime? _localSummonAt;
+    private DateTime? _companionHintQuietUntil;
+    private string? _companionHint;
 
     // A group heal that lands on a pet before its Charm binding is seen promotes that
     // pet into KnownMembers, and a promoted name is never offered to the pet binders
@@ -105,6 +122,7 @@ public sealed class GroupStateTracker(string localPlayerName)
     private PendingCharmCast? _lastEligibleCast;
     public bool IsGrouped { get; private set; }
     public HashSet<string> KnownMembers { get; } = new(StringComparer.OrdinalIgnoreCase) { localPlayerName };
+    public string? CompanionHint => _companionHint;
 
     public bool IsConfirmedMemberOrPet(string name) =>
         KnownMembers.Contains(name) || _controlledPetOwners.ContainsKey(name) ||
@@ -256,6 +274,7 @@ public sealed class GroupStateTracker(string localPlayerName)
             ClearLocalControlledPets();
             _pendingCharmCasts.Clear();
             _pendingCompanionSummons.Clear();
+            ClearCompanionHint();
             return new GroupChange(GroupChangeKind.None);
         }
 
@@ -278,6 +297,8 @@ public sealed class GroupStateTracker(string localPlayerName)
                 _pendingCompanionSummons.RemoveAll(item =>
                     item.Owner.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase));
                 _pendingCompanionSummons.Add(new PendingCompanionSummon(timestamp.Value, localPlayerName));
+                _localSummonAt = timestamp.Value;
+                RefreshCompanionHint(timestamp.Value);
             }
 
             // A summon is followed by the pet's first cast, but any bystander casting in
@@ -306,6 +327,21 @@ public sealed class GroupStateTracker(string localPlayerName)
                 if (bound is not null) return bound;
             }
 
+            var leaderSay = PetLeaderSay.Match(message);
+            if (leaderSay.Success &&
+                leaderSay.Groups["leader"].Value.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase))
+            {
+                var bound = BindCompanionPet(leaderSay.Groups["pet"].Value, localPlayerName, timestamp.Value);
+                if (bound is not null) return bound;
+            }
+
+            var buffLanded = LocalSpellTakenHold.Match(message);
+            if (buffLanded.Success &&
+                TryBindPendingCompanion(buffLanded.Groups["name"].Value, timestamp.Value) is { } buffBind)
+            {
+                return buffBind;
+            }
+
             var companionDeath = TargetSlain.Match(message);
             if (companionDeath.Success)
             {
@@ -319,25 +355,25 @@ public sealed class GroupStateTracker(string localPlayerName)
             }
 
             var localFailure = LocalSpellFailed.Match(message);
-            if (localFailure.Success && CharmAbility.IsMatch(localFailure.Groups["ability"].Value))
+            if (localFailure.Success && IsCharmAbility(localFailure.Groups["ability"].Value))
             {
                 RemoveLatestPendingCharm(localPlayerName);
             }
 
             var otherFailure = OtherSpellFailed.Match(message);
-            if (otherFailure.Success && CharmAbility.IsMatch(otherFailure.Groups["ability"].Value))
+            if (otherFailure.Success && IsCharmAbility(otherFailure.Groups["ability"].Value))
             {
                 RemoveLatestPendingCharm(otherFailure.Groups["caster"].Value);
             }
 
             var localResist = LocalSpellResisted.Match(message);
-            if (localResist.Success && CharmAbility.IsMatch(localResist.Groups["ability"].Value))
+            if (localResist.Success && IsCharmAbility(localResist.Groups["ability"].Value))
             {
                 RemoveLatestPendingCharm(localPlayerName);
             }
 
             var otherResist = OtherSpellResisted.Match(message);
-            if (otherResist.Success && CharmAbility.IsMatch(otherResist.Groups["ability"].Value))
+            if (otherResist.Success && IsCharmAbility(otherResist.Groups["ability"].Value))
             {
                 RemoveLatestPendingCharm(otherResist.Groups["caster"].Value);
             }
@@ -352,7 +388,7 @@ public sealed class GroupStateTracker(string localPlayerName)
                 var isEligibleCaster = caster.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase) ||
                                        IsGrouped && KnownMembers.Contains(caster);
                 if (isEligibleCaster) _lastEligibleCast = new PendingCharmCast(timestamp.Value, caster);
-                if (isEligibleCaster && CharmAbility.IsMatch(ability))
+                if (isEligibleCaster && IsCharmAbility(ability))
                 {
                     _pendingCharmCasts.Add(new PendingCharmCast(timestamp.Value, caster));
                 }
@@ -387,7 +423,7 @@ public sealed class GroupStateTracker(string localPlayerName)
             }
 
             var wornOff = LocalSpellWornOff.Match(message);
-            if (wornOff.Success && CharmAbility.IsMatch(wornOff.Groups["ability"].Value))
+            if (wornOff.Success && IsCharmAbility(wornOff.Groups["ability"].Value))
             {
                 var pet = wornOff.Groups["name"].Value;
                 if (_controlledPetOwners.TryGetValue(pet, out var owner) &&
@@ -531,11 +567,12 @@ public sealed class GroupStateTracker(string localPlayerName)
                message.Contains("worn off", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("fizzles", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("interrupted", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("did not take hold", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("taken hold", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("resisted", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("summon", StringComparison.OrdinalIgnoreCase) &&
                message.Contains("spirit", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("Master.", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("My leader is", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("cancel the invitation", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("slain", StringComparison.OrdinalIgnoreCase) ||
                message.Contains(" died", StringComparison.OrdinalIgnoreCase);
@@ -597,7 +634,62 @@ public sealed class GroupStateTracker(string localPlayerName)
         _controlledPetSince[pet] = timestamp;
         _petOwnerHistory[pet] = owner;
         _companionPets.Add(pet);
+        ClearCompanionHint();
         return new GroupChange(GroupChangeKind.PetControlled, pet, owner);
+    }
+
+    public void RefreshCompanionHint(DateTime now)
+    {
+        if (_localSummonAt is not { } summonedAt)
+        {
+            _companionHint = null;
+            return;
+        }
+
+        if (HasBoundLocalCompanion())
+        {
+            ClearCompanionHint();
+            return;
+        }
+
+        if (_companionHintQuietUntil is { } quiet && now < quiet)
+        {
+            _companionHint = null;
+            return;
+        }
+
+        var age = now - summonedAt;
+        if (age < CompanionHintDelay || age > CompanionHintDelay + CompanionHintVisible)
+        {
+            if (age > CompanionHintDelay + CompanionHintVisible)
+            {
+                _companionHintQuietUntil = now + CompanionHintQuiet;
+                _localSummonAt = null;
+            }
+            _companionHint = null;
+            return;
+        }
+
+        _companionHint = "Spirit is summoned but not attached yet. Order it to attack or follow so its hits count on your meter.";
+    }
+
+    private bool HasBoundLocalCompanion()
+    {
+        foreach (var pet in _companionPets)
+        {
+            if (_controlledPetOwners.TryGetValue(pet, out var owner) &&
+                owner.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private void ClearCompanionHint()
+    {
+        _localSummonAt = null;
+        _companionHint = null;
+        _companionHintQuietUntil = null;
     }
 
     private void RetainLocalCharmState()

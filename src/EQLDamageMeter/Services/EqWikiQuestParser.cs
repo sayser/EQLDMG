@@ -400,8 +400,7 @@ public static partial class EqWikiQuestParser
     private static HttpClient CreateClient()
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "EQDM/1.5.1 (EverQuest Legends Damage Meter; +https://github.com/sayser/EQLDMG)");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(AppUpdateService.ProductUserAgent);
         return client;
     }
 

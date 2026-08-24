@@ -755,6 +755,9 @@
                                 <StackPanel>
                                     <TextBlock Text="DPS RANKING" Style="{StaticResource SectionLabel}" />
                                     <TextBlock Text="Current encounter" Foreground="#66879D" FontSize="10" Margin="0,3,0,0" />
+                                    <TextBlock Text="{Binding CompanionHint}" Foreground="#FFBD57" FontSize="10" Margin="0,3,0,0"
+                                               TextWrapping="Wrap" MaxWidth="360"
+                                               Visibility="{Binding HasCompanionHint, Converter={StaticResource BooleanToVisibility}}" />
                                 </StackPanel>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="22,0,18,0">
@@ -964,15 +967,18 @@
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <UniformGrid Columns="3" Rows="1">
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Double attack rate">
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                                        ToolTip="Double-attack rate. Riposte, flurry, rampage, and frenzy are left out of this chain.">
                                                 <TextBlock Text="DBL ATT" Style="{StaticResource CompactMetricLabel}" />
                                                 <TextBlock Text="{Binding SelectedCombatant.DoubleAttackRateText}" Style="{StaticResource CompactMetricValue}" Foreground="#A985FF" />
                                             </StackPanel>
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Triple attack rate">
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                                        ToolTip="Triple-attack rate. A leading ~ means the chain used a weapon skill (slash/pierce/etc.) where two hands can look like a triple. Kick, Bash, Backstab, Cleave, Smite, and Strike are counted as logged.">
                                                 <TextBlock Text="TRI ATT" Style="{StaticResource CompactMetricLabel}" />
                                                 <TextBlock Text="{Binding SelectedCombatant.TripleAttackRateText}" Style="{StaticResource CompactMetricValue}" Foreground="#2FD8C7" />
                                             </StackPanel>
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Quad attack rate">
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                                        ToolTip="Quad-attack rate. A leading ~ means the chain used a weapon skill where two hands can look like extra swings.">
                                                 <TextBlock Text="QUAD ATT" Style="{StaticResource CompactMetricLabel}" />
                                                 <TextBlock Text="{Binding SelectedCombatant.QuadAttackRateText}" Style="{StaticResource CompactMetricValue}" Foreground="#FFBD57" />
                                             </StackPanel>
@@ -1940,7 +1946,9 @@
                         <ListBox Grid.Row="1" ItemsSource="{Binding SessionHistory.Sessions}"
                                  SelectedItem="{Binding SessionHistory.SelectedSession}"
                                  Background="Transparent" BorderThickness="0"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ScrollViewer.CanContentScroll="False"
+                                 VirtualizingPanel.ScrollUnit="Pixel">
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem">
                                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -1998,35 +2006,40 @@
 
                                         <StackPanel Margin="0,8,0,0" Visibility="{Binding LootExpandVisibility}">
                                             <TextBlock Text="LOOT BY MOB" Style="{StaticResource SectionLabel}" Margin="0,0,0,6" />
-                                            <ItemsControl ItemsSource="{Binding Mobs}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border BorderThickness="1" CornerRadius="8" Padding="8,6"
-                                                                Margin="0,0,0,6" Cursor="Hand"
-                                                                MouseLeftButtonUp="SessionMobSelect_Click"
-                                                                ToolTip="Show loot details on the right">
-                                                            <Border.Style>
-                                                                <Style TargetType="Border">
-                                                                    <Setter Property="Background" Value="#4A0C2436" />
-                                                                    <Setter Property="BorderBrush" Value="#2A4A5E" />
-                                                                    <Style.Triggers>
-                                                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                                            <Setter Property="Background" Value="#7A103249" />
-                                                                            <Setter Property="BorderBrush" Value="#50CFC5" />
-                                                                        </DataTrigger>
-                                                                    </Style.Triggers>
-                                                                </Style>
-                                                            </Border.Style>
-                                                            <StackPanel>
-                                                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
-                                                                           FontSize="12" TextTrimming="CharacterEllipsis" />
-                                                                <TextBlock Text="{Binding Summary}" Foreground="#8BA9BD"
-                                                                           FontSize="10" Margin="0,2,0,0" />
-                                                            </StackPanel>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
+                                            <ScrollViewer MaxHeight="260"
+                                                          VerticalScrollBarVisibility="Auto"
+                                                          HorizontalScrollBarVisibility="Disabled"
+                                                          PreviewMouseWheel="SessionLoot_PreviewMouseWheel">
+                                                <ItemsControl ItemsSource="{Binding Mobs}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border BorderThickness="1" CornerRadius="8" Padding="8,6"
+                                                                    Margin="0,0,0,6" Cursor="Hand"
+                                                                    MouseLeftButtonUp="SessionMobSelect_Click"
+                                                                    ToolTip="Show loot details on the right">
+                                                                <Border.Style>
+                                                                    <Style TargetType="Border">
+                                                                        <Setter Property="Background" Value="#4A0C2436" />
+                                                                        <Setter Property="BorderBrush" Value="#2A4A5E" />
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                                <Setter Property="Background" Value="#7A103249" />
+                                                                                <Setter Property="BorderBrush" Value="#50CFC5" />
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Border.Style>
+                                                                <StackPanel>
+                                                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
+                                                                               FontSize="12" TextTrimming="CharacterEllipsis" />
+                                                                    <TextBlock Text="{Binding Summary}" Foreground="#8BA9BD"
+                                                                               FontSize="10" Margin="0,2,0,0" />
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </ScrollViewer>
                                             <TextBlock Text="No loot recorded yet" Foreground="#66879D" FontSize="11"
                                                        Margin="2,2,0,0">
                                                 <TextBlock.Style>

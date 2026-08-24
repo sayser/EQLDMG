@@ -46,6 +46,11 @@ public sealed class CombatantAggregate(string name)
     public int DoubleAttacks { get; set; }
     public int TripleAttacks { get; set; }
     public int QuadAttacks { get; set; }
+    /// <summary>
+    /// True when a 3+ same-second weapon chain was counted. Dual wield can look like a triple,
+    /// so TRI/QUAD rates should be treated as estimates for those skills.
+    /// </summary>
+    public bool HighMultiAttackIsApproximate { get; set; }
     public long MeleeDamage { get; set; }
     public int MeleeHitMin { get; set; }
     public int MeleeHitMax { get; set; }
@@ -90,9 +95,16 @@ public sealed class EncounterTracker(string localPlayerName)
     private readonly record struct RollingDamageEvent(
         DateTime Timestamp, string Source, string? OwnerName, int Amount);
     private readonly record struct PendingCast(DateTime Timestamp, string Source, string SpellFamily);
+    private readonly record struct ExplainedFiring(string Source, string SpellFamily, long Second);
 
-    private static readonly Regex BeginsCasting = new(
-        @"^(?<source>You|.+?) begin(?:s)? casting (?<spell>.+?)\.?$",
+    private static readonly Regex BeginsCastOrSong = new(
+        @"^(?<source>You|.+?) begin(?:s)? (?:casting|singing) (?<spell>.+?)\.?$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ZoneEntered = new(
+        @"^You have entered (?<zone>.+)\.$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex Mesmerized = new(
+        @"^(?<name>.+?) has been mesmerized\.$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private readonly Dictionary<string, CombatantAggregate> _combatants = new(StringComparer.OrdinalIgnoreCase);
@@ -100,15 +112,24 @@ public sealed class EncounterTracker(string localPlayerName)
     private readonly HashSet<string> _hostileTargets = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _activeHostileTargets = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _hostileSources = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DateTime> _mezHeldUntil = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<DamageEvent> _pending = [];
     private readonly Queue<RollingDamageEvent> _rollingEvents = [];
     private readonly List<CombatOutcomeEvent> _pendingOutcomes = [];
     private readonly List<PendingCast> _pendingCasts = [];
+    private readonly HashSet<ExplainedFiring> _explainedFirings = [];
+    private readonly MeleeAbilityResolver _rounds = new();
+    private readonly SpecialAttackNames _specials = new();
+    private DateTime? _quickBuffUntil;
+    private DateTime? _lastPresenceAt;
 
-    public TimeSpan EncounterTimeout { get; set; } = TimeSpan.FromSeconds(10);
-    public TimeSpan KillCompletionGrace { get; set; } = TimeSpan.FromSeconds(2);
+    public TimeSpan EncounterTimeout { get; set; } = TimeSpan.FromSeconds(60);
+    public TimeSpan KillCompletionGrace { get; set; } = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan PendingRetention = TimeSpan.FromSeconds(12);
     private static readonly TimeSpan RollingRetention = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan CastMatchWindow = TimeSpan.FromSeconds(12);
+    private static readonly TimeSpan QuickBuffWindow = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan MezHoldDuration = TimeSpan.FromSeconds(120);
     public DateTime? StartedAt { get; private set; }
     public DateTime? LastDamageAt { get; private set; }
     public DateTime? EndedAt { get; private set; }
@@ -117,18 +138,23 @@ public sealed class EncounterTracker(string localPlayerName)
     public IReadOnlyCollection<CombatantAggregate> Combatants =>
         _combatants.Values.Concat(_retiredCombatants).ToArray();
 
-    public CombatantAggregate[] CreateCombatantArray() =>
-        _combatants.Values.Concat(_retiredCombatants).ToArray();
+    public CombatantAggregate[] CreateCombatantArray()
+    {
+        var all = _combatants.Values.Concat(_retiredCombatants).ToArray();
+        foreach (var combatant in all)
+            _rounds.OverlayOnto(combatant);
+        return all;
+    }
 
     public void Process(DamageEvent damage, GroupStateTracker group)
     {
+        damage = ApplyLocalSpecials(damage);
         var isLocal = damage.Source.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase);
         var sourceIsKnownMember = group.IsConfirmedMemberOrPet(damage.Source);
         var targetIsKnownMember = damage.Target.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase) ||
                                   group.IsConfirmedMemberOrPet(damage.Target);
         var isRelevantCombat = isLocal || sourceIsKnownMember || targetIsKnownMember;
-        var previousEncounterHasEnded = LastDamageAt.HasValue &&
-                                        damage.Timestamp - LastDamageAt.Value > EncounterTimeout;
+        var previousEncounterHasEnded = IsReadyToClose(damage.Timestamp);
 
         FinalizeCompletedEncounterAt(damage.Timestamp);
 
@@ -218,11 +244,12 @@ public sealed class EncounterTracker(string localPlayerName)
         }
 
         _pending.Add(damage);
-        _pending.RemoveAll(item => damage.Timestamp - item.Timestamp > EncounterTimeout);
+        _pending.RemoveAll(item => damage.Timestamp - item.Timestamp > PendingRetention);
     }
 
     public void ProcessOutcome(CombatOutcomeEvent outcome, GroupStateTracker group)
     {
+        outcome = ApplyLocalSpecials(outcome);
         FinalizeCompletedEncounterAt(outcome.Timestamp);
         if (outcome.Kind is CombatOutcomeKind.StunApplied or CombatOutcomeKind.StunDiminished)
         {
@@ -247,7 +274,7 @@ public sealed class EncounterTracker(string localPlayerName)
                                  !outcome.Source.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase);
         if (targetsLocalPlayer)
         {
-            if (IsFinalized || (LastDamageAt.HasValue && outcome.Timestamp - LastDamageAt.Value > EncounterTimeout))
+            if (IsFinalized || IsReadyToClose(outcome.Timestamp))
             {
                 Reset();
             }
@@ -255,7 +282,7 @@ public sealed class EncounterTracker(string localPlayerName)
             _hostileSources.Add(outcome.Source);
             _hostileTargets.Add(outcome.Source);
             _activeHostileTargets.Add(outcome.Source);
-            TouchEncounter(outcome.Timestamp);
+            TouchPresence(outcome.Timestamp);
             AddDefensiveOutcome(localPlayerName, outcome, group);
             return;
         }
@@ -272,14 +299,13 @@ public sealed class EncounterTracker(string localPlayerName)
             friendlyFire = false;
 
         var startsNewOffensiveEncounter = sourceIsEligible && !friendlyFire && outcome.Target is not null &&
-                                          (!StartedAt.HasValue || IsFinalized ||
-                                           (LastDamageAt.HasValue && outcome.Timestamp - LastDamageAt.Value > EncounterTimeout));
+                                          (!StartedAt.HasValue || IsFinalized || IsReadyToClose(outcome.Timestamp));
         if (startsNewOffensiveEncounter && outcome.Target is not null)
         {
             Reset();
             _hostileTargets.Add(outcome.Target);
             _activeHostileTargets.Add(outcome.Target);
-            TouchEncounter(outcome.Timestamp);
+            TouchPresence(outcome.Timestamp);
             AddOutcome(outcome, group);
             return;
         }
@@ -289,7 +315,7 @@ public sealed class EncounterTracker(string localPlayerName)
                                    group.IsConfirmedMemberOrPet(outcome.Target));
         if (defenderIsEligible && (!sourceIsEligible || friendlyFire) && outcome.Target is not null)
         {
-            if (IsFinalized || (LastDamageAt.HasValue && outcome.Timestamp - LastDamageAt.Value > EncounterTimeout))
+            if (IsFinalized || IsReadyToClose(outcome.Timestamp))
             {
                 Reset();
             }
@@ -300,39 +326,35 @@ public sealed class EncounterTracker(string localPlayerName)
                 _hostileSources.Add(outcome.Source);
                 _hostileTargets.Add(outcome.Source);
                 _activeHostileTargets.Add(outcome.Source);
-                TouchEncounter(outcome.Timestamp);
+                TouchPresence(outcome.Timestamp);
             }
             AddDefensiveOutcome(outcome.Target, outcome, group);
             return;
         }
 
         var targetIsEligible = outcome.Target is null || _hostileTargets.Contains(outcome.Target);
-        // A targetless outcome such as a fizzle cannot extend a fight, and an encounter
-        // awaiting its inactivity sweep is still open here, so without the same timeout
-        // the other branches apply it would land on a fight that already stopped.
-        var withinEncounter = !LastDamageAt.HasValue ||
-                              outcome.Timestamp - LastDamageAt.Value <= EncounterTimeout;
-        if (StartedAt.HasValue && !IsFinalized && withinEncounter && sourceIsEligible && !friendlyFire &&
+        var withinEncounter = StartedAt.HasValue && !IsFinalized && !IsReadyToClose(outcome.Timestamp);
+        if (withinEncounter && sourceIsEligible && !friendlyFire &&
             targetIsEligible)
         {
             if (outcome.Target is not null)
             {
                 _activeHostileTargets.Add(outcome.Target);
-                TouchEncounter(outcome.Timestamp);
+                TouchPresence(outcome.Timestamp);
             }
             AddOutcome(outcome, group);
             return;
         }
 
         _pendingOutcomes.Add(outcome);
-        _pendingOutcomes.RemoveAll(item => outcome.Timestamp - item.Timestamp > EncounterTimeout);
+        _pendingOutcomes.RemoveAll(item => outcome.Timestamp - item.Timestamp > PendingRetention);
     }
 
     public void ProcessHealing(HealingEvent healing, GroupStateTracker group)
     {
         if (!StartedAt.HasValue || IsFinalized) return;
+        if (IsReadyToClose(healing.Timestamp)) return;
         if (CompletionCandidateAt.HasValue && healing.Timestamp > CompletionCandidateAt.Value) return;
-        if (LastDamageAt.HasValue && healing.Timestamp - LastDamageAt.Value > EncounterTimeout) return;
         var sourceIsEligible = healing.Source.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase) ||
                                group.IsConfirmedMemberOrPet(healing.Source);
         if (!sourceIsEligible) return;
@@ -343,7 +365,17 @@ public sealed class EncounterTracker(string localPlayerName)
         combatant.Healing += healing.Amount;
         combatant.PotentialHealing += healing.PotentialAmount;
         if (healing.IsOverTime) combatant.HealOverTimeTicks++;
-        else combatant.DirectHeals++;
+        else
+        {
+            combatant.DirectHeals++;
+            if (_quickBuffUntil is { } until && healing.Timestamp <= until)
+            {
+                var family = SpellNameNormalizer.GetFamilyName(healing.Ability);
+                if (family.Length > 0)
+                    _explainedFirings.Add(new ExplainedFiring(healing.Source, family,
+                        healing.Timestamp.Ticks / TimeSpan.TicksPerSecond));
+            }
+        }
         if (healing.IsCritical) combatant.CriticalHeals++;
         GetOrCreateAbility(combatant.HealingAbilities, healing.Ability).Damage += healing.Amount;
     }
@@ -409,7 +441,24 @@ public sealed class EncounterTracker(string localPlayerName)
     {
         if (!ShouldProcessMessage(message)) return;
 
-        if (BeginsCasting.Match(message) is { Success: true } castMatch)
+        _specials.Observe(message);
+
+        if (message.StartsWith("You activate Quick Buff", StringComparison.OrdinalIgnoreCase))
+        {
+            _quickBuffUntil = timestamp + QuickBuffWindow;
+            return;
+        }
+
+        var zone = ZoneEntered.Match(message);
+        if (zone.Success)
+        {
+            var zoneName = zone.Groups["zone"].Value.Trim();
+            if (!zoneName.Contains("levitation", StringComparison.OrdinalIgnoreCase))
+                BeginZoneStay(timestamp);
+            return;
+        }
+
+        if (BeginsCastOrSong.Match(message) is { Success: true } castMatch)
         {
             var source = castMatch.Groups["source"].Value;
             if (source.Equals("You", StringComparison.OrdinalIgnoreCase))
@@ -420,6 +469,22 @@ public sealed class EncounterTracker(string localPlayerName)
                 _pendingCasts.Add(new PendingCast(timestamp, source, family));
                 PrunePendingCasts(timestamp);
             }
+        }
+
+        var mez = Mesmerized.Match(message);
+        if (mez.Success)
+        {
+            var name = mez.Groups["name"].Value;
+            if (_hostileTargets.Contains(name) || _activeHostileTargets.Contains(name))
+            {
+                _mezHeldUntil[name] = timestamp + MezHoldDuration;
+                TouchPresence(timestamp);
+            }
+        }
+
+        if (IsLocalCastFailure(message))
+        {
+            ConsumeLatestCast(localPlayerName, timestamp);
         }
 
         string? defeatedTarget = null;
@@ -448,40 +513,48 @@ public sealed class EncounterTracker(string localPlayerName)
 
         if (defeatedTarget is null || !_hostileTargets.Contains(defeatedTarget)) return;
         _activeHostileTargets.Remove(defeatedTarget);
+        _mezHeldUntil.Remove(defeatedTarget);
         // Enemy names are not unique in the log. Two living enemies can share the
         // same name, so a kill message cannot safely prove that combat has ended.
         // Give another same-named target a short window to produce combat before
         // treating the name-only death message as encounter completion.
-        TouchEncounter(timestamp);
-        if (_activeHostileTargets.Count == 0)
+        TouchPresence(timestamp);
+        PruneMezHolds(timestamp);
+        if (_activeHostileTargets.Count == 0 && !HasMezHold())
         {
             CompletionCandidateAt = timestamp;
         }
     }
 
     /// <summary>
-    /// Cast attribution and kill detection only apply to a narrow set of log lines.
+    /// Cast attribution, kill detection, mez, zone lines, and special-attack grants.
     /// </summary>
     public static bool ShouldProcessMessage(string message)
     {
         if (message.Length < 8) return false;
         return message.Contains("begin casting", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("begins casting", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("begin singing", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("begins singing", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("slain", StringComparison.OrdinalIgnoreCase) ||
                message.Contains(" died", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("has died", StringComparison.OrdinalIgnoreCase);
+               message.Contains("has died", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("activate Quick Buff", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("has been mesmerized", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("You have entered ", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("spell fizzles!", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("spell is interrupted", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("melody has been interrupted", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("will now use", StringComparison.OrdinalIgnoreCase);
     }
 
     public void FinalizeIfInactive(DateTime now)
     {
         if (IsFinalized) return;
-        if (CompletionCandidateAt.HasValue && now - CompletionCandidateAt.Value >= KillCompletionGrace)
+        if (IsReadyToClose(now))
         {
-            FinalizeEncounter(CompletionCandidateAt.Value);
-        }
-        else if (LastDamageAt.HasValue && now - LastDamageAt.Value >= EncounterTimeout)
-        {
-            FinalizeEncounter(LastDamageAt.Value);
+            var closeAt = CompletionCandidateAt ?? LastDamageAt ?? _lastPresenceAt ?? now;
+            FinalizeEncounter(closeAt);
         }
     }
 
@@ -489,11 +562,42 @@ public sealed class EncounterTracker(string localPlayerName)
 
     private void FinalizeCompletedEncounterAt(DateTime timestamp)
     {
-        if (!IsFinalized && CompletionCandidateAt.HasValue &&
-            timestamp - CompletionCandidateAt.Value >= KillCompletionGrace)
+        if (!IsFinalized && IsReadyToClose(timestamp))
         {
-            FinalizeEncounter(CompletionCandidateAt.Value);
+            var closeAt = CompletionCandidateAt ?? LastDamageAt ?? _lastPresenceAt ?? timestamp;
+            FinalizeEncounter(closeAt);
         }
+    }
+
+    private bool IsReadyToClose(DateTime now)
+    {
+        if (!StartedAt.HasValue || IsFinalized) return false;
+        PruneMezHolds(now);
+        if (HasMezHold()) return false;
+        if (_activeHostileTargets.Count == 0 && CompletionCandidateAt is { } killed &&
+            now - killed >= KillCompletionGrace)
+            return true;
+        if (_lastPresenceAt is { } presence && now - presence >= EncounterTimeout)
+            return true;
+        return false;
+    }
+
+    private bool HasMezHold() => _mezHeldUntil.Count > 0;
+
+    private void PruneMezHolds(DateTime now)
+    {
+        if (_mezHeldUntil.Count == 0) return;
+        List<string>? expired = null;
+        foreach (var pair in _mezHeldUntil)
+        {
+            if (pair.Value > now) continue;
+            expired ??= [];
+            expired.Add(pair.Key);
+        }
+
+        if (expired is null) return;
+        foreach (var name in expired)
+            _mezHeldUntil.Remove(name);
     }
 
     public double GetElapsedSeconds(DateTime now)
@@ -541,7 +645,13 @@ public sealed class EncounterTracker(string localPlayerName)
         _pending.Clear();
         _rollingEvents.Clear();
         _pendingOutcomes.Clear();
-        _pendingCasts.Clear();
+        _mezHeldUntil.Clear();
+        _explainedFirings.Clear();
+        _rounds.ClearRuntime();
+        _lastPresenceAt = null;
+        // Keep begin-casting records and special-attack names across fight boundaries
+        // so a spell started before the next pull (or during the previous fight's idle)
+        // is not tagged as a weapon proc on the first land.
         StartedAt = null;
         LastDamageAt = null;
         EndedAt = null;
@@ -567,6 +677,7 @@ public sealed class EncounterTracker(string localPlayerName)
     {
         _hostileTargets.Add(damage.Target);
         _activeHostileTargets.Add(damage.Target);
+        _mezHeldUntil.Remove(damage.Target);
         TouchEncounter(damage.Timestamp);
         group.TryGetPetOwner(damage.Source, out var owner);
         var combatant = GetOrCreateCombatant(damage.Source, owner);
@@ -586,26 +697,7 @@ public sealed class EncounterTracker(string localPlayerName)
             if (damage.Amount > combatant.MeleeHitMax)
                 combatant.MeleeHitMax = damage.Amount;
             if (damage.IsCritical) combatant.MeleeCriticalHits++;
-            // Count each swing chain by its final depth only: a triple does not also
-            // count as a double, and a quad does not also count as double/triple.
-            switch (damage.MultiAttackLevel)
-            {
-                case <= 1:
-                    combatant.MeleeSwingAttempts++;
-                    break;
-                case 2:
-                    combatant.DoubleAttacks++;
-                    break;
-                case 3:
-                    if (combatant.DoubleAttacks > 0) combatant.DoubleAttacks--;
-                    combatant.TripleAttacks++;
-                    break;
-                default:
-                    if (combatant.TripleAttacks > 0) combatant.TripleAttacks--;
-                    else if (combatant.DoubleAttacks > 0) combatant.DoubleAttacks--;
-                    combatant.QuadAttacks++;
-                    break;
-            }
+            _rounds.ObserveLanded(damage);
         }
         else if (damage.Category is DamageCategory.Spell or DamageCategory.DamageOverTime)
         {
@@ -615,7 +707,8 @@ public sealed class EncounterTracker(string localPlayerName)
 
         RecordDamageBySecond(combatant, damage.Timestamp, damage.Amount);
 
-        var ability = GetOrCreateAbility(combatant.Abilities, damage.Ability);
+        var abilityName = AbilityListName(damage);
+        var ability = GetOrCreateAbility(combatant.Abilities, abilityName);
         ability.Damage += damage.Amount;
         ability.Hits++;
         if (damage.Category == DamageCategory.Spell && !TryConsumeMatchingCast(damage))
@@ -630,7 +723,7 @@ public sealed class EncounterTracker(string localPlayerName)
             combatant.Targets[damage.Target] = target;
         }
         target.Damage += damage.Amount;
-        var targetAbility = GetOrCreateAbility(target.Abilities, damage.Ability);
+        var targetAbility = GetOrCreateAbility(target.Abilities, abilityName);
         targetAbility.Damage += damage.Amount;
         targetAbility.Hits++;
 
@@ -641,7 +734,7 @@ public sealed class EncounterTracker(string localPlayerName)
     {
         if (_pendingOutcomes.Count == 0) return;
         foreach (var outcome in _pendingOutcomes.Where(item =>
-                     confirmingDamage.Timestamp - item.Timestamp <= EncounterTimeout &&
+                     confirmingDamage.Timestamp - item.Timestamp <= PendingRetention &&
                      item.Timestamp <= confirmingDamage.Timestamp &&
                      item.Source.Equals(confirmingDamage.Source, StringComparison.OrdinalIgnoreCase) &&
                      (item.Target is null || item.Target.Equals(confirmingDamage.Target, StringComparison.OrdinalIgnoreCase)))
@@ -665,14 +758,21 @@ public sealed class EncounterTracker(string localPlayerName)
             case CombatOutcomeKind.DefensiveBlock:
             case CombatOutcomeKind.DefensiveRiposte:
             case CombatOutcomeKind.DefensiveAbsorb:
+                combatant.Misses++;
+                _rounds.ObserveAttempt(outcome.Timestamp, outcome.Source, outcome.Target, outcome.Ability,
+                    extraSwing: !outcome.CountsAsAttackRound);
+                break;
             case CombatOutcomeKind.DefensiveSpellAbsorb:
                 combatant.Misses++;
                 break;
             case CombatOutcomeKind.SpellFizzle:
                 combatant.SpellFizzles++;
+                ConsumeLatestCast(outcome.Source, outcome.Timestamp);
                 break;
             case CombatOutcomeKind.SpellResist:
                 combatant.SpellResists++;
+                if (!ExplainSpellFiring(outcome.Source, outcome.Ability, outcome.Timestamp))
+                    NoteUnexplainedSpellProc(combatant, outcome.Ability);
                 break;
         }
     }
@@ -682,7 +782,7 @@ public sealed class EncounterTracker(string localPlayerName)
         // A stun line carries no attacker, so it can annotate a fight that is already
         // running but must never open one or revive a finished one.
         if (!StartedAt.HasValue || IsFinalized) return;
-        if (LastDamageAt.HasValue && outcome.Timestamp - LastDamageAt.Value > EncounterTimeout) return;
+        if (IsReadyToClose(outcome.Timestamp)) return;
 
         // A stun shortened by diminishing returns still landed, and melee stuns are
         // reported by the game only when they are shortened.
@@ -745,33 +845,104 @@ public sealed class EncounterTracker(string localPlayerName)
         defender.DamageTaken += damage.Amount;
         defender.IncomingHits++;
         if (damage.Category == DamageCategory.Melee) defender.IncomingMeleeHits++;
-        var incoming = GetOrCreateAbility(defender.IncomingAbilities, damage.Ability);
+        var incoming = GetOrCreateAbility(defender.IncomingAbilities, AbilityListName(damage));
         incoming.Damage += damage.Amount;
         incoming.Hits++;
     }
 
+    private static bool IsLocalCastFailure(string message) =>
+        message.Equals("Your melody has been interrupted!", StringComparison.OrdinalIgnoreCase) ||
+        (message.StartsWith("Your ", StringComparison.OrdinalIgnoreCase) &&
+         (message.Contains(" spell fizzles!", StringComparison.OrdinalIgnoreCase) ||
+          message.Contains(" spell is interrupted.", StringComparison.OrdinalIgnoreCase)));
+
     private bool TryConsumeMatchingCast(DamageEvent damage)
     {
-        PrunePendingCasts(damage.Timestamp);
-        var family = SpellNameNormalizer.GetFamilyName(damage.Ability);
+        if (damage.Category == DamageCategory.DamageOverTime) return true;
+        return ExplainSpellFiring(damage.Source, damage.Ability, damage.Timestamp);
+    }
+
+    private bool ExplainSpellFiring(string source, string ability, DateTime timestamp)
+    {
+        PrunePendingCasts(timestamp);
+        var family = SpellNameNormalizer.GetFamilyName(ability);
+        if (family.Length == 0) return false;
+        var second = timestamp.Ticks / TimeSpan.TicksPerSecond;
+        var firing = new ExplainedFiring(source, family, second);
+        if (_explainedFirings.Contains(firing)) return true;
+
         for (var i = _pendingCasts.Count - 1; i >= 0; i--)
         {
             var cast = _pendingCasts[i];
-            if (!cast.Source.Equals(damage.Source, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!cast.Source.Equals(source, StringComparison.OrdinalIgnoreCase)) continue;
             if (!cast.SpellFamily.Equals(family, StringComparison.OrdinalIgnoreCase)) continue;
-            if (damage.Timestamp < cast.Timestamp) continue;
-            if (damage.Timestamp - cast.Timestamp > CastMatchWindow) continue;
+            if (timestamp < cast.Timestamp) continue;
+            if (timestamp - cast.Timestamp > CastMatchWindow) continue;
             _pendingCasts.RemoveAt(i);
+            _explainedFirings.Add(firing);
+            PruneExplainedFirings(second);
             return true;
         }
 
         return false;
     }
 
+    /// <summary>
+    /// A resist with no matching begin-cast is a weapon/item proc only after that
+    /// ability has already landed as unexplained spell damage this fight (Earthshaker
+    /// Earthquake). Bard-song DoT resists and resist-only debuffs (Blade Dance) are not procs.
+    /// </summary>
+    private static void NoteUnexplainedSpellProc(CombatantAggregate combatant, string abilityName)
+    {
+        if (string.IsNullOrWhiteSpace(abilityName)) return;
+        if (SpellDataCatalog.LooksLikeBardSongName(abilityName)) return;
+        var key = SpellNameNormalizer.GetFamilyName(abilityName);
+        if (!combatant.Abilities.TryGetValue(key, out var ability)) return;
+        if (ability.ProcDamage <= 0) return;
+        if (ability.Damage > ability.ProcDamage) return;
+        ability.ProcHits++;
+    }
+
+    private void ConsumeLatestCast(string source, DateTime timestamp)
+    {
+        PrunePendingCasts(timestamp);
+        var index = _pendingCasts.FindLastIndex(cast =>
+            cast.Source.Equals(source, StringComparison.OrdinalIgnoreCase));
+        if (index >= 0) _pendingCasts.RemoveAt(index);
+    }
+
     private void PrunePendingCasts(DateTime now)
     {
         _pendingCasts.RemoveAll(cast => now - cast.Timestamp > CastMatchWindow);
     }
+
+    private void PruneExplainedFirings(long currentSecond)
+    {
+        if (_explainedFirings.Count < 24) return;
+        _explainedFirings.RemoveWhere(item => item.Second < currentSecond - 2);
+    }
+
+    private DamageEvent ApplyLocalSpecials(DamageEvent damage)
+    {
+        if (damage.Category != DamageCategory.Melee) return damage;
+        if (!damage.Source.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase)) return damage;
+        var named = _specials.Resolve(damage.Ability);
+        return named.Equals(damage.Ability, StringComparison.OrdinalIgnoreCase)
+            ? damage
+            : damage with { Ability = named };
+    }
+
+    private CombatOutcomeEvent ApplyLocalSpecials(CombatOutcomeEvent outcome)
+    {
+        if (!outcome.Source.Equals(localPlayerName, StringComparison.OrdinalIgnoreCase)) return outcome;
+        var named = _specials.Resolve(outcome.Ability);
+        return named.Equals(outcome.Ability, StringComparison.OrdinalIgnoreCase)
+            ? outcome
+            : outcome with { Ability = named };
+    }
+
+    private static string AbilityListName(DamageEvent damage) =>
+        string.IsNullOrWhiteSpace(damage.AbilityRow) ? damage.Ability : damage.AbilityRow;
 
     private static AbilityAggregate GetOrCreateAbility(Dictionary<string, AbilityAggregate> abilities,
         string abilityName)
@@ -830,6 +1001,23 @@ public sealed class EncounterTracker(string localPlayerName)
         CompletionCandidateAt = null;
         StartedAt = !StartedAt.HasValue || timestamp < StartedAt ? timestamp : StartedAt;
         LastDamageAt = !LastDamageAt.HasValue || timestamp > LastDamageAt ? timestamp : LastDamageAt;
+        TouchPresence(timestamp);
+    }
+
+    private void TouchPresence(DateTime timestamp)
+    {
+        _lastPresenceAt = !_lastPresenceAt.HasValue || timestamp > _lastPresenceAt
+            ? timestamp
+            : _lastPresenceAt;
+        if (!StartedAt.HasValue)
+            StartedAt = timestamp;
+    }
+
+    private void BeginZoneStay(DateTime timestamp)
+    {
+        if (StartedAt.HasValue && !IsFinalized)
+            FinalizeEncounter(LastDamageAt ?? timestamp);
+        Reset();
     }
 
     private void RecordDamageBySecond(CombatantAggregate combatant, DateTime timestamp, int amount)
@@ -882,12 +1070,13 @@ public sealed class EncounterTracker(string localPlayerName)
 
     private void FinalizeEncounter(DateTime timestamp)
     {
-        if (!StartedAt.HasValue) return;
+        if (!StartedAt.HasValue || IsFinalized) return;
         IsFinalized = true;
         EndedAt = timestamp < StartedAt.Value ? LastDamageAt : timestamp;
+        _mezHeldUntil.Clear();
     }
 
-    private static CombatantAggregate CloneCombatant(CombatantAggregate source)
+    private CombatantAggregate CloneCombatant(CombatantAggregate source)
     {
         var clone = new CombatantAggregate(source.Name)
         {
@@ -902,6 +1091,7 @@ public sealed class EncounterTracker(string localPlayerName)
             DoubleAttacks = source.DoubleAttacks,
             TripleAttacks = source.TripleAttacks,
             QuadAttacks = source.QuadAttacks,
+            HighMultiAttackIsApproximate = source.HighMultiAttackIsApproximate,
             MeleeDamage = source.MeleeDamage,
             MeleeHitMin = source.MeleeHitMin,
             MeleeHitMax = source.MeleeHitMax,
@@ -942,6 +1132,7 @@ public sealed class EncounterTracker(string localPlayerName)
                 targetClone.Abilities[SpellNameNormalizer.GetFamilyName(ability.Name)] = CloneAbility(ability);
             clone.Targets[target.Name] = targetClone;
         }
+        _rounds.OverlayOnto(clone);
         return clone;
     }
 
