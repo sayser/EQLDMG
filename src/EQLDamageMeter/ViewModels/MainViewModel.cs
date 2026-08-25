@@ -731,7 +731,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             (line, cancellation) => ParseAndQueueAsync(line, monitorParser, monitorGeneration, cancellation),
             isHealthy => ReportMonitorHealthAsync(monitorGeneration, isHealthy),
             liveStart.DiscardInitialPartialLine);
+        var skyScan = SkyTracker.ScanCharacterLogAsync(path, liveStart.ResumePosition, cancellationToken);
         _monitor.Start();
+        _ = skyScan;
         return true;
     }
 

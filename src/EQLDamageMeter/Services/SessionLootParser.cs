@@ -93,6 +93,47 @@ public static partial class SessionLootParser
         return false;
     }
 
+    public static bool TryReadLootEvent(string message, out string itemName, out string disposition, out int count)
+    {
+        itemName = string.Empty;
+        disposition = string.Empty;
+        count = 1;
+
+        if (TryReadSold(message, out var soldItem, out _, out var soldCount, out _))
+        {
+            itemName = soldItem;
+            disposition = "Sold";
+            count = soldCount;
+            return true;
+        }
+
+        if (TryReadStored(message, out var storedItem, out _, out var storedCount))
+        {
+            itemName = storedItem;
+            disposition = "Stored";
+            count = storedCount;
+            return true;
+        }
+
+        if (TryReadMerged(message, out var mergedItem, out _, out _))
+        {
+            itemName = mergedItem;
+            disposition = "Merged";
+            count = 1;
+            return true;
+        }
+
+        if (TryReadKept(message, out var keptItem, out _, out var keptCount))
+        {
+            itemName = keptItem;
+            disposition = "Kept";
+            count = keptCount;
+            return true;
+        }
+
+        return false;
+    }
+
     public static SessionLootData Clone(SessionLootData source) => new()
     {
         CoinCopper = source.CoinCopper,

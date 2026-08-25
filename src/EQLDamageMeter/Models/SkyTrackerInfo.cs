@@ -42,6 +42,14 @@ public sealed class SkyRequiredItemCatalog
 public sealed class SkyTrackerDocument
 {
     public List<SkyTrackedGoal> Goals { get; set; } = [];
+    public List<SkyLootWatch> LootWatches { get; set; } = [];
+}
+
+public sealed class SkyLootWatch
+{
+    public string ClassName { get; set; } = string.Empty;
+    public string RewardName { get; set; } = string.Empty;
+    public string ItemName { get; set; } = string.Empty;
 }
 
 public sealed class SkyTrackedGoal

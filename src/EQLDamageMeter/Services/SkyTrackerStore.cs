@@ -18,6 +18,7 @@ public static class SkyTrackerStore
             var document = JsonSerializer.Deserialize<SkyTrackerDocument>(File.ReadAllText(StorePath), JsonOptions);
             document ??= new SkyTrackerDocument();
             document.Goals ??= [];
+            document.LootWatches ??= [];
             foreach (var goal in document.Goals)
             {
                 goal.Id = string.IsNullOrWhiteSpace(goal.Id) ? Guid.NewGuid().ToString("N") : goal.Id;
@@ -48,6 +49,19 @@ public static class SkyTrackerStore
 
             document.Goals = document.Goals
                 .Where(goal => goal.RewardName.Length > 0 && goal.Parts.Count > 0)
+                .ToList();
+            document.LootWatches = document.LootWatches
+                .Select(watch => new SkyLootWatch
+                {
+                    ClassName = watch.ClassName?.Trim() ?? string.Empty,
+                    RewardName = watch.RewardName?.Trim() ?? string.Empty,
+                    ItemName = watch.ItemName?.Trim() ?? string.Empty
+                })
+                .Where(watch => watch.ClassName.Length > 0 && watch.RewardName.Length > 0)
+                .GroupBy(watch =>
+                        $"{watch.ClassName}|{watch.RewardName}|{watch.ItemName}",
+                    StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
                 .ToList();
             return document;
         }

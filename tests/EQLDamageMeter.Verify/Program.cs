@@ -39,6 +39,7 @@ internal static class Program
             RunSection("LatestKill", RunLatestKillVsHistoryTests);
             RunSection("QuestSkyStore", RunQuestSkyStoreTests);
             RunSection("SkyCatalog", RunSkyCatalogParserTests);
+            RunSection("SkyLootLedger", RunSkyLootLedgerTests);
             RunSection("AppPaths", RunAppPathsAndGuardTests);
             RunSection("SpellTrackerStore", RunSpellTrackerStoreTests);
             RunSection("AlertMode", RunAlertModeTests);
@@ -2022,6 +2023,120 @@ internal static class Program
                         JsonSerializer.Serialize(document, new JsonSerializerOptions { WriteIndented = true }));
                 }
             }
+        }
+    }
+
+    private static void RunSkyLootLedgerTests()
+    {
+        Check("Sky name strips +N", SkyItemName.Normalize("Efreeti Standard +2") == "Efreeti Standard");
+        Check("Sky name keeps plain", SkyItemName.Normalize("Silver Hoop") == "Silver Hoop");
+        Check("Sky drop Gorgalosk",
+            SkyDropSource.Format("3-Gorga") == "Harpy Island (Island 3) · Gorgalosk");
+        Check("Sky drop empty note", SkyDropSource.Format("") == string.Empty);
+
+        var cleric = new SkyClassCatalog
+        {
+            ClassName = "Cleric",
+            QuestGiver = "Josin Faithbringer",
+            Rewards =
+            [
+                new SkyRewardCatalog
+                {
+                    RewardName = "Truewind Earring",
+                    RequiredItems =
+                    [
+                        new SkyRequiredItemCatalog { ItemName = "Wind Rune Ena", NeededCount = 1 },
+                        new SkyRequiredItemCatalog { ItemName = "Efreeti Standard", NeededCount = 1 },
+                        new SkyRequiredItemCatalog { ItemName = "Mithril Bands", NeededCount = 1 }
+                    ]
+                },
+                new SkyRewardCatalog
+                {
+                    RewardName = "Aegis of the Wind",
+                    RequiredItems =
+                    [
+                        new SkyRequiredItemCatalog { ItemName = "Silver Hoop", NeededCount = 1, Note = "3-Gorga" }
+                    ]
+                },
+                new SkyRewardCatalog
+                {
+                    RewardName = "Dummy Rune",
+                    RequiredItems =
+                    [
+                        new SkyRequiredItemCatalog { ItemName = "Wind Rune Dena", NeededCount = 1 }
+                    ]
+                }
+            ]
+        };
+        var ledger = new SkyLootLedger();
+        ledger.LoadCatalog([cleric]);
+
+        ledger.Observe("--You have looted a Silver Hoop from Gorgalosk's corpse.--");
+        Check("Sky kept inventory", ledger.Snapshot("Silver Hoop").Owned == 1 &&
+                                    ledger.Snapshot("Silver Hoop").Location == SkyItemLocation.Inventory);
+        Check("Sky ready from owned", ledger.QuestStatus("Cleric", cleric.Rewards[1]) == "READY");
+
+        ledger.Observe("--You have looted a Wind Rune Dena from an azarack's corpse.--");
+        Check("Sky wind rune kept is currency",
+            ledger.Snapshot("Wind Rune Dena").Owned == 1 &&
+            ledger.Snapshot("Wind Rune Dena").Location == SkyItemLocation.Currency);
+
+        ledger.Observe("You successfully destroyed 1 Silver Hoop.");
+        Check("Sky deleted after destroy", ledger.Snapshot("Silver Hoop").IsDeleted &&
+                                           ledger.Snapshot("Silver Hoop").DestroyedCount == 1 &&
+                                           ledger.QuestStatus("Cleric", cleric.Rewards[1]) == "IN PROGRESS");
+
+        ledger.Observe("You looted a Silver Hoop from Gorgalosk's corpse and stored it in your currency");
+        Check("Sky stored currency", ledger.Snapshot("Silver Hoop").Owned == 1 &&
+                                     ledger.Snapshot("Silver Hoop").Location == SkyItemLocation.Currency);
+        Check("Sky not deleted after loot again", !ledger.Snapshot("Silver Hoop").IsDeleted);
+
+        ledger.Observe("You looted a Wind Rune Ena from a spiroc vanquisher's corpse and sold it for 1 platinum.");
+        Check("Sky sold is not owned", ledger.Snapshot("Wind Rune Ena").Owned == 0);
+        Check("Sky autosold count", ledger.Snapshot("Wind Rune Ena").SoldCount == 1);
+
+        ledger.Observe("--You have looted a Wind Rune Ena from a spiroc vanquisher's corpse.--");
+        ledger.Observe("--You have looted an Efreeti Standard +2 from a named's corpse.--");
+        ledger.Observe("--You have looted a Mithril Bands from a named's corpse.--");
+        ledger.Observe("You offered 1 Wind Rune Ena to Josin Faithbringer.");
+        ledger.Observe("You offered 1 Efreeti Standard +2 to Josin Faithbringer.");
+        ledger.Observe("You offered 1 Mithril Bands to Josin Faithbringer.");
+        ledger.Observe("You have cancelled the trade.");
+        Check("Sky cancel keeps items", ledger.Snapshot("Wind Rune Ena").Owned == 1 &&
+                                        ledger.QuestStatus("Cleric", cleric.Rewards[0]) == "READY");
+
+        ledger.Observe("You offered 1 Wind Rune Ena to Josin Faithbringer.");
+        ledger.Observe("You offered 1 Efreeti Standard +2 to Josin Faithbringer.");
+        ledger.Observe("You offered 1 Mithril Bands to Josin Faithbringer.");
+        ledger.Observe("You complete the trade with Josin Faithbringer.");
+        Check("Sky turn-in completed", ledger.QuestStatus("Cleric", cleric.Rewards[0]) == "COMPLETED");
+        Check("Sky turn-in consumed", ledger.Snapshot("Wind Rune Ena").Owned == 0 &&
+                                      ledger.Snapshot("Efreeti Standard").Owned == 0);
+
+        var logPath = Path.Combine(Path.GetTempPath(), "eqdm_sky_" + Guid.NewGuid().ToString("N") + ".txt");
+        var parser = new LogLineParser("You");
+        Check("Sky envelope loot",
+            parser.TryParseEnvelope(
+                "[Thu Aug 13 12:00:01 2026] --You have looted a Silver Hoop from Gorgalosk's corpse.--",
+                out _, out var lootMessage) &&
+            SessionLootParser.TryReadLootEvent(lootMessage, out var lootName, out var lootDisp, out _) &&
+            lootName == "Silver Hoop" && lootDisp == "Kept");
+        File.WriteAllLines(logPath,
+        [
+            "[Thu Aug 13 12:00:00 2026] You say, 'Hail, Josin Faithbringer'",
+            "[Thu Aug 13 12:00:01 2026] --You have looted a Silver Hoop from Gorgalosk's corpse.--",
+            "[Thu Aug 13 12:00:02 2026] You successfully destroyed 1 Silver Hoop."
+        ]);
+        try
+        {
+            var bytes = File.ReadAllBytes(logPath);
+            var scanned = SkyLogScanner.Scan(logPath, [cleric], bytes.Length);
+            Check("Sky scanner deleted from log", scanned.Snapshot("Silver Hoop").IsDeleted);
+            Check("Sky scanner ignores combat", scanned.Snapshot("Wind Rune Ena").Owned == 0);
+        }
+        finally
+        {
+            File.Delete(logPath);
         }
     }
 
