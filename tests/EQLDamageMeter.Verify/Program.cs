@@ -191,95 +191,32 @@ internal static class Program
 
         Check("Double Attack flag keeps weapon verb",
             parser.TryParse(stamp + "You slash a rat for 12 points of damage. (Double Attack)", out var daLine) &&
-            daLine!.Damage is { Ability: "Slash", CountsAsAttackRound: true });
-        Check("Riposte hit is extra swing",
+            daLine!.Damage is { Ability: "Slash" });
+        Check("Riposte hit still counts as damage",
             parser.TryParse(stamp + "You slash a rat for 12 points of damage. (Riposte)", out var ripLine) &&
-            ripLine!.Damage is { CountsAsAttackRound: false });
-        Check("Riposte miss is extra swing",
+            ripLine!.Damage is { Ability: "Slash", Amount: 12 });
+        Check("Riposte miss is a miss",
             parser.TryParse(stamp + "You try to slash a rat, but miss! (Riposte)", out var ripMiss) &&
-            ripMiss!.Outcome is { CountsAsAttackRound: false });
+            ripMiss!.Outcome is { Kind: CombatOutcomeKind.MissedAttack });
 
         Check("Slay Undead keeps weapon verb",
             parser.TryParse(stamp + "You slash a skeleton for 40 points of damage. (Slay Undead)", out var slayLine) &&
-            slayLine!.Damage is { Ability: "Slash", AbilityRow: "Slay Undead", CountsAsAttackRound: true });
+            slayLine!.Damage is { Ability: "Slash", AbilityRow: "Slay Undead" });
         Check("Finishing Blow keeps weapon verb",
             parser.TryParse(stamp + "You slash a rat for 90 points of damage. (Finishing Blow)", out var fbLine) &&
-            fbLine!.Damage is { Ability: "Slash", AbilityRow: "Finishing Blow", CountsAsAttackRound: true });
+            fbLine!.Damage is { Ability: "Slash", AbilityRow: "Finishing Blow" });
         Check("Strikethrough keeps weapon verb",
             parser.TryParse(stamp + "You slash a rat for 12 points of damage. (Strikethrough)", out var stLine) &&
-            stLine!.Damage is { Ability: "Slash", AbilityRow: "Strikethrough", CountsAsAttackRound: true });
-        Check("Riposte Strikethrough is extra swing with strikethrough row",
+            stLine!.Damage is { Ability: "Slash", AbilityRow: "Strikethrough" });
+        Check("Riposte Strikethrough still uses strikethrough row",
             parser.TryParse(stamp + "You slash a rat for 12 points of damage. (Riposte Strikethrough Critical)",
                 out var ripSt) &&
-            ripSt!.Damage is { Ability: "Slash", AbilityRow: "Strikethrough", CountsAsAttackRound: false });
+            ripSt!.Damage is { Ability: "Slash", AbilityRow: "Strikethrough" });
         Check("Double Bow Shot stays a named flag",
             parser.TryParse(stamp + "You shoot a rat for 25 points of damage. (Double Bow Shot)", out var dbsLine) &&
             dbsLine!.Damage is { Ability: "Shoot", AbilityRow: "Double Bow Shot" });
 
-        var resolver = new MeleeAbilityResolver();
         var t = new DateTime(2026, 8, 22, 15, 4, 8);
-        resolver.ObserveLanded(new DamageEvent(t, "Sayser", "a rat", 90, "Kick", DamageCategory.Melee, false));
-        resolver.ObserveLanded(new DamageEvent(t, "Sayser", "a rat", 120, "Kick", DamageCategory.Melee, false));
-        var kickTally = resolver.GetTally("Sayser");
-        Check("Kick double is one round",
-            kickTally.Rounds == 1 && kickTally.Doubles == 1 && !kickTally.HighDepthIsApproximate,
-            $"{kickTally.Rounds}/{kickTally.Doubles}/{kickTally.HighDepthIsApproximate}");
-
-        resolver.ObserveLanded(new DamageEvent(t.AddSeconds(1), "Sayser", "a rat", 50, "Bash", DamageCategory.Melee, false));
-        resolver.ObserveLanded(new DamageEvent(t.AddSeconds(1), "Sayser", "a rat", 80, "Cleave", DamageCategory.Melee, false));
-        var mixed = resolver.GetTally("Sayser");
-        Check("Bash and Cleave are separate rounds",
-            mixed.Rounds == 3 && mixed.Doubles == 1,
-            $"{mixed.Rounds}/{mixed.Doubles}");
-
-        var punchResolver = new MeleeAbilityResolver();
-        var tripleTime = t.AddSeconds(2);
-        punchResolver.ObserveLanded(new DamageEvent(tripleTime, "Sayser", "a rat", 40, "Punch", DamageCategory.Melee, false));
-        punchResolver.ObserveLanded(new DamageEvent(tripleTime, "Sayser", "a rat", 41, "Punch", DamageCategory.Melee, false));
-        punchResolver.ObserveLanded(new DamageEvent(tripleTime, "Sayser", "a rat", 42, "Punch", DamageCategory.Melee, false));
-        var punchTally = punchResolver.GetTally("Sayser");
-        Check("Weapon-verb triple is inferred",
-            punchTally.Rounds == 1 && punchTally.Triples == 1 && punchTally.HighDepthIsApproximate,
-            $"{punchTally.Rounds}/{punchTally.Triples}/{punchTally.HighDepthIsApproximate}");
-
-        var rateEncounter = new EncounterTracker("Sayser");
-        var rateGroup = new GroupStateTracker("Sayser");
-
-        // Pure double: primary + 2nd hit only.
-        var d0 = t.AddSeconds(10);
-        rateEncounter.Process(
-            new DamageEvent(d0, "Sayser", "a rat", 10, "Strike", DamageCategory.Melee, false, 1), rateGroup);
-        rateEncounter.Process(
-            new DamageEvent(d0, "Sayser", "a rat", 11, "Strike", DamageCategory.Melee, false, 2), rateGroup);
-
-        // Pure triple: must not leave a lingering double count.
-        var d1 = t.AddSeconds(11);
-        rateEncounter.Process(
-            new DamageEvent(d1, "Sayser", "a rat", 12, "Punch", DamageCategory.Melee, false, 1), rateGroup);
-        rateEncounter.Process(
-            new DamageEvent(d1, "Sayser", "a rat", 13, "Punch", DamageCategory.Melee, false, 2), rateGroup);
-        rateEncounter.Process(
-            new DamageEvent(d1, "Sayser", "a rat", 14, "Punch", DamageCategory.Melee, false, 3), rateGroup);
-
-        // Pure quad: must not leave double or triple counts.
-        var d2 = t.AddSeconds(12);
-        rateEncounter.Process(
-            new DamageEvent(d2, "Sayser", "a rat", 15, "Kick", DamageCategory.Melee, false, 1), rateGroup);
-        rateEncounter.Process(
-            new DamageEvent(d2, "Sayser", "a rat", 16, "Kick", DamageCategory.Melee, false, 2), rateGroup);
-        rateEncounter.Process(
-            new DamageEvent(d2, "Sayser", "a rat", 17, "Kick", DamageCategory.Melee, false, 3), rateGroup);
-        rateEncounter.Process(
-            new DamageEvent(d2, "Sayser", "a rat", 18, "Kick", DamageCategory.Melee, false, 4), rateGroup);
-
-        var sayser = rateEncounter.CreateSnapshot(d2)!.Combatants
-            .First(c => c.Name.Equals("Sayser", StringComparison.OrdinalIgnoreCase));
-        Check("Multi-attack final depth only",
-            sayser.MeleeSwingAttempts == 3 && sayser.DoubleAttacks == 1 &&
-            sayser.TripleAttacks == 1 && sayser.QuadAttacks == 1 &&
-            !sayser.Abilities.ContainsKey("Double Attack"),
-            $"swings={sayser.MeleeSwingAttempts} da={sayser.DoubleAttacks} ta={sayser.TripleAttacks} qa={sayser.QuadAttacks}");
-
         var hitEncounter = new EncounterTracker("Sayser");
         var hitGroup = new GroupStateTracker("Sayser");
         var h0 = t.AddSeconds(20);
@@ -592,47 +529,15 @@ internal static class Program
         Check("Interrupted song does not explain a later hit",
             chords is { ProcHits: 1 }, $"{chords.ProcHits}");
 
-        var roundEncounter = new EncounterTracker("Sayser");
-        var roundGroup = new GroupStateTracker("Sayser");
+        var missEncounter = new EncounterTracker("Sayser");
+        var missGroup = new GroupStateTracker("Sayser");
         var r1 = p0.AddMinutes(1);
-        roundEncounter.Process(new DamageEvent(r1, "Sayser", "a rat", 10, "Slash", DamageCategory.Melee, false),
-            roundGroup);
-        roundEncounter.Process(new DamageEvent(r1, "Sayser", "a beetle", 14, "Slash", DamageCategory.Melee, false),
-            roundGroup);
-        var fan = roundEncounter.CreateSnapshot(r1)!.Combatants.First(c => c.Name == "Sayser");
-        Check("Same-second fan-out is one round",
-            fan.MeleeSwingAttempts == 1 && fan.DoubleAttacks == 0,
-            $"{fan.MeleeSwingAttempts}/{fan.DoubleAttacks}");
-
-        roundEncounter.Process(new DamageEvent(r1.AddSeconds(1), "Sayser", "a rat", 11, "Slash", DamageCategory.Melee,
-            false, CountsAsAttackRound: false), roundGroup);
-        var riposteRound = roundEncounter.CreateSnapshot(r1.AddSeconds(1))!.Combatants.First(c => c.Name == "Sayser");
-        Check("Riposte extra is not a new round",
-            riposteRound.MeleeSwingAttempts == 1,
-            $"{riposteRound.MeleeSwingAttempts}");
-
-        roundEncounter.ProcessOutcome(new CombatOutcomeEvent(r1.AddSeconds(2), "Sayser", "a rat", "Slash",
-            CombatOutcomeKind.MissedAttack), roundGroup);
-        var missRound = roundEncounter.CreateSnapshot(r1.AddSeconds(2))!.Combatants.First(c => c.Name == "Sayser");
-        Check("Miss counts as a round",
-            missRound.MeleeSwingAttempts == 2 && missRound.Misses >= 1,
-            $"{missRound.MeleeSwingAttempts}/{missRound.Misses}");
-
-        var kickTriple = new MeleeAbilityResolver();
-        kickTriple.ObserveLanded(new DamageEvent(r1, "Sayser", "a rat", 20, "Kick", DamageCategory.Melee, false));
-        kickTriple.ObserveLanded(new DamageEvent(r1, "Sayser", "a rat", 21, "Kick", DamageCategory.Melee, false));
-        kickTriple.ObserveLanded(new DamageEvent(r1, "Sayser", "a rat", 22, "Kick", DamageCategory.Melee, false));
-        var kickDepth = kickTriple.GetTally("Sayser");
-        Check("Timed-skill triple is exact",
-            kickDepth.Triples == 1 && !kickDepth.HighDepthIsApproximate);
-
-        var flyingTriple = new MeleeAbilityResolver();
-        flyingTriple.ObserveLanded(new DamageEvent(r1, "Sayser", "a rat", 30, "Flying Kick", DamageCategory.Melee, false));
-        flyingTriple.ObserveLanded(new DamageEvent(r1, "Sayser", "a rat", 31, "Flying Kick", DamageCategory.Melee, false));
-        flyingTriple.ObserveLanded(new DamageEvent(r1, "Sayser", "a rat", 32, "Flying Kick", DamageCategory.Melee, false));
-        var flyingDepth = flyingTriple.GetTally("Sayser");
-        Check("Named kick triple is exact",
-            flyingDepth.Triples == 1 && !flyingDepth.HighDepthIsApproximate);
+        missEncounter.Process(new DamageEvent(r1, "Sayser", "a rat", 10, "Slash", DamageCategory.Melee, false),
+            missGroup);
+        missEncounter.ProcessOutcome(new CombatOutcomeEvent(r1.AddSeconds(2), "Sayser", "a rat", "Slash",
+            CombatOutcomeKind.MissedAttack), missGroup);
+        var missCombatant = missEncounter.CreateSnapshot(r1.AddSeconds(2))!.Combatants.First(c => c.Name == "Sayser");
+        Check("Miss is counted", missCombatant.Misses >= 1, $"{missCombatant.Misses}");
 
         var flagEncounter = new EncounterTracker("Sayser");
         var flagGroup = new GroupStateTracker("Sayser");
@@ -657,9 +562,6 @@ internal static class Program
             flagCombatant.Abilities.ContainsKey("Strikethrough") &&
             flagCombatant.Abilities.ContainsKey("Finishing Blow") &&
             flagCombatant.Abilities["Strikethrough"].Damage == 23);
-        Check("Riposte Strikethrough is not a new round",
-            flagCombatant.MeleeSwingAttempts == 3,
-            $"{flagCombatant.MeleeSwingAttempts}");
         Check("Melee flag rows are not procs",
             flagCombatant.Abilities.Values.All(ability => ability.ProcHits == 0));
 
@@ -676,9 +578,8 @@ internal static class Program
         Check("Strike grant becomes Dragon Punch",
             punch.Abilities.ContainsKey("Dragon Punch") && punch.Abilities["Dragon Punch"].Damage == 44 &&
             !punch.Abilities.ContainsKey("Strike"));
-        Check("Strike miss uses Dragon Punch rounds",
-            punch.MeleeSwingAttempts == 2 && punch.Misses >= 1,
-            $"{punch.MeleeSwingAttempts}/{punch.Misses}");
+        Check("Strike miss uses Dragon Punch",
+            punch.Misses >= 1, $"{punch.Misses}");
 
         specialEncounter.Reset();
         specialEncounter.Process(new DamageEvent(specialAt.AddSeconds(10), "Sayser", "a rat", 45, "Strike",
@@ -892,6 +793,56 @@ internal static class Program
         var hasteRefresh = hasteTracker.GetActiveSnapshots(t0.AddSeconds(76.1));
         Check("Other Swift refresh resets timer",
             hasteRefresh.Count == 1 && hasteRefresh[0].ExpiresAt > hasteFirst);
+
+        var alacrity = Rule("Alacrity", SpellTrackerCategory.Buff, ControlEffectType.Other, 1026, 2) with
+        {
+            TrackSelf = true,
+            TrackOthers = false
+        };
+        var alacTracker = new BuffTracker();
+        alacTracker.Configure([alacrity],
+            _ => ["Your speed returns to normal."],
+            _ => ["You feel much faster."],
+            _ => [" feels much faster."], _ => true);
+        alacTracker.Observe(t0, "You begin casting Alacrity.");
+        alacTracker.Observe(t0.AddSeconds(2), "You feel much faster.");
+        Check("Alacrity armed on self", alacTracker.GetActiveSnapshots(t0.AddSeconds(2.1)).Count == 1);
+        alacTracker.Observe(t0.AddSeconds(30), "You feel a bit dispelled.");
+        Check("Generic dispel does not drop Alacrity",
+            alacTracker.GetActiveSnapshots(t0.AddSeconds(30.1)).Count == 1);
+        alacTracker.Observe(t0.AddSeconds(40), "Your speed returns to normal.");
+        Check("Alacrity fade drops the timer",
+            alacTracker.GetActiveSnapshots(t0.AddSeconds(40.1)).Count == 0);
+
+        var regenSelf = Rule("Chloroplast", SpellTrackerCategory.Buff, ControlEffectType.Other, 1392, 3.6) with
+        {
+            TrackSelf = true,
+            TrackOthers = false
+        };
+        var mixedBuffs = new BuffTracker();
+        mixedBuffs.Configure([alacrity, regenSelf],
+            spell => spell.Equals("Alacrity", StringComparison.OrdinalIgnoreCase)
+                ? ["Your speed returns to normal."]
+                : ["You have stopped regenerating."],
+            spell => spell.Equals("Alacrity", StringComparison.OrdinalIgnoreCase)
+                ? ["You feel much faster."]
+                : ["You begin to regenerate."],
+            _ => [], _ => true);
+        mixedBuffs.Observe(t0, "You begin casting Alacrity.");
+        mixedBuffs.Observe(t0.AddSeconds(2), "You feel much faster.");
+        mixedBuffs.Observe(t0.AddSeconds(3), "You begin casting Chloroplast.");
+        mixedBuffs.Observe(t0.AddSeconds(7), "You begin to regenerate.");
+        Check("Alacrity and Chloroplast both armed",
+            mixedBuffs.GetActiveSnapshots(t0.AddSeconds(7.1)).Count == 2);
+        mixedBuffs.Observe(t0.AddSeconds(20), "You feel a bit dispelled.");
+        Check("Generic dispel drops neither tracked buff without fade wording",
+            mixedBuffs.GetActiveSnapshots(t0.AddSeconds(20.1)).Count == 2);
+        mixedBuffs.Observe(t0.AddSeconds(21), "Your speed returns to normal.");
+        var afterHasteFade = mixedBuffs.GetActiveSnapshots(t0.AddSeconds(21.1));
+        Check("Haste fade after dispel drops only Alacrity",
+            afterHasteFade.Count == 1 && afterHasteFade[0].SpellName == "Chloroplast");
+        Check("Haste fade after dispel is labeled Dispelled",
+            mixedBuffs.GetSnapshot(alacrity.Id, t0.AddSeconds(21.1)).StopReason == BuffStopReason.Dispelled);
 
         // Resist cancels pending
         var pending = new BuffTracker();
@@ -1191,7 +1142,7 @@ internal static class Program
         var snap = expireTracker.GetSnapshot(shortDot.Id, t0.AddSeconds(2.4));
         Check("Natural expiry flagged", snap.IsExpired && snap.StopReason == BuffStopReason.Expired);
 
-        // Hostile Deadly Poison: only on me; clears on fade / duration / death / dispel — not zone or other-target land
+        // Hostile Deadly Poison: only on me; clears on fade / duration / death — not zone, other-target land, or nameless dispel
         var deadly = Rule("Deadly Poison", SpellTrackerCategory.Hostile, ControlEffectType.Other, 222, 0) with
         {
             TrackSelf = true,
@@ -1234,7 +1185,13 @@ internal static class Program
         hostile.Observe(t0.AddSeconds(10), "You have been poisoned.");
         Check("Hostile relands", hostile.GetActiveSnapshots(t0.AddSeconds(10.1)).Count == 1);
         hostile.Observe(t0.AddSeconds(11), "You feel dispelled.");
-        Check("Hostile clears on dispel", hostile.GetActiveSnapshots(t0.AddSeconds(11.1)).Count == 0);
+        Check("Generic dispel does not drop unique hostile without fade",
+            hostile.GetActiveSnapshots(t0.AddSeconds(11.1)).Count == 1);
+        hostile.Observe(t0.AddSeconds(11), "The poison has run its course.");
+        Check("Hostile fade after dispel clears poison",
+            hostile.GetActiveSnapshots(t0.AddSeconds(11.1)).Count == 0);
+        Check("Hostile fade after dispel is labeled Dispelled",
+            hostile.GetSnapshot(deadly.Id, t0.AddSeconds(11.1)).StopReason == BuffStopReason.Dispelled);
 
         hostile.Observe(t0.AddSeconds(20), "You have been poisoned.");
         Check("Hostile active before death", hostile.GetActiveSnapshots(t0.AddSeconds(20.1)).Count == 1);

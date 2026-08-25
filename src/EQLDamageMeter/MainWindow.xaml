@@ -960,45 +960,20 @@
                                     </UniformGrid>
                                 </Border>
                                 <Border Style="{StaticResource CompactMetricStrip}" Margin="0,3,0,0">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <UniformGrid Columns="3" Rows="1">
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
-                                                        ToolTip="Double-attack rate. Riposte, flurry, rampage, and frenzy are left out of this chain.">
-                                                <TextBlock Text="DBL ATT" Style="{StaticResource CompactMetricLabel}" />
-                                                <TextBlock Text="{Binding SelectedCombatant.DoubleAttackRateText}" Style="{StaticResource CompactMetricValue}" Foreground="#A985FF" />
-                                            </StackPanel>
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
-                                                        ToolTip="Triple-attack rate. A leading ~ means the chain used a weapon skill (slash/pierce/etc.) where two hands can look like a triple. Kick, Bash, Backstab, Cleave, Smite, and Strike are counted as logged.">
-                                                <TextBlock Text="TRI ATT" Style="{StaticResource CompactMetricLabel}" />
-                                                <TextBlock Text="{Binding SelectedCombatant.TripleAttackRateText}" Style="{StaticResource CompactMetricValue}" Foreground="#2FD8C7" />
-                                            </StackPanel>
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
-                                                        ToolTip="Quad-attack rate. A leading ~ means the chain used a weapon skill where two hands can look like extra swings.">
-                                                <TextBlock Text="QUAD ATT" Style="{StaticResource CompactMetricLabel}" />
-                                                <TextBlock Text="{Binding SelectedCombatant.QuadAttackRateText}" Style="{StaticResource CompactMetricValue}" Foreground="#FFBD57" />
-                                            </StackPanel>
-                                        </UniformGrid>
-                                        <Rectangle Grid.Column="1" Width="1" Fill="#355B73" Margin="6,1" />
-                                        <UniformGrid Grid.Column="2" Columns="3" Rows="1">
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Average melee hit">
-                                                <TextBlock Text="AVG" Style="{StaticResource CompactMetricLabel}" />
-                                                <TextBlock Text="{Binding SelectedCombatant.MeleeAverageHitText}" Style="{StaticResource CompactMetricValue}" Foreground="#E8F5FC" />
-                                            </StackPanel>
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Lowest melee hit">
-                                                <TextBlock Text="LOW Hit" Style="{StaticResource CompactMetricLabel}" />
-                                                <TextBlock Text="{Binding SelectedCombatant.MeleeLowestHitText}" Style="{StaticResource CompactMetricValue}" Foreground="#7FC6FF" />
-                                            </StackPanel>
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Highest melee hit">
-                                                <TextBlock Text="HIGH Hit" Style="{StaticResource CompactMetricLabel}" />
-                                                <TextBlock Text="{Binding SelectedCombatant.MeleeHighestHitText}" Style="{StaticResource CompactMetricValue}" Foreground="#FF6C91" />
-                                            </StackPanel>
-                                        </UniformGrid>
-                                    </Grid>
+                                    <UniformGrid Columns="3" Rows="1">
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Average melee hit">
+                                            <TextBlock Text="AVG Hit" Style="{StaticResource CompactMetricLabel}" />
+                                            <TextBlock Text="{Binding SelectedCombatant.MeleeAverageHitText}" Style="{StaticResource CompactMetricValue}" Foreground="#E8F5FC" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Lowest melee hit">
+                                            <TextBlock Text="LOW Hit" Style="{StaticResource CompactMetricLabel}" />
+                                            <TextBlock Text="{Binding SelectedCombatant.MeleeLowestHitText}" Style="{StaticResource CompactMetricValue}" Foreground="#7FC6FF" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Highest melee hit">
+                                            <TextBlock Text="HIGH Hit" Style="{StaticResource CompactMetricLabel}" />
+                                            <TextBlock Text="{Binding SelectedCombatant.MeleeHighestHitText}" Style="{StaticResource CompactMetricValue}" Foreground="#FF6C91" />
+                                        </StackPanel>
+                                    </UniformGrid>
                                 </Border>
 
                                 <Grid Margin="0,8,0,0">
@@ -1329,7 +1304,7 @@
                                 <Grid Height="54">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                     <Border Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="DAMAGE TAKEN" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.DamageTakenText}" FontSize="16" FontWeight="Bold" /></StackPanel></Border>
-                                    <Border Grid.Column="2" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="AVOIDANCE" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.AvoidanceRateText}" FontSize="16" FontWeight="Bold" Foreground="#2FD8C7" /></StackPanel></Border>
+                                    <Border Grid.Column="2" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="MITIGATION" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.MitigationRateText}" FontSize="16" FontWeight="Bold" Foreground="#2FD8C7" /></StackPanel></Border>
                                     <Border Grid.Column="4" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="RESISTS" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.IncomingSpellResists}" FontSize="16" FontWeight="Bold" Foreground="#A985FF" /></StackPanel></Border>
                                     <Border Grid.Column="6" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="ABSORBED" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.Absorbed}" FontSize="16" FontWeight="Bold" /></StackPanel></Border>
                                     <Border Grid.Column="8" Style="{StaticResource InnerCard}" Padding="8,5"><StackPanel><TextBlock Text="STUNNED" Style="{StaticResource MetricLabel}" /><TextBlock Text="{Binding SelectedCombatant.StunsTaken}" FontSize="16" FontWeight="Bold" Foreground="#FF6C91" /></StackPanel></Border>
@@ -1342,7 +1317,20 @@
                                     <ListBox Grid.Column="1" ItemsSource="{Binding SelectedMitigations}" Background="Transparent" BorderThickness="0" Padding="4"
                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
                                         <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Focusable" Value="False" /><Setter Property="Padding" Value="0" /><Setter Property="Background" Value="Transparent" /><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
-                                        <ListBox.ItemTemplate><DataTemplate><Grid Margin="8,3"><Grid.ColumnDefinitions><ColumnDefinition Width="18" /><ColumnDefinition Width="*" /><ColumnDefinition Width="58" /><ColumnDefinition Width="58" /></Grid.ColumnDefinitions><Ellipse Fill="{Binding Color}" Width="8" Height="8" HorizontalAlignment="Left" /><TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="2" Text="{Binding DamageText}" HorizontalAlignment="Right" TextAlignment="Right" /><TextBlock Grid.Column="3" Text="{Binding ShareText}" HorizontalAlignment="Right" TextAlignment="Right" Foreground="#96B7CA" /></Grid></DataTemplate></ListBox.ItemTemplate>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="8,3">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="18" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="58" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Ellipse Fill="{Binding Color}" Width="8" Height="8" HorizontalAlignment="Left" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Grid.Column="2" Text="{Binding DamageText}" HorizontalAlignment="Right" TextAlignment="Right" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
                                     </ListBox>
                                     <TextBlock Grid.Column="1" Text="No mitigation outcomes recorded" Foreground="#7899AD" FontSize="11"
                                                HorizontalAlignment="Center" VerticalAlignment="Center">

@@ -143,7 +143,7 @@ public sealed class BuffTracker
     private readonly Dictionary<Guid, string[]> _uniqueOtherSuffixes = [];
     private readonly Dictionary<Guid, string[]> _ambiguousOtherSuffixes = [];
     private readonly Queue<BuffExpirationAlert> _queuedAlerts = [];
-    private DateTime? _lastSpecificFadeAt;
+    private DateTime? _lastGenericDispelAt;
     private DateTime? _ownSongLandWindowUntil;
     private RecentSpellHit? _lastSpellHit;
     private Func<string, bool>? _isAmbiguousSelfAppliedMessage;
@@ -259,7 +259,7 @@ public sealed class BuffTracker
     {
         foreach (var state in _states.Values) ResetState(state);
         _queuedAlerts.Clear();
-        _lastSpecificFadeAt = null;
+        _lastGenericDispelAt = null;
         _ownSongLandWindowUntil = null;
         _lastSpellHit = null;
         _recentIncomingOnYou.Clear();
@@ -339,19 +339,12 @@ public sealed class BuffTracker
         if (message.Contains("dispelled", StringComparison.OrdinalIgnoreCase) &&
             LocalDispel.IsMatch(message))
         {
-            if (_lastSpecificFadeAt != timestamp)
-            {
-                var selfInstances = _rules.Values
-                    .Where(rule => rule.IsEnabled && _states[rule.Id].Instances.ContainsKey(SelfTargetKey))
-                    .ToArray();
-                if (selfInstances.Length == 1)
-                {
-                    var dispelled = selfInstances[0];
-                    StopSelf(dispelled.Id, BuffStopReason.Dispelled);
-                    if (dispelled.Category == SpellTrackerCategory.Hostile)
-                        _queuedAlerts.Enqueue(new BuffExpirationAlert(dispelled, BuffAlertPhase.Expired));
-                }
-            }
+            // Generic "You feel a bit dispelled" never names the spell. Cancel Magic
+            // also does not print the stripped buff's fade line. Dropping any overlay
+            // timer here would guess — often the wrong one. Remember the stamp so a
+            // real fade/worn-off in the next second can be labeled Dispelled; otherwise
+            // tracked buffs stay until their own stop wording, duration, or death.
+            _lastGenericDispelAt = timestamp;
             return;
         }
 
@@ -1104,7 +1097,10 @@ public sealed class BuffTracker
         var instance = state.Instances.Values.First();
         if (instance.IsSelf)
         {
-            StopSelf(rule.Id, BuffStopReason.Expired, preserveNewerPending: true);
+            var reason = IsRecentGenericDispel(timestamp)
+                ? BuffStopReason.Dispelled
+                : BuffStopReason.Expired;
+            StopSelf(rule.Id, reason, preserveNewerPending: true);
             if (rule.Category == SpellTrackerCategory.Hostile)
                 _queuedAlerts.Enqueue(new BuffExpirationAlert(rule, BuffAlertPhase.Expired));
         }
@@ -1117,7 +1113,6 @@ public sealed class BuffTracker
                 _queuedAlerts.Enqueue(new BuffExpirationAlert(rule));
         }
 
-        _lastSpecificFadeAt = timestamp;
         return true;
     }
 
@@ -1561,7 +1556,7 @@ public sealed class BuffTracker
         foreach (var rule in _rules.Values)
         {
             // Outgoing DoT/Control on mobs end on zone. Hostile-on-you persists across
-            // zone (same as beneficial self buffs) until fade, dispel, duration, or death.
+            // zone (same as beneficial self buffs) until fade, duration, or death.
             if (!IsEnemyEffectCategory(rule)) continue;
             var state = _states[rule.Id];
             var hadInstances = state.Instances.Count > 0;
@@ -1654,6 +1649,11 @@ public sealed class BuffTracker
 
         _rulesByFamily = index;
     }
+
+    private bool IsRecentGenericDispel(DateTime timestamp) =>
+        _lastGenericDispelAt is { } at &&
+        timestamp >= at &&
+        timestamp - at <= TimeSpan.FromSeconds(1);
 
     private static bool ContainsRelevanceKeyword(string message) =>
         message.Contains("begin casting", StringComparison.OrdinalIgnoreCase) ||

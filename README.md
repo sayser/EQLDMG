@@ -35,7 +35,7 @@ EQDM tracks supported combat log lines for:
 - Damage and DPS by combatant and ability.
 - Percentage contribution to total encounter damage.
 
-The Offense view includes hits, misses, critical-hit percentage, spell-critical percentage, resisted spells, fizzles, an ability chart, and an ability-by-ability damage table.
+The Offense view includes hits, misses, critical-hit percentage, spell-critical percentage, resisted spells, fizzles, average/low/high melee hit, an ability chart, and an ability-by-ability damage table. EQDM does not estimate double, triple, or quad attacks.
 
 
 HEALING
@@ -55,7 +55,7 @@ DEFENSE AND MITIGATION
 - Tracks dodge, parry, block, and riposte outcomes.
 - Tracks supported melee and spell absorption outcomes.
 - Tracks incoming spell resists.
-- Calculates avoidance statistics and displays mitigation outcomes.
+- Shows mitigation as a percent of incoming hits that were dodge, parry, block, riposte, absorb, or resist, plus counts for each outcome.
 
 EQDM reports the results written to the log. It does not estimate unlogged armor values, resistance rolls, or hidden server-side mitigation.
 

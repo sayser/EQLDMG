@@ -41,16 +41,6 @@ public sealed class CombatantAggregate(string name)
     public int SpellHits { get; set; }
     public int MeleeCriticalHits { get; set; }
     public int SpellCriticalHits { get; set; }
-    /// <summary>Primary melee swings that could produce a multi-attack (hit index 1).</summary>
-    public int MeleeSwingAttempts { get; set; }
-    public int DoubleAttacks { get; set; }
-    public int TripleAttacks { get; set; }
-    public int QuadAttacks { get; set; }
-    /// <summary>
-    /// True when a 3+ same-second weapon chain was counted. Dual wield can look like a triple,
-    /// so TRI/QUAD rates should be treated as estimates for those skills.
-    /// </summary>
-    public bool HighMultiAttackIsApproximate { get; set; }
     public long MeleeDamage { get; set; }
     public int MeleeHitMin { get; set; }
     public int MeleeHitMax { get; set; }
@@ -118,7 +108,6 @@ public sealed class EncounterTracker(string localPlayerName)
     private readonly List<CombatOutcomeEvent> _pendingOutcomes = [];
     private readonly List<PendingCast> _pendingCasts = [];
     private readonly HashSet<ExplainedFiring> _explainedFirings = [];
-    private readonly MeleeAbilityResolver _rounds = new();
     private readonly SpecialAttackNames _specials = new();
     private DateTime? _quickBuffUntil;
     private DateTime? _lastPresenceAt;
@@ -140,10 +129,7 @@ public sealed class EncounterTracker(string localPlayerName)
 
     public CombatantAggregate[] CreateCombatantArray()
     {
-        var all = _combatants.Values.Concat(_retiredCombatants).ToArray();
-        foreach (var combatant in all)
-            _rounds.OverlayOnto(combatant);
-        return all;
+        return [.. _combatants.Values.Concat(_retiredCombatants)];
     }
 
     public void Process(DamageEvent damage, GroupStateTracker group)
@@ -647,7 +633,6 @@ public sealed class EncounterTracker(string localPlayerName)
         _pendingOutcomes.Clear();
         _mezHeldUntil.Clear();
         _explainedFirings.Clear();
-        _rounds.ClearRuntime();
         _lastPresenceAt = null;
         // Keep begin-casting records and special-attack names across fight boundaries
         // so a spell started before the next pull (or during the previous fight's idle)
@@ -697,7 +682,6 @@ public sealed class EncounterTracker(string localPlayerName)
             if (damage.Amount > combatant.MeleeHitMax)
                 combatant.MeleeHitMax = damage.Amount;
             if (damage.IsCritical) combatant.MeleeCriticalHits++;
-            _rounds.ObserveLanded(damage);
         }
         else if (damage.Category is DamageCategory.Spell or DamageCategory.DamageOverTime)
         {
@@ -759,8 +743,6 @@ public sealed class EncounterTracker(string localPlayerName)
             case CombatOutcomeKind.DefensiveRiposte:
             case CombatOutcomeKind.DefensiveAbsorb:
                 combatant.Misses++;
-                _rounds.ObserveAttempt(outcome.Timestamp, outcome.Source, outcome.Target, outcome.Ability,
-                    extraSwing: !outcome.CountsAsAttackRound);
                 break;
             case CombatOutcomeKind.DefensiveSpellAbsorb:
                 combatant.Misses++;
@@ -1087,11 +1069,6 @@ public sealed class EncounterTracker(string localPlayerName)
             SpellHits = source.SpellHits,
             MeleeCriticalHits = source.MeleeCriticalHits,
             SpellCriticalHits = source.SpellCriticalHits,
-            MeleeSwingAttempts = source.MeleeSwingAttempts,
-            DoubleAttacks = source.DoubleAttacks,
-            TripleAttacks = source.TripleAttacks,
-            QuadAttacks = source.QuadAttacks,
-            HighMultiAttackIsApproximate = source.HighMultiAttackIsApproximate,
             MeleeDamage = source.MeleeDamage,
             MeleeHitMin = source.MeleeHitMin,
             MeleeHitMax = source.MeleeHitMax,
@@ -1132,7 +1109,6 @@ public sealed class EncounterTracker(string localPlayerName)
                 targetClone.Abilities[SpellNameNormalizer.GetFamilyName(ability.Name)] = CloneAbility(ability);
             clone.Targets[target.Name] = targetClone;
         }
-        _rounds.OverlayOnto(clone);
         return clone;
     }
 

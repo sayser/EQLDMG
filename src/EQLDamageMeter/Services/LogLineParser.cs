@@ -248,8 +248,7 @@ public sealed class LogLineParser(string localPlayerName)
                 : result.Contains("absorbs", StringComparison.OrdinalIgnoreCase) ? CombatOutcomeKind.DefensiveAbsorb
                 : CombatOutcomeKind.MissedAttack;
             return new CombatOutcomeEvent(timestamp, source, target,
-                NormalizeMeleeAbility(match.Groups["ability"].Value), kind,
-                CountsAsAttackRound: !IsBonusSwing(match.Groups["flags"].Value));
+                NormalizeMeleeAbility(match.Groups["ability"].Value), kind);
         }
 
         if ((match = LocalFizzle.Match(message)).Success)
@@ -398,7 +397,6 @@ public sealed class LogLineParser(string localPlayerName)
             ability,
             category,
             IsCritical(match),
-            CountsAsAttackRound: category != DamageCategory.Melee || !IsBonusSwing(flags),
             AbilityRow: abilityRow);
     }
 
@@ -463,11 +461,6 @@ public sealed class LogLineParser(string localPlayerName)
 
     private static bool IsCritical(Match match) =>
         match.Groups["flags"].Value.Contains("Critical", StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsBonusSwing(string flags) =>
-        flags.Contains("Riposte", StringComparison.OrdinalIgnoreCase) ||
-        flags.Contains("Flurry", StringComparison.OrdinalIgnoreCase) ||
-        flags.Contains("Rampage", StringComparison.OrdinalIgnoreCase);
 
     private static string NormalizeMeleeAbility(string value)
     {

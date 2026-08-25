@@ -1424,7 +1424,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             var pets = petsByOwner.GetValueOrDefault(owner.Name) ?? [];
             long petDamage = 0, petHits = 0, petMeleeHits = 0, petSpellHits = 0;
             long petMeleeCrit = 0, petSpellCrit = 0, petMisses = 0, petFizzles = 0, petResists = 0;
-            long petSwingAttempts = 0, petDoubles = 0, petTriples = 0, petQuads = 0;
             long petMeleeDamage = 0;
             var petMeleeMin = 0;
             var petMeleeMax = 0;
@@ -1441,10 +1440,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 petSpellHits += pet.SpellHits;
                 petMeleeCrit += pet.MeleeCriticalHits;
                 petSpellCrit += pet.SpellCriticalHits;
-                petSwingAttempts += pet.MeleeSwingAttempts;
-                petDoubles += pet.DoubleAttacks;
-                petTriples += pet.TripleAttacks;
-                petQuads += pet.QuadAttacks;
                 petMeleeDamage += pet.MeleeDamage;
                 if (pet.MeleeHitMin > 0 && (petMeleeMin == 0 || pet.MeleeHitMin < petMeleeMin))
                     petMeleeMin = pet.MeleeHitMin;
@@ -1480,12 +1475,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 SpellHits = owner.SpellHits + (int)petSpellHits,
                 MeleeCriticalHits = owner.MeleeCriticalHits + (int)petMeleeCrit,
                 SpellCriticalHits = owner.SpellCriticalHits + (int)petSpellCrit,
-                MeleeSwingAttempts = owner.MeleeSwingAttempts + (int)petSwingAttempts,
-                DoubleAttacks = owner.DoubleAttacks + (int)petDoubles,
-                TripleAttacks = owner.TripleAttacks + (int)petTriples,
-                QuadAttacks = owner.QuadAttacks + (int)petQuads,
-                HighMultiAttackIsApproximate = owner.HighMultiAttackIsApproximate ||
-                    pets.Any(pet => pet.HighMultiAttackIsApproximate),
                 MeleeDamage = owner.MeleeDamage + petMeleeDamage,
                 MeleeHitMin = MinPositive(owner.MeleeHitMin, petMeleeMin),
                 MeleeHitMax = Math.Max(owner.MeleeHitMax, petMeleeMax),

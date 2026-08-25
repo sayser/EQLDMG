@@ -14,10 +14,6 @@ public sealed class CombatantViewModel : ObservableObject
     private int _spellHits;
     private int _meleeCriticalHits;
     private int _spellCriticalHits;
-    private int _meleeSwingAttempts;
-    private int _doubleAttacks;
-    private int _tripleAttacks;
-    private int _quadAttacks;
     private long _meleeDamage;
     private int _meleeHitMin;
     private int _meleeHitMax;
@@ -25,6 +21,7 @@ public sealed class CombatantViewModel : ObservableObject
     private int _spellFizzles;
     private int _spellResists;
     private long _damageTaken;
+    private int _incomingHits;
     private int _incomingMeleeHits;
     private int _incomingMisses;
     private int _dodges;
@@ -48,7 +45,6 @@ public sealed class CombatantViewModel : ObservableObject
     private AbilityViewModel[] _mitigations = [];
     private AbilityViewModel[] _healingAbilities = [];
     private AbilityViewModel[] _procs = [];
-    private bool _highMultiAttackIsApproximate;
     private bool _isGraphExpanded;
     private double[] _dpsTimeline = [];
     private double[] _petDpsTimeline = [];
@@ -123,48 +119,6 @@ public sealed class CombatantViewModel : ObservableObject
         }
     }
 
-    public int MeleeSwingAttempts
-    {
-        get => _meleeSwingAttempts;
-        set
-        {
-            if (!SetProperty(ref _meleeSwingAttempts, value)) return;
-            RaisePropertyChanged(nameof(DoubleAttackRateText));
-            RaisePropertyChanged(nameof(TripleAttackRateText));
-            RaisePropertyChanged(nameof(QuadAttackRateText));
-        }
-    }
-
-    public int DoubleAttacks
-    {
-        get => _doubleAttacks;
-        set
-        {
-            if (!SetProperty(ref _doubleAttacks, value)) return;
-            RaisePropertyChanged(nameof(DoubleAttackRateText));
-        }
-    }
-
-    public int TripleAttacks
-    {
-        get => _tripleAttacks;
-        set
-        {
-            if (!SetProperty(ref _tripleAttacks, value)) return;
-            RaisePropertyChanged(nameof(TripleAttackRateText));
-        }
-    }
-
-    public int QuadAttacks
-    {
-        get => _quadAttacks;
-        set
-        {
-            if (!SetProperty(ref _quadAttacks, value)) return;
-            RaisePropertyChanged(nameof(QuadAttackRateText));
-        }
-    }
-
     public long MeleeDamage
     {
         get => _meleeDamage;
@@ -209,25 +163,18 @@ public sealed class CombatantViewModel : ObservableObject
         }
     }
 
-    public int IncomingMeleeHits
+    public int IncomingHits
     {
-        get => _incomingMeleeHits;
+        get => _incomingHits;
         set
         {
-            if (!SetProperty(ref _incomingMeleeHits, value)) return;
-            RaisePropertyChanged(nameof(AvoidanceRateText));
+            if (!SetProperty(ref _incomingHits, value)) return;
+            RaisePropertyChanged(nameof(MitigationRateText));
         }
     }
 
-    public int IncomingMisses
-    {
-        get => _incomingMisses;
-        set
-        {
-            if (!SetProperty(ref _incomingMisses, value)) return;
-            RaisePropertyChanged(nameof(AvoidanceRateText));
-        }
-    }
+    public int IncomingMeleeHits { get => _incomingMeleeHits; set => SetProperty(ref _incomingMeleeHits, value); }
+    public int IncomingMisses { get => _incomingMisses; set => SetProperty(ref _incomingMisses, value); }
 
     public int Dodges
     {
@@ -235,8 +182,7 @@ public sealed class CombatantViewModel : ObservableObject
         set
         {
             if (!SetProperty(ref _dodges, value)) return;
-            RaisePropertyChanged(nameof(Avoided));
-            RaisePropertyChanged(nameof(AvoidanceRateText));
+            RaiseMitigationChanged();
         }
     }
 
@@ -246,8 +192,7 @@ public sealed class CombatantViewModel : ObservableObject
         set
         {
             if (!SetProperty(ref _parries, value)) return;
-            RaisePropertyChanged(nameof(Avoided));
-            RaisePropertyChanged(nameof(AvoidanceRateText));
+            RaiseMitigationChanged();
         }
     }
 
@@ -257,8 +202,7 @@ public sealed class CombatantViewModel : ObservableObject
         set
         {
             if (!SetProperty(ref _blocks, value)) return;
-            RaisePropertyChanged(nameof(Avoided));
-            RaisePropertyChanged(nameof(AvoidanceRateText));
+            RaiseMitigationChanged();
         }
     }
 
@@ -268,8 +212,7 @@ public sealed class CombatantViewModel : ObservableObject
         set
         {
             if (!SetProperty(ref _ripostes, value)) return;
-            RaisePropertyChanged(nameof(Avoided));
-            RaisePropertyChanged(nameof(AvoidanceRateText));
+            RaiseMitigationChanged();
         }
     }
 
@@ -279,23 +222,21 @@ public sealed class CombatantViewModel : ObservableObject
         set
         {
             if (!SetProperty(ref _absorbed, value)) return;
-            RaisePropertyChanged(nameof(Avoided));
-            RaisePropertyChanged(nameof(AvoidanceRateText));
+            RaiseMitigationChanged();
         }
     }
 
-    public int SpellAbsorbs
+    public int SpellAbsorbs { get => _spellAbsorbs; set => SetProperty(ref _spellAbsorbs, value); }
+
+    public int IncomingSpellResists
     {
-        get => _spellAbsorbs;
+        get => _incomingSpellResists;
         set
         {
-            if (!SetProperty(ref _spellAbsorbs, value)) return;
-            RaisePropertyChanged(nameof(Avoided));
-            RaisePropertyChanged(nameof(AvoidanceRateText));
+            if (!SetProperty(ref _incomingSpellResists, value)) return;
+            RaiseMitigationChanged();
         }
     }
-
-    public int IncomingSpellResists { get => _incomingSpellResists; set => SetProperty(ref _incomingSpellResists, value); }
     public int StunsLanded { get => _stunsLanded; set => SetProperty(ref _stunsLanded, value); }
     public int StunsTaken { get => _stunsTaken; set => SetProperty(ref _stunsTaken, value); }
 
@@ -418,34 +359,15 @@ public sealed class CombatantViewModel : ObservableObject
     public string CriticalRateText => FormatRate(MeleeCriticalHits, MeleeHits);
     public string SpellCriticalRateText => FormatRate(SpellCriticalHits, SpellHits);
     public string HealingCriticalRateText => FormatRate(CriticalHeals, DirectHeals + HealOverTimeTicks);
-    public string DoubleAttackRateText => FormatRate(DoubleAttacks, MeleeSwingAttempts);
-    public string TripleAttackRateText => FormatRate(TripleAttacks, MeleeSwingAttempts, HighMultiAttackIsApproximate);
-    public string QuadAttackRateText => FormatRate(QuadAttacks, MeleeSwingAttempts, HighMultiAttackIsApproximate);
-    public bool HighMultiAttackIsApproximate
-    {
-        get => _highMultiAttackIsApproximate;
-        private set
-        {
-            if (!SetProperty(ref _highMultiAttackIsApproximate, value)) return;
-            RaisePropertyChanged(nameof(TripleAttackRateText));
-            RaisePropertyChanged(nameof(QuadAttackRateText));
-        }
-    }
     public string MeleeAverageHitText =>
         MeleeHits == 0 ? "—" : (MeleeDamage / (double)MeleeHits).ToString("N0", CultureInfo.CurrentCulture);
     public string MeleeLowestHitText =>
         MeleeHits == 0 ? "—" : MeleeHitMin.ToString("N0", CultureInfo.CurrentCulture);
     public string MeleeHighestHitText =>
         MeleeHits == 0 ? "—" : MeleeHitMax.ToString("N0", CultureInfo.CurrentCulture);
-    public int Avoided => Dodges + Parries + Blocks + Ripostes + Math.Max(0, Absorbed - SpellAbsorbs);
-    public string AvoidanceRateText
-    {
-        get
-        {
-            var attempts = IncomingMeleeHits + IncomingMisses + Avoided;
-            return attempts == 0 ? "0.0%" : $"{Avoided * 100d / attempts:0.0}%";
-        }
-    }
+    public int MitigationCount =>
+        Dodges + Parries + Blocks + Ripostes + Absorbed + IncomingSpellResists;
+    public string MitigationRateText => FormatRate(MitigationCount, IncomingHits + MitigationCount);
 
     public void ApplyAggregate(CombatantAggregate aggregate, double seconds, bool isWarmingUp, int rank,
         AbilityViewModel[] abilities, AbilityViewModel[] incomingAbilities, AbilityViewModel[] healingAbilities,
@@ -462,17 +384,13 @@ public sealed class CombatantViewModel : ObservableObject
         SpellHits = aggregate.SpellHits;
         MeleeCriticalHits = aggregate.MeleeCriticalHits;
         SpellCriticalHits = aggregate.SpellCriticalHits;
-        MeleeSwingAttempts = aggregate.MeleeSwingAttempts;
-        DoubleAttacks = aggregate.DoubleAttacks;
-        TripleAttacks = aggregate.TripleAttacks;
-        HighMultiAttackIsApproximate = aggregate.HighMultiAttackIsApproximate;
-        QuadAttacks = aggregate.QuadAttacks;
         MeleeDamage = aggregate.MeleeDamage;
         MeleeHitMin = aggregate.MeleeHitMin;
         MeleeHitMax = aggregate.MeleeHitMax;
         SpellFizzles = aggregate.SpellFizzles;
         SpellResists = aggregate.SpellResists;
         DamageTaken = aggregate.DamageTaken;
+        IncomingHits = aggregate.IncomingHits;
         IncomingMeleeHits = aggregate.IncomingMeleeHits;
         IncomingMisses = aggregate.IncomingMisses;
         Dodges = aggregate.Dodges;
@@ -513,17 +431,13 @@ public sealed class CombatantViewModel : ObservableObject
         SpellHits = aggregate.SpellHits;
         MeleeCriticalHits = aggregate.MeleeCriticalHits;
         SpellCriticalHits = aggregate.SpellCriticalHits;
-        MeleeSwingAttempts = aggregate.MeleeSwingAttempts;
-        DoubleAttacks = aggregate.DoubleAttacks;
-        TripleAttacks = aggregate.TripleAttacks;
-        HighMultiAttackIsApproximate = aggregate.HighMultiAttackIsApproximate;
-        QuadAttacks = aggregate.QuadAttacks;
         MeleeDamage = aggregate.MeleeDamage;
         MeleeHitMin = aggregate.MeleeHitMin;
         MeleeHitMax = aggregate.MeleeHitMax;
         SpellFizzles = aggregate.SpellFizzles;
         SpellResists = aggregate.SpellResists;
         DamageTaken = aggregate.DamageTaken;
+        IncomingHits = aggregate.IncomingHits;
         IncomingMeleeHits = aggregate.IncomingMeleeHits;
         IncomingMisses = aggregate.IncomingMisses;
         Dodges = aggregate.Dodges;
@@ -568,11 +482,13 @@ public sealed class CombatantViewModel : ObservableObject
         return points;
     }
 
-    private static string FormatRate(int count, int total, bool approximate = false)
+    private void RaiseMitigationChanged()
     {
-        if (total == 0) return "0.0%";
-        var text = $"{count * 100d / total:0.0}%";
-        return approximate && count > 0 ? "~" + text : text;
+        RaisePropertyChanged(nameof(MitigationCount));
+        RaisePropertyChanged(nameof(MitigationRateText));
     }
+
+    private static string FormatRate(int count, int total) =>
+        total == 0 ? "0.0%" : $"{count * 100d / total:0.0}%";
 }
 
