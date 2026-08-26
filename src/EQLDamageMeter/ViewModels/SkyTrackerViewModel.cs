@@ -26,7 +26,9 @@ public sealed class SkyTrackerViewModel : ObservableObject
     private string _statusText = "Load Plane of Sky rewards from the wiki to begin";
     private string _catalogSummary = "Catalog not loaded";
     private string _previewStats = string.Empty;
-    private string _previewQuestSummary = string.Empty;
+    private string _previewQuestName = string.Empty;
+    private string _previewSayCommand = string.Empty;
+    private string _previewQuestNpc = string.Empty;
     private bool _isBusy;
     private bool _syncingClass;
     private bool _syncingQuest;
@@ -157,11 +159,60 @@ public sealed class SkyTrackerViewModel : ObservableObject
         private set => SetProperty(ref _previewStats, value);
     }
 
-    public string PreviewQuestSummary
+    public string PreviewQuestName
     {
-        get => _previewQuestSummary;
-        private set => SetProperty(ref _previewQuestSummary, value);
+        get => _previewQuestName;
+        private set
+        {
+            if (!SetProperty(ref _previewQuestName, value)) return;
+            RaisePropertyChanged(nameof(PreviewQuestNameVisibility));
+            RaisePropertyChanged(nameof(PreviewQuestLeadSeparatorVisibility));
+        }
     }
+
+    public string PreviewSayCommand
+    {
+        get => _previewSayCommand;
+        private set
+        {
+            if (!SetProperty(ref _previewSayCommand, value)) return;
+            RaisePropertyChanged(nameof(PreviewSayCommandVisibility));
+            RaisePropertyChanged(nameof(PreviewSayToVisibility));
+            RaisePropertyChanged(nameof(PreviewQuestLeadSeparatorVisibility));
+        }
+    }
+
+    public string PreviewQuestNpc
+    {
+        get => _previewQuestNpc;
+        private set
+        {
+            if (!SetProperty(ref _previewQuestNpc, value)) return;
+            RaisePropertyChanged(nameof(PreviewQuestNpcVisibility));
+            RaisePropertyChanged(nameof(PreviewSayToVisibility));
+            RaisePropertyChanged(nameof(PreviewQuestLeadSeparatorVisibility));
+        }
+    }
+
+    public Visibility PreviewQuestNameVisibility =>
+        string.IsNullOrWhiteSpace(PreviewQuestName) ? Visibility.Collapsed : Visibility.Visible;
+
+    public Visibility PreviewSayCommandVisibility =>
+        string.IsNullOrWhiteSpace(PreviewSayCommand) ? Visibility.Collapsed : Visibility.Visible;
+
+    public Visibility PreviewQuestNpcVisibility =>
+        string.IsNullOrWhiteSpace(PreviewQuestNpc) ? Visibility.Collapsed : Visibility.Visible;
+
+    public Visibility PreviewSayToVisibility =>
+        string.IsNullOrWhiteSpace(PreviewSayCommand) || string.IsNullOrWhiteSpace(PreviewQuestNpc)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+    public Visibility PreviewQuestLeadSeparatorVisibility =>
+        string.IsNullOrWhiteSpace(PreviewQuestName) ||
+        (string.IsNullOrWhiteSpace(PreviewSayCommand) && string.IsNullOrWhiteSpace(PreviewQuestNpc))
+            ? Visibility.Collapsed
+            : Visibility.Visible;
 
     public SkyTrackedGoalViewModel? SelectedGoal
     {
@@ -435,10 +486,15 @@ public sealed class SkyTrackerViewModel : ObservableObject
 
         if (token.IsCancellationRequested) return;
 
+        var dump = SkyInventoryDump.TryLoadFromLog(path, out var loadedDump)
+            ? loadedDump
+            : (SkyInventoryDumpFile?)null;
         List<string> pendingLive;
+        string? dumpStatus;
         lock (_ledgerGate)
         {
             _ledger.CopyFrom(scanned);
+            dumpStatus = dump is null ? null : ApplyLoadedDump(dump.Value);
             pendingLive = [.. _pendingLiveMessages];
             _pendingLiveMessages.Clear();
             _scanningLog = false;
@@ -450,9 +506,66 @@ public sealed class SkyTrackerViewModel : ObservableObject
         {
             ApplyLedgerToUi();
             UpdateCatalogSummary();
+            StatusText = dumpStatus ??
+                "Log scanned. Type /out inventory in game, then Scan dump to sync bags, bank, and Hoard.";
         });
         foreach (var pending in pendingLive)
             TryPlayLootAlert(pending);
+    }
+
+    public async Task ImportInventoryDumpAsync()
+    {
+        var logPath = _lastScanPath;
+        if (string.IsNullOrWhiteSpace(logPath))
+        {
+            StatusText = "Attach a character log first, then type /out inventory in game.";
+            return;
+        }
+
+        if (!SkyInventoryDump.TryFindPath(logPath, out var dumpPath, out var expectedName, out var searchFolder))
+        {
+            StatusText =
+                $"Type /out inventory in game, then scan again. Looking for {expectedName} in {searchFolder}.";
+            return;
+        }
+
+        StatusText = "Reading inventory dump…";
+        SkyInventoryDumpFile dump;
+        try
+        {
+            dump = await Task.Run(() => SkyInventoryDump.Load(dumpPath!));
+        }
+        catch (IOException)
+        {
+            StatusText = "Could not read the inventory dump. Close it if it is open, then try again.";
+            return;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            StatusText = "Access to the inventory dump was denied.";
+            return;
+        }
+
+        string dumpStatus;
+        lock (_ledgerGate)
+            dumpStatus = ApplyLoadedDump(dump);
+
+        ApplyLedgerToUi();
+        StatusText = dumpStatus;
+    }
+
+    private string ApplyLoadedDump(SkyInventoryDumpFile dump)
+    {
+        var (found, copies) = _ledger.ApplyInventorySnapshot(dump.Piles);
+        var when = dump.WrittenAt.ToString("g", CultureInfo.CurrentCulture);
+        if (found <= 0)
+        {
+            return $"Inventory dump ({when}) had no Sky quest items. " +
+                   "Currency-tab wind runes still follow the log.";
+        }
+
+        return $"Synced {found} Sky items ({copies} copies) from inventory dump ({when}). " +
+               "Currency-tab wind runes still follow the log.";
     }
 
     public void ObserveLootMessage(string message)
@@ -481,7 +594,7 @@ public sealed class SkyTrackerViewModel : ObservableObject
     {
         if (!SessionLootParser.TryReadLootEvent(message, out var itemName, out var disposition, out _))
             return;
-        if (disposition is not ("Kept" or "Stored")) return;
+        if (disposition is not ("Kept" or "Stored" or "Merged")) return;
         if (_lootWatches.Count == 0) return;
 
         var now = DateTime.UtcNow;
@@ -520,7 +633,9 @@ public sealed class SkyTrackerViewModel : ObservableObject
     {
         PreviewParts.Clear();
         PreviewStats = string.Empty;
-        PreviewQuestSummary = string.Empty;
+        PreviewQuestName = string.Empty;
+        PreviewSayCommand = string.Empty;
+        PreviewQuestNpc = string.Empty;
         RefreshDisplayStats();
         RaisePropertyChanged(nameof(PreviewVisibility));
         RaisePropertyChanged(nameof(EmptyPreviewVisibility));
@@ -531,14 +646,11 @@ public sealed class SkyTrackerViewModel : ObservableObject
         }
 
         var cls = _catalog.FindClass(SelectedClass);
-        PreviewQuestSummary =
-            $"{SkyClassPresentation.ShortQuestTitle(reward.QuestName, SelectedClass ?? string.Empty)}" +
-            (string.IsNullOrWhiteSpace(reward.TriggerPhrase)
-                ? string.Empty
-                : $" · say {reward.TriggerPhrase}") +
-            (string.IsNullOrWhiteSpace(cls?.QuestGiver)
-                ? string.Empty
-                : $" · {cls!.QuestGiver}");
+        PreviewQuestName = SkyClassPresentation.ShortQuestTitle(reward.QuestName, SelectedClass ?? string.Empty);
+        PreviewSayCommand = string.IsNullOrWhiteSpace(reward.TriggerPhrase)
+            ? string.Empty
+            : $"say {reward.TriggerPhrase.Trim()}";
+        PreviewQuestNpc = cls?.QuestGiver?.Trim() ?? string.Empty;
 
         foreach (var item in reward.RequiredItems)
         {
@@ -866,7 +978,7 @@ public sealed class SkyRequirementRowViewModel : ObservableObject
             locationLabel,
             balance.IsDeleted,
             balance.Owned > 0 && locationLabel is not "Not set",
-            balance.DestroyedCount > 0 ? $"deleted ×{balance.DestroyedCount}" : string.Empty,
+            balance.IsDeleted ? $"deleted ×{balance.DestroyedCount}" : string.Empty,
             balance.SoldCount > 0 ? $"autosold ×{balance.SoldCount}" : string.Empty,
             isTracked,
             onTrackChanged);
@@ -982,6 +1094,7 @@ public sealed record SkyLocationChoice(SkyItemLocation Value, string Label)
         new(SkyItemLocation.Unknown, "Not set"),
         new(SkyItemLocation.Inventory, "Equipment"),
         new(SkyItemLocation.Bank, "Bank"),
+        new(SkyItemLocation.Hoard, "Hoard"),
         new(SkyItemLocation.Currency, "Currencies"),
         new(SkyItemLocation.Other, "Other")
     ];

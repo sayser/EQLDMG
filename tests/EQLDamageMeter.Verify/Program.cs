@@ -2113,6 +2113,35 @@ internal static class Program
         Check("Sky turn-in consumed", ledger.Snapshot("Wind Rune Ena").Owned == 0 &&
                                       ledger.Snapshot("Efreeti Standard").Owned == 0);
 
+        var bard = new SkyClassCatalog
+        {
+            ClassName = "Bard",
+            QuestGiver = "Cilin Spellsinger",
+            Rewards =
+            [
+                new SkyRewardCatalog
+                {
+                    RewardName = "Spear of Harmony",
+                    RequiredItems =
+                    [
+                        new SkyRequiredItemCatalog { ItemName = "Efreeti War Spear", NeededCount = 1 }
+                    ]
+                }
+            ]
+        };
+        var spearLedger = new SkyLootLedger();
+        spearLedger.LoadCatalog([bard]);
+        spearLedger.Observe("--You have looted an Efreeti War Spear from Noble Dojorn's corpse.--");
+        spearLedger.Observe(
+            "You looted an Efreeti War Spear from the Hand of Veeshan's corpse to create an Efreeti War Spear +1");
+        Check("Sky +N merge keeps one", spearLedger.Snapshot("Efreeti War Spear").Owned == 1);
+        spearLedger.Observe("--You have looted an Efreeti War Spear from Overseer of Air's corpse.--");
+        spearLedger.Observe(
+            "You have successfully merged two items together to create a new item: Efreeti War Spear +2");
+        Check("Sky inventory merge keeps one", spearLedger.Snapshot("Efreeti War Spear").Owned == 1);
+        spearLedger.Observe("You successfully destroyed 1 Efreeti War Spear +1.");
+        Check("Sky destroy is deleted", spearLedger.Snapshot("Efreeti War Spear").IsDeleted);
+
         var logPath = Path.Combine(Path.GetTempPath(), "eqdm_sky_" + Guid.NewGuid().ToString("N") + ".txt");
         var parser = new LogLineParser("You");
         Check("Sky envelope loot",
@@ -2137,6 +2166,126 @@ internal static class Program
         finally
         {
             File.Delete(logPath);
+        }
+
+        Check("Sky dump classifies hoard",
+            SkyInventoryDump.TryClassifyLocation("Hoard 35", out var hoardLoc) &&
+            hoardLoc == SkyItemLocation.Hoard);
+        Check("Sky dump classifies bank bag slot",
+            SkyInventoryDump.TryClassifyLocation("Bank2-Slot10", out var bankLoc) &&
+            bankLoc == SkyItemLocation.Bank);
+        Check("Sky dump classifies bags",
+            SkyInventoryDump.TryClassifyLocation("General 2-Slot5", out var bagLoc) &&
+            bagLoc == SkyItemLocation.Inventory);
+        Check("Sky dump skips keyring",
+            !SkyInventoryDump.TryClassifyLocation("KeyRing", out _));
+
+        var dumpText = string.Join("\n",
+        [
+            "Location\tName\tID\tCount\tSlots",
+            "General 2-Slot5\tEfreeti War Spear +1\t20831\t1\t10",
+            "Hoard 35\tSilver Hoop\t123\t1\t0",
+            "Hoard 12\tBixie Essence\t1\t1\t0",
+            "Hoard 19\tBixie Essence\t1\t1\t0",
+            "Bank1-Slot1\tWhite Dragon Scales\t2\t1\t0",
+            "Head-Slot7\tMane Attraction (Exaltation)\t12254\t1\t10",
+            "Ear\tEmpty\t0\t0\t0",
+            "KeyRing\tName\tID",
+            "KeyRing\tEfreeti War Spear\t20831"
+        ]);
+        var piles = SkyInventoryDump.Parse(dumpText);
+        Check("Sky dump strips +N spear", piles.TryGetValue("Efreeti War Spear", out var spearPile) &&
+                                          spearPile.Inventory == 1 && spearPile.Total == 1);
+        Check("Sky dump sums hoard stacks", piles.TryGetValue("Bixie Essence", out var essencePile) &&
+                                            essencePile.Hoard == 2);
+        Check("Sky dump skips exaltation and keyring extra",
+            !piles.ContainsKey("Mane Attraction") && spearPile!.Inventory == 1);
+
+        var dumpLedger = new SkyLootLedger();
+        dumpLedger.LoadCatalog([bard]);
+        dumpLedger.Observe("--You have looted an Efreeti War Spear from Noble Dojorn's corpse.--");
+        dumpLedger.Observe("You successfully destroyed 1 Efreeti War Spear.");
+        Check("Sky dump pretest deleted", dumpLedger.Snapshot("Efreeti War Spear").IsDeleted);
+        var applied = dumpLedger.ApplyInventorySnapshot(piles);
+        var afterDump = dumpLedger.Snapshot("Efreeti War Spear");
+        Check("Sky dump restores owned", afterDump.Owned == 1 && !afterDump.IsDeleted);
+        Check("Sky dump location bags", afterDump.Location == SkyItemLocation.Inventory);
+        Check("Sky dump found count", applied.SkyItemsFound == 1 && applied.Copies == 1);
+
+        var runeLedger = new SkyLootLedger();
+        runeLedger.LoadCatalog([cleric]);
+        runeLedger.Observe("--You have looted a Wind Rune Dena from an azarack's corpse.--");
+        runeLedger.ApplyInventorySnapshot(piles);
+        Check("Sky dump keeps currency runes", runeLedger.Snapshot("Wind Rune Dena").Owned == 1 &&
+                                               runeLedger.Snapshot("Wind Rune Dena").Location ==
+                                               SkyItemLocation.Currency);
+
+        var hoopLedger = new SkyLootLedger();
+        hoopLedger.LoadCatalog([cleric]);
+        hoopLedger.Observe("--You have looted a Silver Hoop from Gorgalosk's corpse.--");
+        hoopLedger.ApplyInventorySnapshot(piles);
+        Check("Sky dump moves hoop to hoard", hoopLedger.Snapshot("Silver Hoop").Owned == 1 &&
+                                             hoopLedger.Snapshot("Silver Hoop").Location ==
+                                             SkyItemLocation.Hoard);
+
+        var tmpRoot = Path.Combine(Path.GetTempPath(), "eqdm_inv_" + Guid.NewGuid().ToString("N"));
+        var logsDir = Path.Combine(tmpRoot, "Logs");
+        Directory.CreateDirectory(logsDir);
+        var fakeLog = Path.Combine(logsDir, "eqlog_Sayser_halas.txt");
+        var fakeDump = Path.Combine(tmpRoot, "Sayser_halas-Inventory.txt");
+        File.WriteAllText(fakeLog, "x");
+        File.WriteAllText(fakeDump, dumpText);
+        try
+        {
+            Check("Sky dump finds file beside Logs",
+                SkyInventoryDump.TryFindPath(fakeLog, out var foundDump, out var expected, out _) &&
+                expected == "Sayser_halas-Inventory.txt" &&
+                string.Equals(foundDump, fakeDump, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            Directory.Delete(tmpRoot, recursive: true);
+        }
+
+        var otherRoot = Path.Combine(Path.GetTempPath(), "eqdm_inv_other_" + Guid.NewGuid().ToString("N"));
+        var otherLogs = Path.Combine(otherRoot, "Logs");
+        Directory.CreateDirectory(otherLogs);
+        var otherLog = Path.Combine(otherLogs, "eqlog_Thalor_caerlynn.txt");
+        var otherDump = Path.Combine(otherRoot, "Thalor_caerlynn-Inventory.txt");
+        File.WriteAllText(otherLog, "x");
+        File.WriteAllText(otherDump, dumpText);
+        try
+        {
+            Check("Sky dump name follows log identity",
+                LogIdentity.TryFromPath(otherLog, out var otherId) && otherId is not null &&
+                SkyInventoryDump.FileNameFor(otherId) == "Thalor_caerlynn-Inventory.txt");
+            Check("Sky dump finds other install",
+                SkyInventoryDump.TryFindPath(otherLog, out var otherFound, out var otherExpected, out var otherFolder) &&
+                otherExpected == "Thalor_caerlynn-Inventory.txt" &&
+                string.Equals(otherFound, otherDump, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(otherFolder, otherRoot, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            Directory.Delete(otherRoot, recursive: true);
+        }
+
+        var logsFallbackRoot = Path.Combine(Path.GetTempPath(), "eqdm_inv_logs_" + Guid.NewGuid().ToString("N"));
+        var logsFallbackDir = Path.Combine(logsFallbackRoot, "Logs");
+        Directory.CreateDirectory(logsFallbackDir);
+        var logsFallbackLog = Path.Combine(logsFallbackDir, "eqlog_Mira_halas.txt");
+        var logsFallbackDump = Path.Combine(logsFallbackDir, "Mira_halas-Inventory.txt");
+        File.WriteAllText(logsFallbackLog, "x");
+        File.WriteAllText(logsFallbackDump, dumpText);
+        try
+        {
+            Check("Sky dump falls back to Logs folder",
+                SkyInventoryDump.TryFindPath(logsFallbackLog, out var logsFound, out _, out _) &&
+                string.Equals(logsFound, logsFallbackDump, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            Directory.Delete(logsFallbackRoot, recursive: true);
         }
     }
 

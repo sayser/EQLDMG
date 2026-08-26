@@ -14,6 +14,9 @@ public partial class SkyTrackerPanel : UserControl
     private async void RefreshCatalog_Click(object sender, RoutedEventArgs e) =>
         await (Tracker?.RefreshCatalogAsync() ?? Task.CompletedTask);
 
+    private async void ScanInventoryDump_Click(object sender, RoutedEventArgs e) =>
+        await (Tracker?.ImportInventoryDumpAsync() ?? Task.CompletedTask);
+
     private void OpenPlanePage_Click(object sender, RoutedEventArgs e) => Tracker?.OpenSkyWiki();
 
     private void OpenRewardWiki_Click(object sender, MouseButtonEventArgs e)

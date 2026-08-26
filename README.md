@@ -76,6 +76,11 @@ GROUPS, PETS, AND CHARM
 Charm attribution depends on the order and visibility of the corresponding cast, success, and wear-off messages in the local log. If the game client does not write one of these events, EQDM cannot reconstruct information that was never logged.
 
 
+PLANE OF SKY
+
+- Tracks class quests, required parts, and loot from the character log.
+- After `/out inventory` in game, Scan dump syncs bags, bank, and Hoard from `Character_server-Inventory.txt` next to the Logs folder.
+- Currency-tab Wind Runes still follow the log, because that tab is not in the inventory dump.
 
 
 GETTING STARTED

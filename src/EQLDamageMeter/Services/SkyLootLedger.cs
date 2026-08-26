@@ -6,12 +6,15 @@ public sealed class SkyItemBalance
 {
     public int InventoryCount { get; set; }
     public int CurrencyCount { get; set; }
+    public int HoardCount { get; set; }
+    public int BankCount { get; set; }
+    public int OtherCount { get; set; }
     public int DestroyedCount { get; set; }
     public int SoldCount { get; set; }
     public int TurnedInCount { get; set; }
     public SkyItemLocation LastLocation { get; set; } = SkyItemLocation.Unknown;
 
-    public int Owned => InventoryCount + CurrencyCount;
+    public int Owned => InventoryCount + CurrencyCount + HoardCount + BankCount + OtherCount;
     public bool IsDeleted => Owned == 0 && DestroyedCount > 0;
 
     public SkyItemLocation Location
@@ -23,18 +26,36 @@ public sealed class SkyItemBalance
                 return SkyItemLocation.Inventory;
             if (LastLocation == SkyItemLocation.Currency && CurrencyCount > 0)
                 return SkyItemLocation.Currency;
-            if (LastLocation == SkyItemLocation.Bank && InventoryCount + CurrencyCount > 0)
+            if (LastLocation == SkyItemLocation.Hoard && HoardCount > 0)
+                return SkyItemLocation.Hoard;
+            if (LastLocation == SkyItemLocation.Bank && BankCount > 0)
                 return SkyItemLocation.Bank;
-            if (CurrencyCount > 0) return SkyItemLocation.Currency;
-            if (InventoryCount > 0) return SkyItemLocation.Inventory;
-            return SkyItemLocation.Unknown;
+            if (LastLocation == SkyItemLocation.Other && OtherCount > 0)
+                return SkyItemLocation.Other;
+            return PrimaryLocation();
         }
+    }
+
+    public SkyItemLocation PrimaryLocation()
+    {
+        var max = Math.Max(Math.Max(HoardCount, BankCount),
+            Math.Max(Math.Max(InventoryCount, OtherCount), CurrencyCount));
+        if (max <= 0) return SkyItemLocation.Unknown;
+        if (HoardCount == max) return SkyItemLocation.Hoard;
+        if (BankCount == max) return SkyItemLocation.Bank;
+        if (InventoryCount == max) return SkyItemLocation.Inventory;
+        if (OtherCount == max) return SkyItemLocation.Other;
+        if (CurrencyCount == max) return SkyItemLocation.Currency;
+        return SkyItemLocation.Unknown;
     }
 
     public SkyItemBalance Clone() => new()
     {
         InventoryCount = InventoryCount,
         CurrencyCount = CurrencyCount,
+        HoardCount = HoardCount,
+        BankCount = BankCount,
+        OtherCount = OtherCount,
         DestroyedCount = DestroyedCount,
         SoldCount = SoldCount,
         TurnedInCount = TurnedInCount,
@@ -103,6 +124,9 @@ public sealed class SkyLootLedger
         if (SessionLootParser.TryReadLootEvent(message, out var lootName, out var disposition, out var lootCount))
             return ApplyLoot(lootName, disposition, lootCount);
 
+        if (SkyLogEvents.TryReadInventoryMerge(message, out var mergedItem))
+            return ApplyInventoryMerge(mergedItem);
+
         if (SkyLogEvents.TryReadDestroyed(message, out var destroyed, out var destroyedCount))
             return ApplyDestroyed(destroyed, destroyedCount);
 
@@ -132,6 +156,42 @@ public sealed class SkyLootLedger
         return key.Length > 0 && _items.TryGetValue(key, out var balance)
             ? balance.Clone()
             : new SkyItemBalance();
+    }
+
+    /// <summary>
+    /// Overwrite bags, bank, and Hoard from an /out inventory dump.
+    /// Currency-tab Wind Runes and Motes are not in that dump, so log CurrencyCount is kept.
+    /// </summary>
+    public (int SkyItemsFound, int Copies) ApplyInventorySnapshot(
+        IReadOnlyDictionary<string, SkyInventoryPiles> dump)
+    {
+        var found = 0;
+        var copies = 0;
+        foreach (var key in _tracked)
+        {
+            dump.TryGetValue(key, out var piles);
+            var inventory = piles?.Inventory ?? 0;
+            var bank = piles?.Bank ?? 0;
+            var hoard = piles?.Hoard ?? 0;
+            var other = piles?.Other ?? 0;
+            var dumpTotal = inventory + bank + hoard + other;
+            if (dumpTotal > 0)
+            {
+                found++;
+                copies += dumpTotal;
+            }
+
+            var balance = GetOrCreate(key);
+            balance.InventoryCount = inventory;
+            balance.BankCount = bank;
+            balance.HoardCount = hoard;
+            balance.OtherCount = other;
+            if (!SkyItemName.IsCurrencyItem(key))
+                balance.CurrencyCount = 0;
+            balance.LastLocation = balance.PrimaryLocation();
+        }
+
+        return (found, copies);
     }
 
     public string QuestStatus(string? className, SkyRewardCatalog reward)
@@ -185,10 +245,43 @@ public sealed class SkyLootLedger
                 balance.SoldCount += count;
                 return true;
             case "Merged":
-                return false;
+                return ApplyLootMerge(balance);
             default:
                 return false;
         }
+    }
+
+    private static bool ApplyLootMerge(SkyItemBalance balance)
+    {
+        // Corpse loot "to create Item +N" upgrades a copy already in bags. Do not add
+        // a second owned pile. If we never saw the first copy, this line proves it exists.
+        if (balance.Owned <= 0)
+        {
+            balance.InventoryCount = 1;
+            balance.LastLocation = SkyItemLocation.Inventory;
+            return true;
+        }
+
+        if (balance.InventoryCount <= 0 && balance.HoardCount > 0)
+        {
+            balance.LastLocation = SkyItemLocation.Inventory;
+            return true;
+        }
+
+        balance.LastLocation = SkyItemLocation.Inventory;
+        return true;
+    }
+
+    private bool ApplyInventoryMerge(string itemName)
+    {
+        if (!IsTracked(itemName)) return false;
+        var balance = GetOrCreate(itemName);
+        if (balance.InventoryCount >= 2)
+            balance.InventoryCount--;
+        else if (balance.InventoryCount <= 0)
+            balance.InventoryCount = 1;
+        balance.LastLocation = SkyItemLocation.Inventory;
+        return true;
     }
 
     private bool ApplyDestroyed(string itemName, int count)
@@ -196,13 +289,7 @@ public sealed class SkyLootLedger
         if (!IsTracked(itemName)) return false;
         count = Math.Max(1, count);
         var balance = GetOrCreate(itemName);
-        var remaining = count;
-        var fromInventory = Math.Min(balance.InventoryCount, remaining);
-        balance.InventoryCount -= fromInventory;
-        remaining -= fromInventory;
-        var fromCurrency = Math.Min(balance.CurrencyCount, remaining);
-        balance.CurrencyCount -= fromCurrency;
-        remaining -= fromCurrency;
+        DrainOwned(balance, count);
         balance.DestroyedCount += count;
         return true;
     }
@@ -257,15 +344,26 @@ public sealed class SkyLootLedger
         return best;
     }
 
-    private void Consume(string itemName, int count)
+    private void Consume(string itemName, int count) =>
+        DrainOwned(GetOrCreate(itemName), count);
+
+    private static void DrainOwned(SkyItemBalance balance, int count)
     {
-        var balance = GetOrCreate(itemName);
         var remaining = Math.Max(1, count);
         var fromInventory = Math.Min(balance.InventoryCount, remaining);
         balance.InventoryCount -= fromInventory;
         remaining -= fromInventory;
         var fromCurrency = Math.Min(balance.CurrencyCount, remaining);
         balance.CurrencyCount -= fromCurrency;
+        remaining -= fromCurrency;
+        var fromBank = Math.Min(balance.BankCount, remaining);
+        balance.BankCount -= fromBank;
+        remaining -= fromBank;
+        var fromHoard = Math.Min(balance.HoardCount, remaining);
+        balance.HoardCount -= fromHoard;
+        remaining -= fromHoard;
+        var fromOther = Math.Min(balance.OtherCount, remaining);
+        balance.OtherCount -= fromOther;
     }
 
     private bool IsCompleted(string? className, string rewardName)

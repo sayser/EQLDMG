@@ -5,6 +5,7 @@ public enum SkyItemLocation
     Unknown,
     Inventory,
     Bank,
+    Hoard,
     Currency,
     Other
 }

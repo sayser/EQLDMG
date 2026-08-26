@@ -9,7 +9,8 @@ public static partial class SkyLogEvents
         text.Contains("destroyed", StringComparison.Ordinal) ||
         text.Contains("You offered ", StringComparison.Ordinal) ||
         text.Contains("complete the trade", StringComparison.Ordinal) ||
-        text.Contains("cancelled the trade", StringComparison.Ordinal);
+        text.Contains("cancelled the trade", StringComparison.Ordinal) ||
+        text.Contains("merged two items together", StringComparison.Ordinal);
 
     public static bool TryReadDestroyed(string message, out string itemName, out int count)
     {
@@ -18,6 +19,15 @@ public static partial class SkyLogEvents
         var match = DestroyedRegex().Match(message);
         if (!match.Success) return false;
         count = int.Parse(match.Groups["count"].Value);
+        itemName = SkyItemName.Normalize(match.Groups["item"].Value);
+        return itemName.Length > 0;
+    }
+
+    public static bool TryReadInventoryMerge(string message, out string itemName)
+    {
+        itemName = string.Empty;
+        var match = InventoryMergeRegex().Match(message);
+        if (!match.Success) return false;
         itemName = SkyItemName.Normalize(match.Groups["item"].Value);
         return itemName.Length > 0;
     }
@@ -48,6 +58,10 @@ public static partial class SkyLogEvents
 
     [GeneratedRegex(@"^You successfully destroyed (?<count>\d+) (?<item>.+)\.$", RegexOptions.CultureInvariant)]
     private static partial Regex DestroyedRegex();
+
+    [GeneratedRegex(@"^You have successfully merged two items together to create a new item: (?<item>.+)$",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex InventoryMergeRegex();
 
     [GeneratedRegex(@"^You offered (?<count>\d+) (?<item>.+) to (?<npc>.+)\.$", RegexOptions.CultureInvariant)]
     private static partial Regex OfferedRegex();

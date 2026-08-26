@@ -75,6 +75,9 @@
                 <DataTrigger Binding="{Binding LocationLabel}" Value="Bank">
                     <Setter Property="Background" Value="#4A3A6A" />
                 </DataTrigger>
+                <DataTrigger Binding="{Binding LocationLabel}" Value="Hoard">
+                    <Setter Property="Background" Value="#6A4A2A" />
+                </DataTrigger>
                 <DataTrigger Binding="{Binding LocationLabel}" Value="Currencies">
                     <Setter Property="Background" Value="#1A5A4A" />
                 </DataTrigger>
@@ -85,13 +88,49 @@
         </Style>
     </UserControl.Resources>
     <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="0.9*" />
-            <ColumnDefinition Width="12" />
-            <ColumnDefinition Width="1.05*" />
-            <ColumnDefinition Width="12" />
-            <ColumnDefinition Width="1.55*" />
-        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Style="{DynamicResource GlassCard}" Padding="14,10" Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock TextWrapping="Wrap" Foreground="#C8DEEA" FontSize="13"
+                               VerticalAlignment="Center">
+                        <Run Text="In game, type " />
+                        <Run Text="/out inventory" FontFamily="Consolas" FontWeight="Bold" Foreground="#2FD8C7" />
+                        <Run Text=", then click Scan dump to sync bags, bank, and Hoard." />
+                    </TextBlock>
+                    <TextBlock Text="{Binding StatusText}" Foreground="#8BA9BD" FontSize="11"
+                               Margin="0,6,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                            Margin="18,0,0,0">
+                    <Button Content="Scan dump" Padding="12,6" Click="ScanInventoryDump_Click"
+                            ToolTip="Scan Character_server-Inventory.txt next to the Logs folder after you type /out inventory in game" />
+                    <Button Content="Refresh" Padding="12,6" Margin="8,0,0,0"
+                            Click="RefreshCatalog_Click"
+                            ToolTip="Download Plane of Sky rewards from eqlwiki.com" />
+                    <Button Content="Plane of Sky page" Padding="12,6" Margin="8,0,0,0"
+                            Click="OpenPlanePage_Click"
+                            ToolTip="Open the Plane of Sky wiki page" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="0.9*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="1.05*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="1.55*" />
+            </Grid.ColumnDefinitions>
 
         <Border Style="{DynamicResource GlassCard}" Padding="12,12">
             <Grid>
@@ -99,14 +138,11 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <DockPanel LastChildFill="False" Margin="0,0,0,8">
-                    <TextBlock Text="CLASS" Style="{DynamicResource SectionLabel}" VerticalAlignment="Center" />
-                    <Button DockPanel.Dock="Right" Content="Refresh" Padding="10,4"
-                            Click="RefreshCatalog_Click"
-                            ToolTip="Download Plane of Sky rewards from eqlwiki.com" />
-                </DockPanel>
-                <TextBlock Grid.Row="0" Text="{Binding CatalogSummary}" Foreground="#66879D"
-                           FontSize="10" Margin="0,22,0,0" />
+                <StackPanel Grid.Row="0" Margin="0,0,0,8">
+                    <TextBlock Text="CLASS" Style="{DynamicResource SectionLabel}" />
+                    <TextBlock Text="{Binding CatalogSummary}" Foreground="#66879D"
+                               FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap" />
+                </StackPanel>
                 <ListBox Grid.Row="1" ItemsSource="{Binding ClassRows}"
                          SelectedItem="{Binding SelectedClassRow}"
                          Background="Transparent" BorderThickness="0" Margin="0,10,0,0"
@@ -244,11 +280,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <DockPanel LastChildFill="False">
-                    <Button DockPanel.Dock="Right" Content="Plane of Sky page" Padding="10,4"
-                            Click="OpenPlanePage_Click" />
-                    <TextBlock Text="REWARD" Style="{DynamicResource SectionLabel}" VerticalAlignment="Center" />
-                </DockPanel>
+                <TextBlock Text="REWARD" Style="{DynamicResource SectionLabel}" />
 
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,10,0,0">
                     <StackPanel>
@@ -256,8 +288,21 @@
                                    Foreground="#2FD8C7" TextWrapping="Wrap" Cursor="Hand"
                                    TextDecorations="Underline" ToolTip="Open wiki"
                                    MouseLeftButtonUp="OpenRewardWiki_Click" />
-                        <TextBlock Text="{Binding PreviewQuestSummary}" Foreground="#8BA9BD" FontSize="11"
-                                   Margin="0,4,0,0" TextWrapping="Wrap" />
+                        <WrapPanel Margin="0,6,0,0">
+                            <TextBlock Text="{Binding PreviewQuestName}" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="#E0C070" TextWrapping="Wrap"
+                                       Visibility="{Binding PreviewQuestNameVisibility}" />
+                            <TextBlock Text="  ·  " FontSize="13" Foreground="#5A7388"
+                                       Visibility="{Binding PreviewQuestLeadSeparatorVisibility}" />
+                            <TextBlock Text="{Binding PreviewSayCommand}" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="#2FD8C7" TextWrapping="Wrap"
+                                       Visibility="{Binding PreviewSayCommandVisibility}" />
+                            <TextBlock Text="  to  " FontSize="13" Foreground="#8BA9BD"
+                                       Visibility="{Binding PreviewSayToVisibility}" />
+                            <TextBlock Text="{Binding PreviewQuestNpc}" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="#C4A5FF" TextWrapping="Wrap"
+                                       Visibility="{Binding PreviewQuestNpcVisibility}" />
+                        </WrapPanel>
 
                         <Grid Margin="0,12,0,0">
                             <Grid.ColumnDefinitions>
@@ -340,6 +385,9 @@
                                                                 <DataTrigger Binding="{Binding LocationLabel}" Value="Bank">
                                                                     <Setter Property="Foreground" Value="#C4B0F0" />
                                                                 </DataTrigger>
+                                                                <DataTrigger Binding="{Binding LocationLabel}" Value="Hoard">
+                                                                    <Setter Property="Foreground" Value="#E0C070" />
+                                                                </DataTrigger>
                                                                 <DataTrigger Binding="{Binding LocationLabel}" Value="Currencies">
                                                                     <Setter Property="Foreground" Value="#7FDCD4" />
                                                                 </DataTrigger>
@@ -411,5 +459,6 @@
                 </ScrollViewer>
             </Grid>
         </Border>
+        </Grid>
     </Grid>
 </UserControl>
