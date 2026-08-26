@@ -1569,6 +1569,36 @@ internal static class Program
         Check("Killing a same-name twin does not expire live charm",
             pulledTwinTracker.GetActiveSnapshots(t0.AddSeconds(20.1)).Count == 1);
 
+        var allure = Rule("Allure", SpellTrackerCategory.Control, ControlEffectType.Charm, 210, 5);
+        var allureTracker = new BuffTracker();
+        allureTracker.Configure([allure], _ => [], _ => [], _ => [" has been charmed."], _ => true);
+        allureTracker.Observe(t0, "You begin casting Allure.");
+        allureTracker.Observe(t0.AddSeconds(5), "Innoruuk`s Chosen has been charmed.");
+        allureTracker.Observe(t0.AddSeconds(8), "You slash Innoruuk's Chosen for 206 points of damage.");
+        allureTracker.Observe(t0.AddSeconds(9), "Innoruuk's Chosen hits YOU for 48 points of damage.");
+        allureTracker.Observe(t0.AddSeconds(20), "Innoruuk`s Chosen slashes YOU for 51 points of damage.");
+        Check("Enchanter charm ignores same-name twin hitting you",
+            allureTracker.GetActiveSnapshots(t0.AddSeconds(20.1)).Count == 1);
+        allureTracker.Observe(t0.AddSeconds(30), "Your Allure spell has worn off of Innoruuk's Chosen.");
+        Check("Enchanter charm clears on worn off",
+            allureTracker.GetActiveSnapshots(t0.AddSeconds(30.1)).Count == 0);
+
+        var bardTwinPull = new BuffTracker();
+        bardTwinPull.Configure([bravura],
+            _ => ["You are no longer captivated."],
+            _ => ["You are captivated by the haunting tune."],
+            _ => ["'s eyes glaze over."],
+            suffix => suffix.Equals("'s eyes glaze over.", StringComparison.OrdinalIgnoreCase),
+            _ => false,
+            _ => false,
+            _ => true);
+        bardTwinPull.Observe(t0, "You begin singing Solon's Bewitching Bravura.");
+        bardTwinPull.Observe(t0.AddSeconds(3), "an ire ghast's eyes glaze over.");
+        bardTwinPull.Observe(t0.AddSeconds(6), "You slash an ire ghast for 90 points of damage.");
+        bardTwinPull.Observe(t0.AddSeconds(7), "An ire ghast hits YOU for 30 points of damage.");
+        Check("Bard charm stays while you attack a same-name twin",
+            bardTwinPull.GetActiveSnapshots(t0.AddSeconds(7.1)).Count == 1);
+
         Check("Prefilter skips pure melee combat spam",
             !solonTracker.ShouldProcessMessage(
                 "a sand beetle hit a sand beetle for 12 points of non-melee damage."));

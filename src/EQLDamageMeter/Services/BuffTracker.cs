@@ -63,6 +63,8 @@ public sealed class BuffTracker
         public bool SawIncomingGap { get; set; } = true;
         public DateTime? LastIncomingAt { get; set; }
         public DateTime? LastPetAllyAt { get; set; }
+        /// <summary>You recently hit this display name — a same-named twin is in combat.</summary>
+        public DateTime? LastOutgoingAt { get; set; }
     }
 
     private sealed class RuleRuntime
@@ -252,7 +254,8 @@ public sealed class BuffTracker
         }
 
         if (_hasEnabledCharmRule && LooksLikeIncomingSwingOnYou(message)) return true;
-        return HasLiveCharmTarget() && StartsWithLiveCharmTarget(message);
+        if (HasLiveCharmTarget() && StartsWithLiveCharmTarget(message)) return true;
+        return HasLiveCharmTarget() && IsOutgoingAttackOnLiveCharmTarget(message);
     }
 
     public void ClearRuntime()
@@ -322,6 +325,7 @@ public sealed class BuffTracker
             NoteRecentIncomingOnYou(timestamp, message);
         RefreshCharmIncomingGaps(timestamp);
         NoteCharmPetAlly(timestamp, message);
+        NoteCharmOutgoingOnTarget(timestamp, message);
         if (TryBreakCharmOnHostileSwing(timestamp, message)) return;
 
         if (message.Contains("died", StringComparison.OrdinalIgnoreCase) ||
@@ -1204,6 +1208,7 @@ public sealed class BuffTracker
                              startedAt - hitAt <= CharmIncomingLookback;
         instance.LastIncomingAt = null;
         instance.LastPetAllyAt = null;
+        instance.LastOutgoingAt = null;
         instance.SawIncomingGap = !incomingAtLand;
     }
 
@@ -1249,12 +1254,14 @@ public sealed class BuffTracker
     /// <summary>
     /// Bard charm often breaks without a worn-off line. Hits on you from that name are a
     /// break only when logs are not also showing a same-named hostile already swinging.
+    /// Enchanter spell charm logs "Your X spell has worn off of Y" — do not treat a twin
+    /// of the same name hitting you as a break.
     /// </summary>
     private bool TryBreakCharmOnHostileSwing(DateTime timestamp, string message)
     {
         if (!LooksLikeIncomingSwingOnYou(message)) return false;
         var broke = false;
-        foreach (var rule in _rules.Values.Where(item => item.IsEnabled && IsAnyCharmRule(item)))
+        foreach (var rule in _rules.Values.Where(item => item.IsEnabled && IsBardCharmSongRule(item)))
         {
             var state = _states[rule.Id];
             var keys = state.Instances
@@ -1277,7 +1284,7 @@ public sealed class BuffTracker
 
     private static bool ShouldBreakCharmOnIncoming(ActiveInstance instance, DateTime timestamp)
     {
-        if (instance.LastPetAllyAt is { } ally && timestamp - ally < CharmPetAllySilence)
+        if (IsRecentSameNameCombat(instance, timestamp))
         {
             instance.LastIncomingAt = timestamp;
             instance.SawIncomingGap = false;
@@ -1296,8 +1303,15 @@ public sealed class BuffTracker
         }
 
         instance.LastIncomingAt = timestamp;
-        return instance.LastPetAllyAt is not null;
+        return instance.LastPetAllyAt is not null || instance.LastOutgoingAt is not null;
     }
+
+    private static bool IsRecentSameNameCombat(ActiveInstance instance, DateTime timestamp) =>
+        IsRecent(instance.LastPetAllyAt, timestamp, CharmPetAllySilence) ||
+        IsRecent(instance.LastOutgoingAt, timestamp, CharmPetAllySilence);
+
+    private static bool IsRecent(DateTime? at, DateTime timestamp, TimeSpan window) =>
+        at is { } value && timestamp - value < window;
 
     private void NoteRecentIncomingOnYou(DateTime timestamp, string message)
     {
@@ -1339,6 +1353,21 @@ public sealed class BuffTracker
         }
     }
 
+    private void NoteCharmOutgoingOnTarget(DateTime timestamp, string message)
+    {
+        if (!message.StartsWith("You ", StringComparison.OrdinalIgnoreCase)) return;
+        if (!message.Contains(" for ", StringComparison.OrdinalIgnoreCase) &&
+            !message.Contains("tries to ", StringComparison.OrdinalIgnoreCase) &&
+            !message.Contains("slain", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        foreach (var instance in LiveCharmInstances())
+        {
+            if (MessageMentionsCharmTarget(message, instance.TargetName))
+                instance.LastOutgoingAt = timestamp;
+        }
+    }
+
     private IEnumerable<ActiveInstance> LiveCharmInstances() =>
         _rules.Values.Where(rule => rule.IsEnabled && IsAnyCharmRule(rule))
             .SelectMany(rule => _states[rule.Id].Instances.Values)
@@ -1346,6 +1375,16 @@ public sealed class BuffTracker
 
     private bool StartsWithLiveCharmTarget(string message) =>
         LiveCharmInstances().Any(instance => MessageStartsWithCharmTarget(message, instance.TargetName));
+
+    private bool IsOutgoingAttackOnLiveCharmTarget(string message)
+    {
+        if (!message.StartsWith("You ", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!message.Contains(" for ", StringComparison.OrdinalIgnoreCase) &&
+            !message.Contains("tries to ", StringComparison.OrdinalIgnoreCase) &&
+            !message.Contains("slain", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return LiveCharmInstances().Any(instance => MessageMentionsCharmTarget(message, instance.TargetName));
+    }
 
     private static bool LooksLikeIncomingSwingOnYou(string message)
     {
@@ -1387,15 +1426,36 @@ public sealed class BuffTracker
 
     private static bool MessageStartsWithCharmTarget(string message, string target)
     {
-        var name = target.Trim();
-        if (name.Length == 0 || message.Length <= name.Length) return false;
-        if (!message.StartsWith(name, StringComparison.OrdinalIgnoreCase)) return false;
-        var next = message[name.Length];
+        var name = FoldCharmName(target);
+        var folded = FoldCharmName(message);
+        if (name.Length == 0 || folded.Length <= name.Length) return false;
+        if (!folded.StartsWith(name, StringComparison.OrdinalIgnoreCase)) return false;
+        var next = folded[name.Length];
         return next is ' ' or '\'';
     }
 
+    private static bool MessageMentionsCharmTarget(string message, string target)
+    {
+        var name = FoldCharmName(target);
+        var folded = FoldCharmName(message);
+        if (name.Length == 0) return false;
+        var index = folded.IndexOf(name, StringComparison.OrdinalIgnoreCase);
+        while (index >= 0)
+        {
+            var beforeOk = index == 0 || !char.IsLetterOrDigit(folded[index - 1]);
+            var after = index + name.Length;
+            var afterOk = after >= folded.Length || !char.IsLetterOrDigit(folded[after]);
+            if (beforeOk && afterOk) return true;
+            index = folded.IndexOf(name, index + 1, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
+
     private static bool NamesMatchCharmTarget(string left, string right) =>
-        left.Trim().Equals(right.Trim(), StringComparison.OrdinalIgnoreCase);
+        FoldCharmName(left).Equals(FoldCharmName(right), StringComparison.OrdinalIgnoreCase);
+
+    private static string FoldCharmName(string name) => name.Trim().Replace('`', '\'');
 
     /// <summary>
     /// Charm is always a single pet. Any successful charm land replaces all prior charm tracks.
@@ -1517,13 +1577,17 @@ public sealed class BuffTracker
         return newKey;
     }
 
-    private static string? FindTargetInstanceKey(RuleRuntime state, string target) =>
-        state.Instances
-            .Where(pair => pair.Value.TargetName.Equals(target.Trim(), StringComparison.OrdinalIgnoreCase))
+    private static string? FindTargetInstanceKey(RuleRuntime state, string target)
+    {
+        var folded = FoldCharmName(target);
+        return state.Instances
+            .Where(pair => FoldCharmName(pair.Value.TargetName)
+                .Equals(folded, StringComparison.OrdinalIgnoreCase))
             .OrderBy(pair => pair.Value.ExpiresAt)
             .ThenBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
             .Select(pair => pair.Key)
             .FirstOrDefault();
+    }
 
     private IEnumerable<BuffRuleSettings> MatchingEnabledRules(string spell)
     {
