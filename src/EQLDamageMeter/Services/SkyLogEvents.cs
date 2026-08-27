@@ -10,7 +10,8 @@ public static partial class SkyLogEvents
         text.Contains("You offered ", StringComparison.Ordinal) ||
         text.Contains("complete the trade", StringComparison.Ordinal) ||
         text.Contains("cancelled the trade", StringComparison.Ordinal) ||
-        text.Contains("merged two items together", StringComparison.Ordinal);
+        text.Contains("merged two items together", StringComparison.Ordinal) ||
+        text.Contains("been given", StringComparison.Ordinal);
 
     public static bool TryReadDestroyed(string message, out string itemName, out int count)
     {
@@ -44,6 +45,20 @@ public static partial class SkyLogEvents
         return itemName.Length > 0 && npc.Length > 0;
     }
 
+    public static bool TryReadReceived(string message, out string itemName, out int count)
+    {
+        itemName = string.Empty;
+        count = 1;
+        var match = ReceivedRegex().Match(message);
+        if (!match.Success) return false;
+        if (match.Groups["count"].Success &&
+            int.TryParse(match.Groups["count"].Value, out var parsed) &&
+            parsed > 0)
+            count = parsed;
+        itemName = SkyItemName.Normalize(match.Groups["item"].Value);
+        return itemName.Length > 0;
+    }
+
     public static bool TryReadTradeComplete(string message, out string npc)
     {
         npc = string.Empty;
@@ -65,6 +80,11 @@ public static partial class SkyLogEvents
 
     [GeneratedRegex(@"^You offered (?<count>\d+) (?<item>.+) to (?<npc>.+)\.$", RegexOptions.CultureInvariant)]
     private static partial Regex OfferedRegex();
+
+    [GeneratedRegex(
+        @"^You have been given:? (?:(?<count>\d+) )?(?:a |an |the )?(?<item>.+?)\.?$",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex ReceivedRegex();
 
     [GeneratedRegex(@"^You complete the trade with (?<npc>.+)\.$", RegexOptions.CultureInvariant)]
     private static partial Regex TradeCompleteRegex();

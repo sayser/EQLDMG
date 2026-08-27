@@ -71,6 +71,7 @@ public sealed class SkyLootLedger
     private readonly Dictionary<string, SkyItemBalance> _items = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _completed = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<(string Npc, string Item, int Count)> _pendingOffers = [];
+    private readonly List<(string ClassName, string RewardName)> _newlyCompleted = [];
 
     public void LoadCatalog(IReadOnlyList<SkyClassCatalog> classes)
     {
@@ -117,6 +118,7 @@ public sealed class SkyLootLedger
 
         _pendingOffers.Clear();
         _pendingOffers.AddRange(other._pendingOffers);
+        _newlyCompleted.Clear();
     }
 
     public bool Observe(string message)
@@ -129,6 +131,9 @@ public sealed class SkyLootLedger
 
         if (SkyLogEvents.TryReadDestroyed(message, out var destroyed, out var destroyedCount))
             return ApplyDestroyed(destroyed, destroyedCount);
+
+        if (SkyLogEvents.TryReadReceived(message, out var receivedName, out var receivedCount))
+            return ApplyLoot(receivedName, "Kept", receivedCount);
 
         if (SkyLogEvents.TryReadOffered(message, out var offered, out var offeredCount, out var npc))
         {
@@ -192,6 +197,15 @@ public sealed class SkyLootLedger
         }
 
         return (found, copies);
+    }
+
+    public IReadOnlyList<(string ClassName, string RewardName)> TakeNewlyCompleted()
+    {
+        if (_newlyCompleted.Count == 0)
+            return [];
+        var completed = _newlyCompleted.ToArray();
+        _newlyCompleted.Clear();
+        return completed;
     }
 
     public string QuestStatus(string? className, SkyRewardCatalog reward)
@@ -307,7 +321,10 @@ public sealed class SkyLootLedger
         {
             var match = FindBestQuestMatch(quests, offered);
             if (match is not null)
+            {
                 _completed.Add(CompletionKey(match.Value.ClassName, match.Value.Reward.RewardName));
+                _newlyCompleted.Add((match.Value.ClassName, match.Value.Reward.RewardName));
+            }
         }
 
         foreach (var entry in offered)

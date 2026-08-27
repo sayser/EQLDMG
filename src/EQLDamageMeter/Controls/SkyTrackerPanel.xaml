@@ -178,6 +178,7 @@
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <Border Width="32" Height="32" CornerRadius="8" Background="#33081420"
@@ -186,12 +187,26 @@
                                                Foreground="#2FD8C7" HorizontalAlignment="Center"
                                                VerticalAlignment="Center" />
                                 </Border>
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,8,0">
                                     <TextBlock Text="{Binding ClassName}" FontWeight="SemiBold"
                                                Foreground="#E8F8FF" FontSize="13" />
                                     <TextBlock Text="{Binding QuestGiver}" Foreground="#7FDCD4" FontSize="11"
                                                Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
+                                <TextBlock Grid.Column="2" Text="!" FontSize="22" FontWeight="Bold"
+                                           Foreground="#F08A24" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" ToolTip="Ready to turn in">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasReadyTurnIn}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>

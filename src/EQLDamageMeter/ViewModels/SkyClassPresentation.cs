@@ -40,11 +40,19 @@ internal static class SkyClassPresentation
     }
 }
 
-public sealed class SkyClassRowViewModel
+public sealed class SkyClassRowViewModel : ObservableObject
 {
+    private bool _hasReadyTurnIn;
+
     public required string ClassName { get; init; }
     public required string QuestGiver { get; init; }
     public required string Glyph { get; init; }
+
+    public bool HasReadyTurnIn
+    {
+        get => _hasReadyTurnIn;
+        set => SetProperty(ref _hasReadyTurnIn, value);
+    }
 }
 
 public sealed class SkyQuestRowViewModel : ObservableObject

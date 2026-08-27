@@ -2142,6 +2142,24 @@ internal static class Program
         Check("Sky turn-in completed", ledger.QuestStatus("Cleric", cleric.Rewards[0]) == "COMPLETED");
         Check("Sky turn-in consumed", ledger.Snapshot("Wind Rune Ena").Owned == 0 &&
                                       ledger.Snapshot("Efreeti Standard").Owned == 0);
+        var liveTurnIn = ledger.TakeNewlyCompleted();
+        Check("Sky live turn-in is newly completed",
+            liveTurnIn.Count == 1 &&
+            liveTurnIn[0].ClassName == "Cleric" &&
+            liveTurnIn[0].RewardName == "Truewind Earring");
+        Check("Sky newly completed is one-shot", ledger.TakeNewlyCompleted().Count == 0);
+
+        var copiedLedger = new SkyLootLedger();
+        copiedLedger.LoadCatalog([cleric]);
+        copiedLedger.CopyFrom(ledger);
+        Check("Sky scan copy does not replay turn-in watches", copiedLedger.TakeNewlyCompleted().Count == 0);
+        Check("Sky scan copy keeps completed", copiedLedger.QuestStatus("Cleric", cleric.Rewards[0]) == "COMPLETED");
+
+        Check("Sky given colon",
+            SkyLogEvents.TryReadReceived("You have been given: Truewind Earring", out var givenItem, out var givenCount) &&
+            givenItem == "Truewind Earring" && givenCount == 1);
+        Check("Sky coin is not given",
+            !SkyLogEvents.TryReadReceived("You receive 1p from the corpse.", out _, out _));
 
         var bard = new SkyClassCatalog
         {

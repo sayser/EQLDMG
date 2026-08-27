@@ -491,6 +491,7 @@ public sealed class SkyTrackerViewModel : ObservableObject
             : (SkyInventoryDumpFile?)null;
         List<string> pendingLive;
         string? dumpStatus;
+        IReadOnlyList<(string ClassName, string RewardName)> liveCompletions = [];
         lock (_ledgerGate)
         {
             _ledger.CopyFrom(scanned);
@@ -500,8 +501,10 @@ public sealed class SkyTrackerViewModel : ObservableObject
             _scanningLog = false;
             foreach (var pending in pendingLive)
                 _ledger.Observe(pending);
+            liveCompletions = _ledger.TakeNewlyCompleted();
         }
 
+        UnwatchCompletedQuests(liveCompletions);
         await RunOnUiAsync(() =>
         {
             ApplyLedgerToUi();
@@ -573,6 +576,7 @@ public sealed class SkyTrackerViewModel : ObservableObject
         if (!SkyLogEvents.IsCandidate(message)) return;
 
         var changed = false;
+        IReadOnlyList<(string ClassName, string RewardName)> completions = [];
         lock (_ledgerGate)
         {
             if (_scanningLog)
@@ -582,9 +586,11 @@ public sealed class SkyTrackerViewModel : ObservableObject
             }
 
             changed = _ledger.Observe(message);
+            completions = _ledger.TakeNewlyCompleted();
         }
 
-        if (changed)
+        var unwatched = UnwatchCompletedQuests(completions);
+        if (changed || unwatched)
             ApplyLedgerToUi();
 
         TryPlayLootAlert(message);
@@ -730,6 +736,21 @@ public sealed class SkyTrackerViewModel : ObservableObject
             foreach (var row in QuestRows)
                 row.StatusLabel = _ledger.QuestStatus(SelectedClass, row.Reward);
         }
+
+        RefreshClassReadyFlags();
+    }
+
+    private void RefreshClassReadyFlags()
+    {
+        lock (_ledgerGate)
+        {
+            foreach (var row in ClassRows)
+            {
+                row.HasReadyTurnIn = _catalog.GetRewardsForClass(row.ClassName)
+                    .Any(reward => _ledger.QuestStatus(row.ClassName, reward)
+                        .Equals("READY", StringComparison.OrdinalIgnoreCase));
+            }
+        }
     }
 
     private void RebuildSelectedParts()
@@ -825,6 +846,8 @@ public sealed class SkyTrackerViewModel : ObservableObject
         {
             SyncSelectedClassRow();
         }
+
+        RefreshClassReadyFlags();
     }
 
     private void UpdateCatalogSummary()
@@ -907,6 +930,28 @@ public sealed class SkyTrackerViewModel : ObservableObject
         var changed = enabled ? _lootWatches.Add(key) : _lootWatches.Remove(key);
         if (changed)
             _ = PersistAsync();
+    }
+
+    private bool UnwatchCompletedQuests(IReadOnlyList<(string ClassName, string RewardName)> completions)
+    {
+        if (completions.Count == 0) return false;
+        var changed = false;
+        foreach (var (className, rewardName) in completions)
+            changed |= UnwatchQuestParts(className, rewardName);
+        if (changed)
+            _ = PersistAsync();
+        return changed;
+    }
+
+    private bool UnwatchQuestParts(string className, string rewardName)
+    {
+        return _lootWatches.RemoveWhere(key =>
+        {
+            var split = key.Split('|', 3);
+            return split.Length == 3 &&
+                   split[0].Equals(className.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                   SkyItemName.EqualsNormalized(split[1], rewardName);
+        }) > 0;
     }
 
     private static string WatchKey(string className, string rewardName, string itemName) =>
