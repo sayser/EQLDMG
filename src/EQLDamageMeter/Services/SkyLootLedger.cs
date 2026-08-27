@@ -166,9 +166,11 @@ public sealed class SkyLootLedger
     /// <summary>
     /// Overwrite bags, bank, and Hoard from an /out inventory dump.
     /// Currency-tab Wind Runes and Motes are not in that dump, so log CurrencyCount is kept.
+    /// When the dump omitted Dragon's Hoard, existing Hoard counts are left alone.
     /// </summary>
     public (int SkyItemsFound, int Copies) ApplyInventorySnapshot(
-        IReadOnlyDictionary<string, SkyInventoryPiles> dump)
+        IReadOnlyDictionary<string, SkyInventoryPiles> dump,
+        bool includeHoard = true)
     {
         var found = 0;
         var copies = 0;
@@ -177,16 +179,16 @@ public sealed class SkyLootLedger
             dump.TryGetValue(key, out var piles);
             var inventory = piles?.Inventory ?? 0;
             var bank = piles?.Bank ?? 0;
-            var hoard = piles?.Hoard ?? 0;
             var other = piles?.Other ?? 0;
-            var dumpTotal = inventory + bank + hoard + other;
+            var balance = GetOrCreate(key);
+            var hoard = includeHoard ? (piles?.Hoard ?? 0) : balance.HoardCount;
+            var dumpTotal = inventory + bank + (includeHoard ? hoard : 0) + other;
             if (dumpTotal > 0)
             {
                 found++;
                 copies += dumpTotal;
             }
 
-            var balance = GetOrCreate(key);
             balance.InventoryCount = inventory;
             balance.BankCount = bank;
             balance.HoardCount = hoard;

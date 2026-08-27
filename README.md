@@ -80,6 +80,7 @@ PLANE OF SKY
 
 - Tracks class quests, required parts, and loot from the character log.
 - After `/out inventory` in game, Scan dump syncs bags, bank, and Hoard from `Character_server-Inventory.txt` next to the Logs folder.
+- Dragon's Hoard is included only when that window is open at a banker. Scan dump warns if the Hoard section is missing and does not zero Hoard counts.
 - Currency-tab Wind Runes still follow the log, because that tab is not in the inventory dump.
 
 

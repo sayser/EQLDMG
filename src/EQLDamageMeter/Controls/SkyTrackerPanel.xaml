@@ -109,13 +109,29 @@
                         <Run Text="Scan dump" FontWeight="Bold" Foreground="#2FD8C7" />
                         <Run Text=" to sync bags, bank, and Hoard." />
                     </TextBlock>
-                    <TextBlock Text="{Binding StatusText}" Foreground="#8BA9BD" FontSize="11"
-                               Margin="0,6,0,0" TextWrapping="Wrap" />
+                    <TextBlock TextWrapping="Wrap" Foreground="#C8DEEA" FontSize="12" Margin="0,4,0,0">
+                        <Run Text="For a full dump including Dragon's Hoard: stand at a banker, open the Dragon's Hoard window, then type " />
+                        <Run Text="/out inventory" FontFamily="Consolas" FontWeight="Bold" Foreground="#2FD8C7" />
+                        <Run Text=". EQ leaves Hoard out of the file if that window is closed." />
+                    </TextBlock>
+                    <TextBlock Text="{Binding StatusText}" FontSize="11"
+                               Margin="0,6,0,0" TextWrapping="Wrap">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="#8BA9BD" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDumpWarning}" Value="True">
+                                        <Setter Property="Foreground" Value="#E8B84A" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
                             Margin="18,0,0,0">
                     <Button Content="Scan dump" Padding="12,6" Click="ScanInventoryDump_Click"
-                            ToolTip="Scan Character_server-Inventory.txt next to the Logs folder after you type /out inventory in game" />
+                            ToolTip="Scan Character_server-Inventory.txt next to the Logs folder. Open Dragon's Hoard at a banker before /out inventory or Hoard items will be missing from the file." />
                     <Button Content="{Binding MissingTrackButtonText}" Padding="12,6" Margin="8,0,0,0"
                             Click="ToggleMissingTracking_Click"
                             ToolTip="Track every still-missing required item on IN PROGRESS Sky quests. Click again to stop all item tracking." />

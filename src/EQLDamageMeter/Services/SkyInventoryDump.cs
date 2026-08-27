@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using EQLDamageMeter.Models;
@@ -33,9 +34,16 @@ public sealed class SkyInventoryPiles
     }
 }
 
+public readonly record struct SkyInventoryDumpParse(
+    Dictionary<string, SkyInventoryPiles> Piles,
+    bool IsComplete,
+    bool HasHoardSection);
+
 public readonly record struct SkyInventoryDumpFile(
     Dictionary<string, SkyInventoryPiles> Piles,
-    DateTime WrittenAt);
+    DateTime WrittenAt,
+    bool IsComplete,
+    bool HasHoardSection);
 
 public static class SkyInventoryDump
 {
@@ -71,17 +79,32 @@ public static class SkyInventoryDump
         return false;
     }
 
-    public static SkyInventoryDumpFile Load(string path) =>
-        new(Parse(ReadAllTextShared(path)), File.GetLastWriteTime(path));
+    public static SkyInventoryDumpFile Load(string path, CancellationToken cancellationToken = default)
+    {
+        const int retryDelayMs = 150;
+        const int maxWaitMs = 8000;
+        var elapsed = Stopwatch.StartNew();
+        var parsed = Parse(ReadAllTextShared(path));
+        while (!parsed.IsComplete && elapsed.ElapsedMilliseconds < maxWaitMs)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            cancellationToken.WaitHandle.WaitOne(retryDelayMs);
+            cancellationToken.ThrowIfCancellationRequested();
+            parsed = Parse(ReadAllTextShared(path));
+        }
 
-    public static bool TryLoadFromLog(string? logPath, out SkyInventoryDumpFile dump)
+        return new(parsed.Piles, File.GetLastWriteTime(path), parsed.IsComplete, parsed.HasHoardSection);
+    }
+
+    public static bool TryLoadFromLog(string? logPath, out SkyInventoryDumpFile dump,
+        CancellationToken cancellationToken = default)
     {
         dump = default;
         if (!TryFindPath(logPath, out var dumpPath, out _, out _) || dumpPath is null)
             return false;
         try
         {
-            dump = Load(dumpPath);
+            dump = Load(dumpPath, cancellationToken);
             return true;
         }
         catch (IOException)
@@ -102,22 +125,30 @@ public static class SkyInventoryDump
         return reader.ReadToEnd();
     }
 
-    public static Dictionary<string, SkyInventoryPiles> Parse(string text)
+    public static SkyInventoryDumpParse Parse(string text)
     {
         var result = new Dictionary<string, SkyInventoryPiles>(StringComparer.OrdinalIgnoreCase);
-        if (string.IsNullOrWhiteSpace(text)) return result;
+        var isComplete = false;
+        var hasHoardSection = false;
+        if (string.IsNullOrWhiteSpace(text))
+            return new(result, isComplete, hasHoardSection);
 
         using var reader = new StringReader(text);
         while (reader.ReadLine() is { } line)
         {
-            if (line.StartsWith("KeyRing\t", StringComparison.OrdinalIgnoreCase) ||
-                line.StartsWith("KeyRing ", StringComparison.OrdinalIgnoreCase))
+            if (IsKeyRingSectionStart(line))
+            {
+                isComplete = true;
                 break;
+            }
 
             var parts = line.Split('\t');
             if (parts.Length < 4) continue;
 
             var locationText = parts[0].Trim();
+            if (locationText.StartsWith("Hoard", StringComparison.OrdinalIgnoreCase))
+                hasHoardSection = true;
+
             var name = parts[1].Trim();
             if (locationText.Equals("Location", StringComparison.OrdinalIgnoreCase) &&
                 name.Equals("Name", StringComparison.OrdinalIgnoreCase))
@@ -141,7 +172,7 @@ public static class SkyInventoryDump
             piles.Add(location, count);
         }
 
-        return result;
+        return new(result, isComplete, hasHoardSection);
     }
 
     public static bool TryClassifyLocation(string location, out SkyItemLocation classified)
@@ -172,5 +203,12 @@ public static class SkyInventoryDump
 
         classified = SkyItemLocation.Inventory;
         return true;
+    }
+
+    private static bool IsKeyRingSectionStart(string? line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return false;
+        return line.StartsWith("KeyRing\t", StringComparison.OrdinalIgnoreCase) ||
+               line.StartsWith("KeyRing ", StringComparison.OrdinalIgnoreCase);
     }
 }

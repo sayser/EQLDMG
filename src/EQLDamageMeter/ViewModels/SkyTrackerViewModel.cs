@@ -25,6 +25,7 @@ public sealed class SkyTrackerViewModel : ObservableObject
     private readonly HashSet<string> _lootWatches = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<(string ClassName, string RewardName)> _legacyQuestWatches = [];
     private string _statusText = "Plane of Sky quests are ready";
+    private bool _isDumpWarning;
     private string _catalogSummary = "Catalog not loaded";
     private string _previewStats = string.Empty;
     private string _previewQuestName = string.Empty;
@@ -55,8 +56,10 @@ public sealed class SkyTrackerViewModel : ObservableObject
     public string StatusText
     {
         get => _statusText;
-        private set => SetProperty(ref _statusText, value);
+        private set => SetStatus(value, warning: false);
     }
+
+    public bool IsDumpWarning => _isDumpWarning;
 
     public string CatalogSummary
     {
@@ -483,16 +486,37 @@ public sealed class SkyTrackerViewModel : ObservableObject
 
         if (token.IsCancellationRequested) return;
 
-        var dump = SkyInventoryDump.TryLoadFromLog(path, out var loadedDump)
-            ? loadedDump
-            : (SkyInventoryDumpFile?)null;
+        SkyInventoryDumpFile? dump = null;
+        try
+        {
+            dump = await Task.Run(() =>
+            {
+                if (!SkyInventoryDump.TryLoadFromLog(path, out var loadedDump, token))
+                    return (SkyInventoryDumpFile?)null;
+                return loadedDump;
+            }, token);
+        }
+        catch (OperationCanceledException)
+        {
+            lock (_ledgerGate)
+            {
+                _scanningLog = false;
+                _pendingLiveMessages.Clear();
+            }
+
+            return;
+        }
         List<string> pendingLive;
-        string? dumpStatus;
+        SkyDumpStatus dumpStatus;
         IReadOnlyList<(string ClassName, string RewardName)> liveCompletions = [];
         lock (_ledgerGate)
         {
             _ledger.CopyFrom(scanned);
-            dumpStatus = dump is null ? null : ApplyLoadedDump(dump.Value);
+            dumpStatus = dump is null
+                ? new SkyDumpStatus(
+                    "Log scanned. No inventory dump found. Type /out inventory in game, then Scan dump to sync bags, bank, and Hoard.",
+                    Warning: true)
+                : ApplyLoadedDump(dump.Value);
             pendingLive = [.. _pendingLiveMessages];
             _pendingLiveMessages.Clear();
             _scanningLog = false;
@@ -506,8 +530,7 @@ public sealed class SkyTrackerViewModel : ObservableObject
         {
             ApplyLedgerToUi();
             UpdateCatalogSummary();
-            StatusText = dumpStatus ??
-                "Log scanned. Type /out inventory in game, then Scan dump to sync bags, bank, and Hoard.";
+            ShowDumpStatus(dumpStatus);
         });
         foreach (var pending in pendingLive)
             TryPlayLootAlert(pending);
@@ -518,14 +541,17 @@ public sealed class SkyTrackerViewModel : ObservableObject
         var logPath = _lastScanPath;
         if (string.IsNullOrWhiteSpace(logPath))
         {
-            StatusText = "Attach a character log first, then type /out inventory in game.";
+            ShowDumpStatus(
+                "Attach a character log first. Then type /out inventory in game and Scan dump.",
+                warning: true);
             return;
         }
 
         if (!SkyInventoryDump.TryFindPath(logPath, out var dumpPath, out var expectedName, out var searchFolder))
         {
-            StatusText =
-                $"Type /out inventory in game, then scan again. Looking for {expectedName} in {searchFolder}.";
+            ShowDumpStatus(
+                $"No inventory dump found. Type /out inventory in game, then Scan dump. Looking for {expectedName} in {searchFolder}.",
+                warning: true);
             return;
         }
 
@@ -537,43 +563,89 @@ public sealed class SkyTrackerViewModel : ObservableObject
         }
         catch (IOException)
         {
-            StatusText = "Could not read the inventory dump. Close it if it is open, then try again.";
+            ShowDumpStatus(
+                "Could not read the inventory dump. Close it if it is open, then try again.",
+                warning: true);
             return;
         }
         catch (UnauthorizedAccessException)
         {
-            StatusText = "Access to the inventory dump was denied.";
+            ShowDumpStatus("Access to the inventory dump was denied.", warning: true);
             return;
         }
 
-        string dumpStatus;
+        SkyDumpStatus dumpStatus;
         lock (_ledgerGate)
             dumpStatus = ApplyLoadedDump(dump, allowUnchangedFile: false);
 
         ApplyLedgerToUi();
-        StatusText = dumpStatus;
+        ShowDumpStatus(dumpStatus);
     }
 
-    private string ApplyLoadedDump(SkyInventoryDumpFile dump, bool allowUnchangedFile = true)
+    private const string HoardDumpHint =
+        "Open Dragon's Hoard at a banker, type /out inventory, then Scan dump.";
+
+    private readonly record struct SkyDumpStatus(string Text, bool Warning);
+
+    private void SetStatus(string text, bool warning)
+    {
+        SetProperty(ref _statusText, text, nameof(StatusText));
+        SetProperty(ref _isDumpWarning, warning, nameof(IsDumpWarning));
+    }
+
+    private void ShowDumpStatus(SkyDumpStatus status) => SetStatus(status.Text, status.Warning);
+
+    private void ShowDumpStatus(string text, bool warning) => SetStatus(text, warning);
+
+    private SkyDumpStatus ApplyLoadedDump(SkyInventoryDumpFile dump, bool allowUnchangedFile = true)
     {
         var when = dump.WrittenAt.ToString("g", CultureInfo.CurrentCulture);
+        if (!dump.IsComplete)
+        {
+            return new SkyDumpStatus(
+                "Inventory dump is still being written. Wait a moment after /out inventory, then Scan dump.",
+                Warning: true);
+        }
+
         if (!allowUnchangedFile &&
             _lastAppliedDumpWrittenAt is { } previous &&
             dump.WrittenAt <= previous)
         {
-            return $"This dump was already applied ({when}). Type /out inventory in game, then Scan dump.";
+            if (!dump.HasHoardSection)
+            {
+                return new SkyDumpStatus(
+                    $"This dump was already applied ({when}), but the scan is incomplete — Dragon's Hoard is missing. {HoardDumpHint}",
+                    Warning: true);
+            }
+
+            return new SkyDumpStatus(
+                $"This dump was already applied ({when}). Type /out inventory in game, then Scan dump.",
+                Warning: false);
         }
 
-        var (found, copies) = _ledger.ApplyInventorySnapshot(dump.Piles);
+        var (found, copies) = _ledger.ApplyInventorySnapshot(dump.Piles, includeHoard: dump.HasHoardSection);
         _lastAppliedDumpWrittenAt = dump.WrittenAt;
+        if (!dump.HasHoardSection)
+        {
+            var synced = found > 0
+                ? $"Synced bags and bank ({found} Sky items, {copies} copies) from dump ({when}). "
+                : $"Synced bags and bank from dump ({when}). ";
+            return new SkyDumpStatus(
+                synced + $"Scan is incomplete — Dragon's Hoard is missing from the file. {HoardDumpHint}",
+                Warning: true);
+        }
+
         if (found <= 0)
         {
-            return $"Inventory dump ({when}) had no Sky quest items. " +
-                   "Currency-tab wind runes still follow the log.";
+            return new SkyDumpStatus(
+                $"Inventory dump ({when}) had no Sky quest items. Currency-tab wind runes still follow the log.",
+                Warning: false);
         }
 
-        return $"Synced {found} Sky items ({copies} copies) from inventory dump ({when}). " +
-               "Currency-tab wind runes still follow the log.";
+        return new SkyDumpStatus(
+            $"Synced {found} Sky items ({copies} copies) from inventory dump including Hoard ({when}). " +
+            "Currency-tab wind runes still follow the log.",
+            Warning: false);
     }
 
     public void ObserveLootMessage(string message)

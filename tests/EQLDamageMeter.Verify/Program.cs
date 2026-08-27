@@ -2253,13 +2253,74 @@ internal static class Program
             "KeyRing\tName\tID",
             "KeyRing\tEfreeti War Spear\t20831"
         ]);
-        var piles = SkyInventoryDump.Parse(dumpText);
+        var parsed = SkyInventoryDump.Parse(dumpText);
+        var piles = parsed.Piles;
+        Check("Sky dump complete when KeyRing present", parsed.IsComplete);
+        Check("Sky dump sees Hoard section", parsed.HasHoardSection);
         Check("Sky dump strips +N spear", piles.TryGetValue("Efreeti War Spear", out var spearPile) &&
                                           spearPile.Inventory == 1 && spearPile.Total == 1);
         Check("Sky dump sums hoard stacks", piles.TryGetValue("Bixie Essence", out var essencePile) &&
                                             essencePile.Hoard == 2);
         Check("Sky dump skips exaltation and keyring extra",
             !piles.ContainsKey("Mane Attraction") && spearPile!.Inventory == 1);
+
+        var truncatedDump = string.Join("\n",
+        [
+            "Location\tName\tID\tCount\tSlots",
+            "General 2-Slot5\tEfreeti War Spear +1\t20831\t1\t10",
+            "Bank1-Slot1\tWhite Dragon Scales\t2\t1\t0"
+        ]);
+        var truncated = SkyInventoryDump.Parse(truncatedDump);
+        var truncatedPiles = truncated.Piles;
+        Check("Sky dump incomplete without KeyRing", !truncated.IsComplete);
+        Check("Sky truncated dump has not reached Hoard",
+            !truncatedPiles.ContainsKey("Bixie Essence") && !truncated.HasHoardSection);
+
+        var noHoardDump = string.Join("\n",
+        [
+            "Location\tName\tID\tCount\tSlots",
+            "General 2-Slot5\tEfreeti War Spear +1\t20831\t1\t10",
+            "Bank1-Slot1\tWhite Dragon Scales\t2\t1\t0",
+            "SharedBank1\tEmpty\t0\t0\t0",
+            "KeyRing\tName\tID"
+        ]);
+        var noHoard = SkyInventoryDump.Parse(noHoardDump);
+        var noHoardPiles = noHoard.Piles;
+        Check("Sky dump complete without Hoard section", noHoard.IsComplete && !noHoard.HasHoardSection);
+        Check("Sky dump without Hoard still has bags",
+            noHoardPiles.TryGetValue("Efreeti War Spear", out var noHoardSpear) && noHoardSpear.Inventory == 1);
+
+        var emptyHoardDump = string.Join("\n",
+        [
+            "Location\tName\tID\tCount\tSlots",
+            "SharedBank1\tEmpty\t0\t0\t0",
+            "Hoard 1\tEmpty\t0\t0\t0",
+            "KeyRing\tName\tID"
+        ]);
+        var emptyHoard = SkyInventoryDump.Parse(emptyHoardDump);
+        Check("Sky dump empty Hoard still counts as Hoard section",
+            emptyHoard.IsComplete && emptyHoard.HasHoardSection);
+
+        var waitRoot = Path.Combine(Path.GetTempPath(), "eqdm_inv_wait_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(waitRoot);
+        var waitDump = Path.Combine(waitRoot, "Sayser_halas-Inventory.txt");
+        File.WriteAllText(waitDump, truncatedDump);
+        try
+        {
+            var loadTask = Task.Run(() => SkyInventoryDump.Load(waitDump));
+            Thread.Sleep(250);
+            File.WriteAllText(waitDump, dumpText);
+            var waited = loadTask.GetAwaiter().GetResult();
+            Check("Sky dump waits until KeyRing then reads Hoard",
+                waited.IsComplete &&
+                waited.HasHoardSection &&
+                waited.Piles.TryGetValue("Bixie Essence", out var waitedEssence) &&
+                waitedEssence.Hoard == 2);
+        }
+        finally
+        {
+            Directory.Delete(waitRoot, recursive: true);
+        }
 
         var dumpLedger = new SkyLootLedger();
         dumpLedger.LoadCatalog([bard]);
@@ -2296,6 +2357,34 @@ internal static class Program
         Check("Sky dump keeps currency-tab gear the dump cannot see",
             currencyHoop.Snapshot("Silver Hoop").Owned == 1 &&
             currencyHoop.Snapshot("Silver Hoop").Location == SkyItemLocation.Currency);
+
+        var essenceClass = new SkyClassCatalog
+        {
+            ClassName = "Shaman",
+            Rewards =
+            [
+                new SkyRewardCatalog
+                {
+                    RewardName = "Vermilion Sky Ring",
+                    RequiredItems =
+                    [
+                        new SkyRequiredItemCatalog { ItemName = "Bixie Essence", NeededCount = 1 }
+                    ]
+                }
+            ]
+        };
+        var preserveLedger = new SkyLootLedger();
+        preserveLedger.LoadCatalog([essenceClass]);
+        preserveLedger.ApplyInventorySnapshot(piles);
+        Check("Sky dump pretest hoard essence",
+            preserveLedger.Snapshot("Bixie Essence").HoardCount == 2);
+        preserveLedger.ApplyInventorySnapshot(noHoardPiles, includeHoard: false);
+        Check("Sky dump without Hoard keeps prior Hoard counts",
+            preserveLedger.Snapshot("Bixie Essence").HoardCount == 2 &&
+            preserveLedger.Snapshot("Bixie Essence").Location == SkyItemLocation.Hoard);
+        preserveLedger.ApplyInventorySnapshot(noHoardPiles, includeHoard: true);
+        Check("Sky dump with Hoard section can zero Hoard",
+            preserveLedger.Snapshot("Bixie Essence").HoardCount == 0);
 
         var tmpRoot = Path.Combine(Path.GetTempPath(), "eqdm_inv_" + Guid.NewGuid().ToString("N"));
         var logsDir = Path.Combine(tmpRoot, "Logs");
