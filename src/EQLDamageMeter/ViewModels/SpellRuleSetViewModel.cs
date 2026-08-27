@@ -320,21 +320,6 @@ public sealed class SpellRuleSetViewModel : ObservableObject
         return null;
     }
 
-    public string? ResetSelectedTimingsToCatalog()
-    {
-        if (SelectedRule is null) return $"Select a {SingularName} first.";
-        if (!TryResolveSpell(SelectedRule.SpellName, out var spell, out var error))
-        {
-            SelectedRule.SetSpellValidation(error);
-            return error;
-        }
-        SelectedRule.SpellName = spell!.Name;
-        SelectedRule.SetSpellValidation(null);
-        SelectedRule.SetIcon(_catalog()?.GetIcon(spell));
-        SelectedRule.ApplyCatalogTimings(spell, force: true, casterLevel: _casterLevel());
-        return null;
-    }
-
     /// <summary>Re-seeds Catalog-sourced cast/duration using the current caster level.</summary>
     public async Task<bool> ReseedCatalogTimingsAsync(int casterLevel)
     {

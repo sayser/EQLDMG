@@ -20,7 +20,6 @@ public static class AppPaths
         "questtracker.json",
         "quest_catalog.json",
         "skytracker.json",
-        "sky_catalog.json",
         "bis_catalog.json",
         "bis_items.json"
     ];

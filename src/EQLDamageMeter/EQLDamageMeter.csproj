@@ -7,9 +7,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>Assets\EQDM.ico</ApplicationIcon>
-    <Version>1.5.7</Version>
-    <AssemblyVersion>1.5.7.0</AssemblyVersion>
-    <FileVersion>1.5.7.0</FileVersion>
+    <Version>1.5.8</Version>
+    <AssemblyVersion>1.5.8.0</AssemblyVersion>
+    <FileVersion>1.5.8.0</FileVersion>
     <Product>EQDM</Product>
     <AssemblyTitle>EQDM</AssemblyTitle>
   </PropertyGroup>
@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <PackageReference Include="Autoupdater.NET.Official" Version="1.9.2" />
+    <PackageReference Include="KokoroSharp.CPU" Version="0.8.4" />
   </ItemGroup>
 
   <ItemGroup>
@@ -34,6 +35,32 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Assets\Data\sky_catalog.json" />
+    <Content Include="Assets\Sounds\boss-defeat-test.wav">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>boss-defeat-test.wav</TargetPath>
+    </Content>
   </ItemGroup>
+
+  <!-- KokoroSharp copies voices/espeak after Build, not Publish. Single-file needs them beside the exe. -->
+  <Target Name="CopyKokoroContentOnPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_KokoroVoices Include="$(OutputPath)voices\**\*" Condition="Exists('$(OutputPath)voices')" />
+      <_KokoroEspeak Include="$(OutputPath)espeak\**\*" Condition="Exists('$(OutputPath)espeak')" />
+      <_KokoroEspeakData Include="$(OutputPath)espeak-ng-data\**\*" Condition="Exists('$(OutputPath)espeak-ng-data')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_KokoroVoices)"
+          DestinationFiles="@(_KokoroVoices->'$(PublishDir)voices\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_KokoroVoices)' != ''" />
+    <Copy SourceFiles="@(_KokoroEspeak)"
+          DestinationFiles="@(_KokoroEspeak->'$(PublishDir)espeak\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_KokoroEspeak)' != ''" />
+    <Copy SourceFiles="@(_KokoroEspeakData)"
+          DestinationFiles="@(_KokoroEspeakData->'$(PublishDir)espeak-ng-data\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_KokoroEspeakData)' != ''" />
+  </Target>
 
 </Project>

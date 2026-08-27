@@ -1,7 +1,5 @@
 using System.IO;
 using System.Media;
-using System.Reflection;
-using System.Runtime.InteropServices;
 using EQLDamageMeter.Models;
 
 namespace EQLDamageMeter.Services;
@@ -263,39 +261,6 @@ public sealed class BuffAlertService
         return frequencies[slot];
     }
 
-    private static bool TrySpeak(string text, int volumePercent)
-    {
-        object? voice = null;
-        try
-        {
-            var voiceType = Type.GetTypeFromProgID("SAPI.SpVoice");
-            if (voiceType is null) return false;
-            voice = Activator.CreateInstance(voiceType);
-            if (voice is null) return false;
-            var volume = Math.Clamp(volumePercent, 0, 100);
-            voiceType.InvokeMember("Volume", BindingFlags.SetProperty, null, voice, [volume]);
-            voiceType.InvokeMember("Speak", BindingFlags.InvokeMethod, null, voice, [text, 0]);
-            return true;
-        }
-        catch (COMException)
-        {
-            return false;
-        }
-        catch (TargetInvocationException)
-        {
-            return false;
-        }
-        catch (ArgumentException)
-        {
-            return false;
-        }
-        catch (MissingMethodException)
-        {
-            return false;
-        }
-        finally
-        {
-            if (voice is not null && Marshal.IsComObject(voice)) Marshal.FinalReleaseComObject(voice);
-        }
-    }
+    private static bool TrySpeak(string text, int volumePercent) =>
+        SpeechPlayback.Speak(text, volumePercent);
 }

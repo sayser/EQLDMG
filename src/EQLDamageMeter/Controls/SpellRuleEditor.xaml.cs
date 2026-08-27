@@ -31,8 +31,6 @@ public partial class SpellRuleEditor : UserControl
     private async void RuleToggle_Click(object sender, RoutedEventArgs e) => ShowError(await (Rules?.SaveAsync() ?? Task.FromResult<string?>(null)));
     private async void Save_Click(object sender, RoutedEventArgs e) => ShowError(await (Rules?.SaveAsync() ?? Task.FromResult<string?>(null)));
     private void TestAlert_Click(object sender, RoutedEventArgs e) => ShowError(Rules?.TestAlert());
-    private void ResetTimings_Click(object sender, RoutedEventArgs e) =>
-        ShowError(Rules?.ResetSelectedTimingsToCatalog());
     private void SpellName_LostFocus(object sender, RoutedEventArgs e)
     {
         if (sender is SpellNameSearchBox { Tag: BuffRuleViewModel rule })

@@ -534,21 +534,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         return null;
     }
 
-    public string? ResetSelectedBuffTimingsToCatalog()
-    {
-        if (SelectedBuffRule is null) return "Select a buff first.";
-        if (!TryResolveSpell(SelectedBuffRule.SpellName, SelectedBuffRule.TrackingMode, out var spell, out var error))
-        {
-            SelectedBuffRule.SetSpellValidation(error);
-            return error;
-        }
-        SelectedBuffRule.SpellName = spell!.Name;
-        SelectedBuffRule.SetSpellValidation(null);
-        SelectedBuffRule.SetIcon(_spellDataCatalog?.GetIcon(spell));
-        SelectedBuffRule.ApplyCatalogTimings(spell, force: true, casterLevel: _characterLevel);
-        return null;
-    }
-
     private async Task ReseedCatalogTimingsFromCharacterLevelAsync()
     {
         var catalog = _spellDataCatalog;
@@ -961,6 +946,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         if (parsed.Damage is not null) _encounter.Process(parsed.Damage, _group);
         if (parsed.Healing is not null) _encounter.ProcessHealing(parsed.Healing, _group);
         if (parsed.Outcome is not null) _encounter.ProcessOutcome(parsed.Outcome, _group);
+        EventSoundService.ObserveSlain(parsed.Message, name => _encounter.IsHostileTarget(name));
 
         if (priorStart.HasValue && _encounter.StartedAt != priorStart && priorSnapshot is not null)
             Archive(priorSnapshot, priorMode, SnapshotLiveFightLog(priorSnapshot.StartedAt, priorSnapshot.EndedAt));

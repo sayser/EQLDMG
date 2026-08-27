@@ -191,7 +191,10 @@ public sealed class SkyLootLedger
             balance.BankCount = bank;
             balance.HoardCount = hoard;
             balance.OtherCount = other;
-            if (!SkyItemName.IsCurrencyItem(key))
+            // /out inventory never includes the currency tab. Keep log CurrencyCount
+            // unless the dump found this item in bags/bank/Hoard (so it is not only
+            // sitting on the currency tab). Wind Runes / Motes always keep the log count.
+            if (dumpTotal > 0 && !SkyItemName.IsCurrencyItem(key))
                 balance.CurrencyCount = 0;
             balance.LastLocation = balance.PrimaryLocation();
         }
@@ -230,6 +233,27 @@ public sealed class SkyLootLedger
 
         if (allReady) return "READY";
         return anyOwned || anyDeleted ? "IN PROGRESS" : string.Empty;
+    }
+
+    public IReadOnlyList<(string ClassName, string RewardName, string ItemName)> MissingInProgressItems(
+        IEnumerable<SkyClassCatalog> classes)
+    {
+        var missing = new List<(string ClassName, string RewardName, string ItemName)>();
+        foreach (var cls in classes)
+        {
+            foreach (var reward in cls.Rewards)
+            {
+                if (!QuestStatus(cls.ClassName, reward).Equals("IN PROGRESS", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                foreach (var item in reward.RequiredItems)
+                {
+                    if (Snapshot(item.ItemName).Owned >= item.NeededCount) continue;
+                    missing.Add((cls.ClassName, reward.RewardName, item.ItemName));
+                }
+            }
+        }
+
+        return missing;
     }
 
     private bool ApplyLoot(string itemName, string disposition, int count)

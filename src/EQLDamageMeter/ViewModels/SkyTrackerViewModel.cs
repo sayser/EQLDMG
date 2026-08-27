@@ -20,16 +20,16 @@ public sealed class SkyTrackerViewModel : ObservableObject
     private bool _scanningLog;
     private string? _lastScanPath;
     private long _lastScanMaxPosition;
+    private DateTime? _lastAppliedDumpWrittenAt;
     private CancellationTokenSource? _scanCts;
     private readonly HashSet<string> _lootWatches = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<(string ClassName, string RewardName)> _legacyQuestWatches = [];
-    private string _statusText = "Load Plane of Sky rewards from the wiki to begin";
+    private string _statusText = "Plane of Sky quests are ready";
     private string _catalogSummary = "Catalog not loaded";
     private string _previewStats = string.Empty;
     private string _previewQuestName = string.Empty;
     private string _previewSayCommand = string.Empty;
     private string _previewQuestNpc = string.Empty;
-    private bool _isBusy;
     private bool _syncingClass;
     private bool _syncingQuest;
     private string? _selectedClass;
@@ -64,11 +64,8 @@ public sealed class SkyTrackerViewModel : ObservableObject
         private set => SetProperty(ref _catalogSummary, value);
     }
 
-    public bool IsBusy
-    {
-        get => _isBusy;
-        private set => SetProperty(ref _isBusy, value);
-    }
+    public string MissingTrackButtonText =>
+        _lootWatches.Count > 0 ? "Stop tracking items" : "Track missing items";
 
     public string? SelectedClass
     {
@@ -263,37 +260,37 @@ public sealed class SkyTrackerViewModel : ObservableObject
         lock (_ledgerGate)
             _ledger.LoadCatalog(_catalog.Classes);
 
-        if (_catalog.IsLoaded)
+        RaisePropertyChanged(nameof(MissingTrackButtonText));
+        StatusText = _catalog.IsLoaded
+            ? $"Ready · {CountRewards()} Sky rewards"
+            : "Sky quest catalog is missing from this build.";
+    }
+
+    public void ToggleMissingItemTracking()
+    {
+        if (_lootWatches.Count > 0)
         {
-            StatusText = $"Ready · {CountRewards()} Sky rewards cached";
+            _lootWatches.Clear();
+            StatusText = "Stopped tracking Sky items.";
+            AfterWatchesChanged();
             return;
         }
 
-        StatusText = "Downloading Plane of Sky rewards from eqlwiki.com…";
-        _ = RefreshCatalogAsync();
-    }
+        IReadOnlyList<(string ClassName, string RewardName, string ItemName)> missing;
+        lock (_ledgerGate)
+            missing = _ledger.MissingInProgressItems(_catalog.Classes);
 
-    public async Task RefreshCatalogAsync()
-    {
-        if (IsBusy) return;
-        IsBusy = true;
-        StatusText = "Downloading Plane of Sky rewards from eqlwiki.com…";
-        try
+        var added = 0;
+        foreach (var (className, rewardName, itemName) in missing)
         {
-            var (ok, error) = await _catalog.RefreshAsync();
-            lock (_ledgerGate)
-                _ledger.LoadCatalog(_catalog.Classes);
-            ApplyCatalogToUi();
-            ApplyLedgerToUi();
-            ExpandLegacyQuestWatches();
-            StatusText = ok
-                ? $"Loaded {CountRewards()} Sky rewards from the wiki"
-                : error ?? "Sky catalog refresh failed.";
+            if (_lootWatches.Add(WatchKey(className, rewardName, itemName)))
+                added++;
         }
-        finally
-        {
-            IsBusy = false;
-        }
+
+        StatusText = added == 0
+            ? "No missing IN PROGRESS Sky items to track."
+            : $"Tracking {added} missing Sky item{(added == 1 ? "" : "s")}.";
+        AfterWatchesChanged();
     }
 
     public async Task AddSelectedPartsAsync()
@@ -551,16 +548,24 @@ public sealed class SkyTrackerViewModel : ObservableObject
 
         string dumpStatus;
         lock (_ledgerGate)
-            dumpStatus = ApplyLoadedDump(dump);
+            dumpStatus = ApplyLoadedDump(dump, allowUnchangedFile: false);
 
         ApplyLedgerToUi();
         StatusText = dumpStatus;
     }
 
-    private string ApplyLoadedDump(SkyInventoryDumpFile dump)
+    private string ApplyLoadedDump(SkyInventoryDumpFile dump, bool allowUnchangedFile = true)
     {
-        var (found, copies) = _ledger.ApplyInventorySnapshot(dump.Piles);
         var when = dump.WrittenAt.ToString("g", CultureInfo.CurrentCulture);
+        if (!allowUnchangedFile &&
+            _lastAppliedDumpWrittenAt is { } previous &&
+            dump.WrittenAt <= previous)
+        {
+            return $"This dump was already applied ({when}). Type /out inventory in game, then Scan dump.";
+        }
+
+        var (found, copies) = _ledger.ApplyInventorySnapshot(dump.Piles);
+        _lastAppliedDumpWrittenAt = dump.WrittenAt;
         if (found <= 0)
         {
             return $"Inventory dump ({when}) had no Sky quest items. " +
@@ -858,8 +863,7 @@ public sealed class SkyTrackerViewModel : ObservableObject
             return;
         }
 
-        var when = _catalog.FetchedAtUtc?.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) ?? "cache";
-        CatalogSummary = $"{_catalog.Classes.Count} classes · {CountRewards()} rewards · {when}";
+        CatalogSummary = $"{_catalog.Classes.Count} classes · {CountRewards()} rewards";
     }
 
     private int CountRewards() => _catalog.Classes.Sum(entry => entry.Rewards.Count);
@@ -929,7 +933,17 @@ public sealed class SkyTrackerViewModel : ObservableObject
         var key = WatchKey(SelectedClass, SelectedReward.RewardName, itemName);
         var changed = enabled ? _lootWatches.Add(key) : _lootWatches.Remove(key);
         if (changed)
+        {
             _ = PersistAsync();
+            RaisePropertyChanged(nameof(MissingTrackButtonText));
+        }
+    }
+
+    private void AfterWatchesChanged()
+    {
+        _ = PersistAsync();
+        RebuildSelectedParts();
+        RaisePropertyChanged(nameof(MissingTrackButtonText));
     }
 
     private bool UnwatchCompletedQuests(IReadOnlyList<(string ClassName, string RewardName)> completions)
@@ -939,7 +953,10 @@ public sealed class SkyTrackerViewModel : ObservableObject
         foreach (var (className, rewardName) in completions)
             changed |= UnwatchQuestParts(className, rewardName);
         if (changed)
+        {
             _ = PersistAsync();
+            RaisePropertyChanged(nameof(MissingTrackButtonText));
+        }
         return changed;
     }
 

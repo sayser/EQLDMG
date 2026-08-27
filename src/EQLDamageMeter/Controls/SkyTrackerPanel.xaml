@@ -102,9 +102,12 @@
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock TextWrapping="Wrap" Foreground="#C8DEEA" FontSize="13"
                                VerticalAlignment="Center">
-                        <Run Text="In game, type " />
+                        <Run Text="!" FontSize="22" FontWeight="Bold" Foreground="#E53935" />
+                        <Run Text=" In game, type " />
                         <Run Text="/out inventory" FontFamily="Consolas" FontWeight="Bold" Foreground="#2FD8C7" />
-                        <Run Text=", then click Scan dump to sync bags, bank, and Hoard." />
+                        <Run Text=", then click " />
+                        <Run Text="Scan dump" FontWeight="Bold" Foreground="#2FD8C7" />
+                        <Run Text=" to sync bags, bank, and Hoard." />
                     </TextBlock>
                     <TextBlock Text="{Binding StatusText}" Foreground="#8BA9BD" FontSize="11"
                                Margin="0,6,0,0" TextWrapping="Wrap" />
@@ -113,9 +116,9 @@
                             Margin="18,0,0,0">
                     <Button Content="Scan dump" Padding="12,6" Click="ScanInventoryDump_Click"
                             ToolTip="Scan Character_server-Inventory.txt next to the Logs folder after you type /out inventory in game" />
-                    <Button Content="Refresh" Padding="12,6" Margin="8,0,0,0"
-                            Click="RefreshCatalog_Click"
-                            ToolTip="Download Plane of Sky rewards from eqlwiki.com" />
+                    <Button Content="{Binding MissingTrackButtonText}" Padding="12,6" Margin="8,0,0,0"
+                            Click="ToggleMissingTracking_Click"
+                            ToolTip="Track every still-missing required item on IN PROGRESS Sky quests. Click again to stop all item tracking." />
                     <Button Content="Plane of Sky page" Padding="12,6" Margin="8,0,0,0"
                             Click="OpenPlanePage_Click"
                             ToolTip="Open the Plane of Sky wiki page" />

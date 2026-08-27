@@ -1967,6 +1967,12 @@ internal static class Program
 
     private static void RunSkyCatalogParserTests()
     {
+        var bundled = new EqWikiSkyCatalog();
+        bundled.LoadCached();
+        Check("Sky bundled catalog loads", bundled.IsLoaded);
+        Check("Sky bundled class count", bundled.Classes.Count == 16);
+        Check("Sky bundled reward count", bundled.Classes.Sum(entry => entry.Rewards.Count) == 95);
+
         const string modernSnippet = """
             === [[Bard]] Tests ===
 
@@ -2115,6 +2121,12 @@ internal static class Program
         Check("Sky deleted after destroy", ledger.Snapshot("Silver Hoop").IsDeleted &&
                                            ledger.Snapshot("Silver Hoop").DestroyedCount == 1 &&
                                            ledger.QuestStatus("Cleric", cleric.Rewards[1]) == "IN PROGRESS");
+        var missing = ledger.MissingInProgressItems([cleric]);
+        Check("Sky missing in-progress after destroy",
+            missing.Count == 1 &&
+            missing[0].ClassName == "Cleric" &&
+            missing[0].RewardName == "Aegis of the Wind" &&
+            missing[0].ItemName == "Silver Hoop");
 
         ledger.Observe("You looted a Silver Hoop from Gorgalosk's corpse and stored it in your currency");
         Check("Sky stored currency", ledger.Snapshot("Silver Hoop").Owned == 1 &&
@@ -2276,6 +2288,15 @@ internal static class Program
                                              hoopLedger.Snapshot("Silver Hoop").Location ==
                                              SkyItemLocation.Hoard);
 
+        var currencyHoop = new SkyLootLedger();
+        currencyHoop.LoadCatalog([cleric]);
+        currencyHoop.Observe(
+            "You looted a Silver Hoop from Gorgalosk's corpse and stored it in your currency");
+        currencyHoop.ApplyInventorySnapshot(new Dictionary<string, SkyInventoryPiles>(StringComparer.OrdinalIgnoreCase));
+        Check("Sky dump keeps currency-tab gear the dump cannot see",
+            currencyHoop.Snapshot("Silver Hoop").Owned == 1 &&
+            currencyHoop.Snapshot("Silver Hoop").Location == SkyItemLocation.Currency);
+
         var tmpRoot = Path.Combine(Path.GetTempPath(), "eqdm_inv_" + Guid.NewGuid().ToString("N"));
         var logsDir = Path.Combine(tmpRoot, "Logs");
         Directory.CreateDirectory(logsDir);
@@ -2422,6 +2443,33 @@ internal static class Program
             BuffAlertModeOptions.ExclusiveChoices.Contains(BuffAlertMode.Sound) &&
             BuffAlertModeOptions.ExclusiveChoices.Contains(BuffAlertMode.TextToSpeech) &&
             !BuffAlertModeOptions.ExclusiveChoices.Contains(BuffAlertMode.Both));
+        Check("Named boss Gorgalosk", NamedNpc.IsBossName("Gorgalosk"));
+        Check("Named boss Lord Nagafen", NamedNpc.IsBossName("Lord Nagafen"));
+        Check("Named boss Lady Vox", NamedNpc.IsBossName("Lady Vox"));
+        Check("Named boss the Hand of Veeshan", NamedNpc.IsBossName("the Hand of Veeshan"));
+        Check("Named skips a goblin", !NamedNpc.IsBossName("a goblin"));
+        Check("Named skips an azarack", !NamedNpc.IsBossName("an azarack"));
+        Check("Named skips a beetle", !NamedNpc.IsBossName("a beetle"));
+        Check("Named skips the goblin", !NamedNpc.IsBossName("the goblin"));
+        Check("Slain you have slain",
+            NamedNpc.TryReadSlainName("You have slain Gorgalosk!", out var slain) && slain == "Gorgalosk");
+        Check("Slain ignores player death",
+            !NamedNpc.TryReadSlainName("You have been slain by a goblin!", out _));
+        Check("Slain by other",
+            NamedNpc.TryReadSlainName("Gorgalosk has been slain by Sayser!", out var raidSlain) &&
+            raidSlain == "Gorgalosk");
+        Check("Bundled default is filename only",
+            EventSoundService.IsBundledDefault("") &&
+            EventSoundService.IsBundledDefault("boss-defeat-test.wav") &&
+            EventSoundService.IsBundledDefault(@"C:\Users\someone\EQDM\boss-defeat-test.wav"));
+        Check("Custom sound is not bundled default",
+            !EventSoundService.IsBundledDefault(@"C:\Music\fanfare.mp3"));
+        Check("Persist bundled default as filename",
+            EventSoundService.PersistSoundPath(@"C:\Users\someone\EQDM\boss-defeat-test.wav") ==
+            "boss-defeat-test.wav");
+        Check("Resolve bundled default next to exe",
+            EventSoundService.ResolveSoundPath("boss-defeat-test.wav")
+                .EndsWith("boss-defeat-test.wav", StringComparison.OrdinalIgnoreCase));
     }
 
     private static void RunSmartTimingTests()

@@ -666,9 +666,9 @@
                                             <MenuItem Header="Mouse Highlights…"
                                                       Click="MouseHighlightOptions_Click"
                                                       ToolTip="Show a colored ring around the mouse cursor" />
-                                            <MenuItem Header="Alert volume…"
+                                            <MenuItem Header="Alerts &amp; voice…"
                                                       Click="AlertVolumeOptions_Click"
-                                                      ToolTip="Adjust volume for all alert sounds and text-to-speech" />
+                                                      ToolTip="Voice, alert volume, and custom boss defeat sounds" />
                                         </ContextMenu>
                                     </Button.ContextMenu>
                                 </Button>
@@ -1789,9 +1789,6 @@
                                                    FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center" />
                                     </Grid>
                                     <TextBox Style="{StaticResource BuffInput}" Text="{Binding SelectedBuffRule.CastTimeText, UpdateSourceTrigger=PropertyChanged}" />
-                                    <Button Content="Reset to spell data" Margin="0,6,0,0" Padding="8,4" HorizontalAlignment="Right"
-                                            Click="ResetBuffTimings_Click"
-                                            ToolTip="Re-fill cast time and duration from EverQuest spell data" />
                                 </StackPanel>
                             </Grid>
 

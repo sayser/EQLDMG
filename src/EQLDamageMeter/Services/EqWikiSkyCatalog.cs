@@ -1,7 +1,5 @@
 using System.IO;
-using System.Net.Http;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using EQLDamageMeter.Models;
 
@@ -9,8 +7,6 @@ namespace EQLDamageMeter.Services;
 
 public sealed partial class EqWikiSkyCatalog
 {
-    private static readonly string CachePath = AppPaths.Combine("sky_catalog.json");
-    private static readonly HttpClient Http = CreateClient();
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     private IReadOnlyList<SkyClassCatalog> _classes = [];
@@ -19,36 +15,7 @@ public sealed partial class EqWikiSkyCatalog
     public DateTime? FetchedAtUtc { get; private set; }
     public bool IsLoaded => _classes.Count > 0;
 
-    public void LoadCached()
-    {
-        if (TryLoadFromFile(CachePath)) return;
-        TryLoadEmbedded();
-    }
-
-    private bool TryLoadFromFile(string path)
-    {
-        try
-        {
-            if (!File.Exists(path)) return false;
-            var document = JsonSerializer.Deserialize<SkyCatalogDocument>(File.ReadAllText(path), JsonOptions);
-            if (document?.Classes is not { Count: > 0 }) return false;
-            _classes = Normalize(document.Classes);
-            FetchedAtUtc = document.FetchedAtUtc;
-            return true;
-        }
-        catch (IOException)
-        {
-            return false;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return false;
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
-    }
+    public void LoadCached() => TryLoadEmbedded();
 
     private void TryLoadEmbedded()
     {
@@ -68,59 +35,6 @@ public sealed partial class EqWikiSkyCatalog
         }
         catch (JsonException)
         {
-        }
-    }
-
-    public async Task<(bool Ok, string? Error)> RefreshAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            var url =
-                "https://eqlwiki.com/api.php?action=parse&prop=wikitext&format=json&page=" +
-                Uri.EscapeDataString("Plane of Sky");
-            await using var stream = await Http.GetStreamAsync(url, cancellationToken);
-            var payload = await JsonSerializer.DeserializeAsync<ParseResponse>(stream,
-                cancellationToken: cancellationToken);
-            var wikitext = payload?.Parse?.Wikitext?.Text;
-            if (string.IsNullOrWhiteSpace(wikitext))
-                return (false, "Plane of Sky page could not be loaded from the wiki.");
-
-            var classes = Parse(wikitext);
-            if (classes.Count == 0)
-                return (false, "No Plane of Sky class rewards were found on the wiki page.");
-
-            _classes = classes;
-            FetchedAtUtc = DateTime.UtcNow;
-            var document = new SkyCatalogDocument
-            {
-                FetchedAtUtc = FetchedAtUtc.Value,
-                Classes = _classes.ToList()
-            };
-            var temporaryPath = CachePath + ".tmp";
-            await File.WriteAllTextAsync(temporaryPath, JsonSerializer.Serialize(document, JsonOptions),
-                cancellationToken);
-            File.Move(temporaryPath, CachePath, overwrite: true);
-            return (true, null);
-        }
-        catch (HttpRequestException)
-        {
-            return (false, "Could not reach eqlwiki.com. Check your network connection.");
-        }
-        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return (false, "The wiki request timed out.");
-        }
-        catch (IOException)
-        {
-            return (false, "The Sky catalog cache could not be written.");
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return (false, "Access to the Sky catalog cache was denied.");
-        }
-        catch (JsonException)
-        {
-            return (false, "The wiki response could not be read.");
         }
     }
 
@@ -309,13 +223,6 @@ public sealed partial class EqWikiSkyCatalog
             .OrderBy(entry => entry.ClassName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-    private static HttpClient CreateClient()
-    {
-        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd(AppUpdateService.ProductUserAgent);
-        return client;
-    }
-
     [GeneratedRegex(
         @"===\s*\[\[(?<class>[^\]|#]+)(?:\|[^\]]+)?\]\]\s+Tests\s*===\s*(?<preamble>.*?)(?<table>\{\|.*?^\|\})",
         RegexOptions.Singleline | RegexOptions.Multiline)]
@@ -343,22 +250,4 @@ public sealed partial class EqWikiSkyCatalog
 
     [GeneratedRegex(@"^(?:[^\[\n]{0,80}?)\(([^)]+)\)")]
     private static partial Regex TrailingNoteRegex();
-
-    private sealed class ParseResponse
-    {
-        [JsonPropertyName("parse")]
-        public ParseBlock? Parse { get; set; }
-    }
-
-    private sealed class ParseBlock
-    {
-        [JsonPropertyName("wikitext")]
-        public WikitextBlock? Wikitext { get; set; }
-    }
-
-    private sealed class WikitextBlock
-    {
-        [JsonPropertyName("*")]
-        public string? Text { get; set; }
-    }
 }

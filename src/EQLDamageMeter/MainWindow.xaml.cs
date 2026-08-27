@@ -86,10 +86,15 @@ public partial class MainWindow : Window, IAsyncDisposable
 
     private async void AlertVolumeOptions_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new AlertVolumeSettingsWindow(BuffAlertService.VolumePercent) { Owner = this };
+        var dialog = new AlertVolumeSettingsWindow(BuffAlertService.VolumePercent, SpeechPlayback.Settings)
+        {
+            Owner = this
+        };
         if (dialog.ShowDialog() != true) return;
         BuffAlertService.VolumePercent = dialog.ResultVolumePercent;
+        SpeechPlayback.Settings = dialog.ResultVoice;
         await AppSettingsStore.TrySaveAlertVolumePercentAsync(dialog.ResultVolumePercent);
+        await AppSettingsStore.TrySaveVoiceAsync(dialog.ResultVoice);
     }
 
     private void ApplyMouseHighlight()
@@ -332,9 +337,6 @@ public partial class MainWindow : Window, IAsyncDisposable
         }
     }
 
-    private async void SkyRefreshCatalog_Click(object sender, RoutedEventArgs e) =>
-        await _viewModel.SkyTracker.RefreshCatalogAsync();
-
     private async void SkyAddSelected_Click(object sender, RoutedEventArgs e) =>
         await _viewModel.SkyTracker.AddSelectedPartsAsync();
 
@@ -571,9 +573,6 @@ public partial class MainWindow : Window, IAsyncDisposable
 
     private void TestBuffAlert_Click(object sender, RoutedEventArgs e) =>
         ShowBuffError(_viewModel.TestSelectedBuffAlert());
-
-    private void ResetBuffTimings_Click(object sender, RoutedEventArgs e) =>
-        ShowBuffError(_viewModel.ResetSelectedBuffTimingsToCatalog());
 
     private void BuffSpellName_LostFocus(object sender, RoutedEventArgs e)
     {

@@ -9,6 +9,7 @@ public partial class App : Application
     {
         AppUpdateService.InitializeUserDataProtection();
         BuffAlertService.VolumePercent = AppSettingsStore.TryLoadAlertVolumePercent();
+        SpeechPlayback.Settings = AppSettingsStore.TryLoadVoice();
         base.OnStartup(e);
     }
 }

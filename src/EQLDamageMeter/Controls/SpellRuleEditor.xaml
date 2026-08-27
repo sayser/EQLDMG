@@ -195,9 +195,6 @@
                                            FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center" />
                             </Grid>
                             <TextBox Style="{DynamicResource BuffInput}" Text="{Binding SelectedRule.CastTimeText, UpdateSourceTrigger=PropertyChanged}" />
-                            <Button Content="Reset to spell data" Margin="0,6,0,0" Padding="8,4" HorizontalAlignment="Right"
-                                    Click="ResetTimings_Click"
-                                    ToolTip="Re-fill cast time and duration from EverQuest spell data" />
                         </StackPanel>
                     </Grid>
                     <Grid Grid.Row="3" Margin="0,12,0,0">

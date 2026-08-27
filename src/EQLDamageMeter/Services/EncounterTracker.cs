@@ -124,6 +124,9 @@ public sealed class EncounterTracker(string localPlayerName)
     public DateTime? EndedAt { get; private set; }
     public DateTime? CompletionCandidateAt { get; private set; }
     public bool IsFinalized { get; private set; }
+
+    public bool IsHostileTarget(string? name) =>
+        !string.IsNullOrWhiteSpace(name) && _hostileTargets.Contains(name.Trim());
     public IReadOnlyCollection<CombatantAggregate> Combatants =>
         _combatants.Values.Concat(_retiredCombatants).ToArray();
 

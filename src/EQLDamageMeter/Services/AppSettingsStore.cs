@@ -19,6 +19,7 @@ public static class AppSettingsStore
             new(StringComparer.OrdinalIgnoreCase);
         public MouseHighlightSettings MouseHighlight { get; set; } = new();
         public int AlertVolumePercent { get; set; } = 100;
+        public VoiceSettings Voice { get; set; } = new();
     }
 
     private static readonly string SettingsPath = AppPaths.Combine("settings.json");
@@ -140,6 +141,29 @@ public static class AppSettingsStore
     {
         var volume = TryLoad()?.AlertVolumePercent ?? 100;
         return Math.Clamp(volume, 0, 100);
+    }
+
+    public static VoiceSettings TryLoadVoice()
+    {
+        var voice = TryLoad()?.Voice ?? new VoiceSettings();
+        voice.WindowsVoiceId ??= string.Empty;
+        voice.NaturalVoiceId = string.IsNullOrWhiteSpace(voice.NaturalVoiceId) ? "af_heart" : voice.NaturalVoiceId;
+        voice.BossDefeatSoundPath = EventSoundService.ResolveSoundPath(voice.BossDefeatSoundPath);
+        return voice;
+    }
+
+    public static Task<bool> TrySaveVoiceAsync(VoiceSettings voice,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(voice);
+        return UpdateAsync(settings => settings.Voice = new VoiceSettings
+        {
+            Engine = voice.Engine,
+            WindowsVoiceId = voice.WindowsVoiceId?.Trim() ?? string.Empty,
+            NaturalVoiceId = string.IsNullOrWhiteSpace(voice.NaturalVoiceId) ? "af_heart" : voice.NaturalVoiceId.Trim(),
+            BossDefeatSoundEnabled = voice.BossDefeatSoundEnabled,
+            BossDefeatSoundPath = EventSoundService.PersistSoundPath(voice.BossDefeatSoundPath)
+        }, cancellationToken);
     }
 
     public static Task<bool> TrySaveAlertVolumePercentAsync(int volumePercent,
