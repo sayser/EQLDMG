@@ -2167,6 +2167,13 @@ internal static class Program
         Check("Sky scan copy does not replay turn-in watches", copiedLedger.TakeNewlyCompleted().Count == 0);
         Check("Sky scan copy keeps completed", copiedLedger.QuestStatus("Cleric", cleric.Rewards[0]) == "COMPLETED");
 
+        var unlocked = SkyClassPresentation.QuestFlags(["COMPLETED", "COMPLETED"]);
+        Check("Sky class unlocked when all completed", unlocked.IsUnlocked && !unlocked.HasReadyTurnIn);
+        var readyClass = SkyClassPresentation.QuestFlags(["COMPLETED", "READY"]);
+        Check("Sky class ready mark when a quest is ready", !readyClass.IsUnlocked && readyClass.HasReadyTurnIn);
+        var emptyClass = SkyClassPresentation.QuestFlags([]);
+        Check("Sky class with no quests is not unlocked", !emptyClass.IsUnlocked && !emptyClass.HasReadyTurnIn);
+
         Check("Sky given colon",
             SkyLogEvents.TryReadReceived("You have been given: Truewind Earring", out var givenItem, out var givenCount) &&
             givenItem == "Truewind Earring" && givenCount == 1);

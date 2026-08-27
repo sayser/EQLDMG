@@ -814,18 +814,20 @@ public sealed class SkyTrackerViewModel : ObservableObject
                 row.StatusLabel = _ledger.QuestStatus(SelectedClass, row.Reward);
         }
 
-        RefreshClassReadyFlags();
+        RefreshClassRowFlags();
     }
 
-    private void RefreshClassReadyFlags()
+    private void RefreshClassRowFlags()
     {
         lock (_ledgerGate)
         {
             foreach (var row in ClassRows)
             {
-                row.HasReadyTurnIn = _catalog.GetRewardsForClass(row.ClassName)
-                    .Any(reward => _ledger.QuestStatus(row.ClassName, reward)
-                        .Equals("READY", StringComparison.OrdinalIgnoreCase));
+                var rewards = _catalog.GetRewardsForClass(row.ClassName);
+                var flags = SkyClassPresentation.QuestFlags(
+                    rewards.Select(reward => _ledger.QuestStatus(row.ClassName, reward)).ToArray());
+                row.IsUnlocked = flags.IsUnlocked;
+                row.HasReadyTurnIn = flags.HasReadyTurnIn;
             }
         }
     }
@@ -924,7 +926,7 @@ public sealed class SkyTrackerViewModel : ObservableObject
             SyncSelectedClassRow();
         }
 
-        RefreshClassReadyFlags();
+        RefreshClassRowFlags();
     }
 
     private void UpdateCatalogSummary()

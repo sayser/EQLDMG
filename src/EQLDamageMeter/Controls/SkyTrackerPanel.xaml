@@ -86,6 +86,78 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+        <Style x:Key="SkyClassCardItem" TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Card" Background="#4A0C2436" BorderBrush="#2A4A5E"
+                                BorderThickness="1" CornerRadius="10" Padding="10,8">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <DataTrigger Binding="{Binding IsUnlocked}" Value="True">
+                                <Setter TargetName="Card" Property="BorderBrush" Value="#E0B84A" />
+                                <Setter TargetName="Card" Property="Background" Value="#553A12" />
+                            </DataTrigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Card" Property="BorderBrush" Value="#2FD8C7" />
+                                <Setter TargetName="Card" Property="Background" Value="#4020A090" />
+                            </Trigger>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource Self}}" Value="True" />
+                                    <Condition Binding="{Binding IsUnlocked}" Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter TargetName="Card" Property="BorderBrush" Value="#FFD56A" />
+                                <Setter TargetName="Card" Property="Background" Value="#6A4A18" />
+                            </MultiDataTrigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Card" Property="Background" Value="#A5163A50" />
+                            </Trigger>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True" />
+                                    <Condition Binding="{Binding IsUnlocked}" Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter TargetName="Card" Property="Background" Value="#7A5820" />
+                            </MultiDataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SkyUnlockedBadge" TargetType="Border">
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="Background" Value="#6A4A12" />
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Setter Property="ToolTip" Value="All Sky quests for this class are completed" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsUnlocked}" Value="True">
+                    <Setter Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="SkyClassReadyMark" TargetType="TextBlock">
+            <Setter Property="Text" Value="!" />
+            <Setter Property="FontSize" Value="22" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="#F08A24" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="ToolTip" Value="Ready to turn in" />
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding HasReadyTurnIn}" Value="True">
+                    <Setter Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsUnlocked}" Value="True">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
@@ -165,67 +237,67 @@
                 <ListBox Grid.Row="1" ItemsSource="{Binding ClassRows}"
                          SelectedItem="{Binding SelectedClassRow}"
                          Background="Transparent" BorderThickness="0" Margin="0,10,0,0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                    <ListBox.ItemContainerStyle>
-                        <Style TargetType="ListBoxItem">
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                            <Setter Property="Padding" Value="0" />
-                            <Setter Property="Margin" Value="0,0,0,6" />
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="ListBoxItem">
-                                        <Border x:Name="Card" Background="#4A0C2436" BorderBrush="#2A4A5E"
-                                                BorderThickness="1" CornerRadius="10" Padding="10,8">
-                                            <ContentPresenter />
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsSelected" Value="True">
-                                                <Setter TargetName="Card" Property="BorderBrush" Value="#2FD8C7" />
-                                                <Setter TargetName="Card" Property="Background" Value="#4020A090" />
-                                            </Trigger>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="Card" Property="Background" Value="#A5163A50" />
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </ListBox.ItemContainerStyle>
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ItemContainerStyle="{StaticResource SkyClassCardItem}">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <Border Width="32" Height="32" CornerRadius="8" Background="#33081420"
-                                        BorderBrush="#355B73" BorderThickness="1" Margin="0,0,10,0">
+                                        BorderThickness="1" Margin="0,0,10,0">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="BorderBrush" Value="#355B73" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsUnlocked}" Value="True">
+                                                    <Setter Property="BorderBrush" Value="#E0B84A" />
+                                                    <Setter Property="Background" Value="#443010" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
                                     <TextBlock Text="{Binding Glyph}" FontFamily="Segoe UI Symbol" FontSize="14"
-                                               Foreground="#2FD8C7" HorizontalAlignment="Center"
-                                               VerticalAlignment="Center" />
+                                               HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="#2FD8C7" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsUnlocked}" Value="True">
+                                                        <Setter Property="Foreground" Value="#F5D56A" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                 </Border>
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,8,0">
                                     <TextBlock Text="{Binding ClassName}" FontWeight="SemiBold"
                                                Foreground="#E8F8FF" FontSize="13" />
-                                    <TextBlock Text="{Binding QuestGiver}" Foreground="#7FDCD4" FontSize="11"
-                                               Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding QuestGiver}" FontSize="11"
+                                               Margin="0,2,0,0" TextTrimming="CharacterEllipsis">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="#7FDCD4" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsUnlocked}" Value="True">
+                                                        <Setter Property="Foreground" Value="#E0C070" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                 </StackPanel>
-                                <TextBlock Grid.Column="2" Text="!" FontSize="22" FontWeight="Bold"
-                                           Foreground="#F08A24" HorizontalAlignment="Center"
-                                           VerticalAlignment="Center" ToolTip="Ready to turn in">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding HasReadyTurnIn}" Value="True">
-                                                    <Setter Property="Visibility" Value="Visible" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                    <TextBlock Style="{StaticResource SkyClassReadyMark}" />
+                                    <Border Style="{StaticResource SkyUnlockedBadge}">
+                                        <TextBlock Text="unlocked" FontSize="11" FontWeight="Bold"
+                                                   Foreground="#F5D56A" />
+                                    </Border>
+                                </StackPanel>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>

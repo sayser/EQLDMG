@@ -2,7 +2,7 @@ using EQLDamageMeter.Models;
 
 namespace EQLDamageMeter.ViewModels;
 
-internal static class SkyClassPresentation
+public static class SkyClassPresentation
 {
     public static string Glyph(string className) => className.Trim().ToLowerInvariant() switch
     {
@@ -38,11 +38,23 @@ internal static class SkyClassPresentation
 
         return trimmed;
     }
+
+    public static (bool IsUnlocked, bool HasReadyTurnIn) QuestFlags(IReadOnlyList<string> statuses)
+    {
+        var unlocked = statuses.Count > 0 &&
+                       statuses.All(status =>
+                           status.Equals("COMPLETED", StringComparison.OrdinalIgnoreCase));
+        var ready = !unlocked &&
+                    statuses.Any(status =>
+                        status.Equals("READY", StringComparison.OrdinalIgnoreCase));
+        return (unlocked, ready);
+    }
 }
 
 public sealed class SkyClassRowViewModel : ObservableObject
 {
     private bool _hasReadyTurnIn;
+    private bool _isUnlocked;
 
     public required string ClassName { get; init; }
     public required string QuestGiver { get; init; }
@@ -52,6 +64,12 @@ public sealed class SkyClassRowViewModel : ObservableObject
     {
         get => _hasReadyTurnIn;
         set => SetProperty(ref _hasReadyTurnIn, value);
+    }
+
+    public bool IsUnlocked
+    {
+        get => _isUnlocked;
+        set => SetProperty(ref _isUnlocked, value);
     }
 }
 
