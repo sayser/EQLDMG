@@ -17,6 +17,17 @@ public partial class SkyTrackerPanel : UserControl
     private void ToggleMissingTracking_Click(object sender, RoutedEventArgs e) =>
         Tracker?.ToggleMissingItemTracking();
 
+    private void ListNeededItems_Click(object sender, RoutedEventArgs e)
+    {
+        var groups = Tracker?.NeededSkyItems();
+        if (groups is null) return;
+        var dialog = new global::EQLDamageMeter.SkyNeededItemsWindow(groups)
+        {
+            Owner = Window.GetWindow(this)
+        };
+        dialog.ShowDialog();
+    }
+
     private void OpenPlanePage_Click(object sender, RoutedEventArgs e) => Tracker?.OpenSkyWiki();
 
     private void OpenRewardWiki_Click(object sender, MouseButtonEventArgs e)

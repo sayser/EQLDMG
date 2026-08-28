@@ -200,17 +200,20 @@
                         </TextBlock.Style>
                     </TextBlock>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                <WrapPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
                             Margin="18,0,0,0">
                     <Button Content="Scan dump" Padding="12,6" Click="ScanInventoryDump_Click"
                             ToolTip="Scan Character_server-Inventory.txt next to the Logs folder. Open Dragon's Hoard at a banker before /out inventory or Hoard items will be missing from the file." />
                     <Button Content="{Binding MissingTrackButtonText}" Padding="12,6" Margin="8,0,0,0"
                             Click="ToggleMissingTracking_Click"
                             ToolTip="Track every still-missing required item on IN PROGRESS Sky quests. Click again to stop all item tracking." />
+                    <Button Content="List all needed items" Padding="12,6" Margin="8,0,0,0"
+                            Click="ListNeededItems_Click"
+                            ToolTip="Show every still-missing Sky quest item, grouped by island and boss." />
                     <Button Content="Plane of Sky page" Padding="12,6" Margin="8,0,0,0"
                             Click="OpenPlanePage_Click"
                             ToolTip="Open the Plane of Sky wiki page" />
-                </StackPanel>
+                </WrapPanel>
             </Grid>
         </Border>
 

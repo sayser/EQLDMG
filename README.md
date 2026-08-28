@@ -82,6 +82,7 @@ PLANE OF SKY
 - After `/out inventory` in game, Scan dump syncs bags, bank, and Hoard from `Character_server-Inventory.txt` next to the Logs folder.
 - Dragon's Hoard is included only when that window is open at a banker. Scan dump warns if the Hoard section is missing and does not zero Hoard counts.
 - A class card turns gold with an unlocked label when every Sky quest for that class is completed.
+- List all needed items shows remaining Sky quest parts grouped by island and boss. Click the button again after looting or completing a quest to refresh.
 - Currency-tab Wind Runes still follow the log, because that tab is not in the inventory dump.
 
 

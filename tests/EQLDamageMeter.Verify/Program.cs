@@ -2069,6 +2069,11 @@ internal static class Program
         Check("Sky drop Gorgalosk",
             SkyDropSource.Format("3-Gorga") == "Harpy Island (Island 3) · Gorgalosk");
         Check("Sky drop empty note", SkyDropSource.Format("") == string.Empty);
+        var gorga = SkyDropSource.Parse("3-Gorga");
+        Check("Sky drop parse island and boss",
+            gorga.IslandOrder == 3 && gorga.BossName == "Gorgalosk" && gorga.HasBoss);
+        Check("Sky drop wind rune group",
+            SkyDropSource.Parse("", "Wind Rune Ena").IslandName == "Wind Runes");
 
         var cleric = new SkyClassCatalog
         {
@@ -2106,11 +2111,26 @@ internal static class Program
         };
         var ledger = new SkyLootLedger();
         ledger.LoadCatalog([cleric]);
+        var neededBefore = SkyNeededItemList.Build([cleric], ledger);
+        Check("Sky needed list groups hoop under Gorgalosk",
+            neededBefore.Any(island =>
+                island.IslandName.Contains("Harpy", StringComparison.OrdinalIgnoreCase) &&
+                island.Bosses.Any(boss => boss.BossName == "Gorgalosk" &&
+                                          boss.Items.Any(item => item.ItemName == "Silver Hoop"))));
+        Check("Sky needed list groups wind runes",
+            neededBefore.Any(island => island.IslandName == "Wind Runes" &&
+                                       island.Bosses.SelectMany(boss => boss.Items)
+                                           .Any(item => item.ItemName == "Wind Rune Ena")));
 
         ledger.Observe("--You have looted a Silver Hoop from Gorgalosk's corpse.--");
         Check("Sky kept inventory", ledger.Snapshot("Silver Hoop").Owned == 1 &&
                                     ledger.Snapshot("Silver Hoop").Location == SkyItemLocation.Inventory);
         Check("Sky ready from owned", ledger.QuestStatus("Cleric", cleric.Rewards[1]) == "READY");
+        Check("Sky needed list hides owned hoop",
+            !SkyNeededItemList.Build([cleric], ledger)
+                .SelectMany(island => island.Bosses)
+                .SelectMany(boss => boss.Items)
+                .Any(item => item.ItemName == "Silver Hoop"));
 
         ledger.Observe("--You have looted a Wind Rune Dena from an azarack's corpse.--");
         Check("Sky wind rune kept is currency",

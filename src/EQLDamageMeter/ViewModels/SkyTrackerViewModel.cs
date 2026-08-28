@@ -887,6 +887,12 @@ public sealed class SkyTrackerViewModel : ObservableObject
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
+    public IReadOnlyList<SkyNeededIslandGroup> NeededSkyItems()
+    {
+        lock (_ledgerGate)
+            return SkyNeededItemList.Build(_catalog.Classes, _ledger);
+    }
+
     private void ApplyCatalogToUi()
     {
         var previousClass = SelectedClass;
